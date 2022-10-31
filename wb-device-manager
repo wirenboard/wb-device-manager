@@ -12,10 +12,11 @@ if __name__ == "__main__":
     debug_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(debug_handler)
 
-    ports = ["/dev/ttyRS485-1",]
+    ports = sys.argv[1:]
     for port in ports:
         try:
             scanner = serial_bus.ExtendedMBusScanner(port)
-            scanner.scan_bus()
+            for device in scanner.scan_bus():
+                print(device)
         except minimalmodbus.MasterReportedException:
             logger.exception("Port: %s", port)

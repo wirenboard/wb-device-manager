@@ -22,7 +22,6 @@ class ExtendedMBusScanner:
 
     def __init__(self, port, instrument=instruments.SerialRPCBackendInstrument):
         self.instrument = instrument(port=port, slaveaddress=self.ADDR)
-        self.instrument.serial.timeout = 0.5
         self.port = port
 
     def _build_request(self, cmd_code):
@@ -76,7 +75,7 @@ class ExtendedMBusScanner:
         except minimalmodbus.MasterReportedException:
             pass  # devices not answer to broadcast init-scan command
 
-    def get_next_device_data(self):  # TODO: a generator
+    def get_next_device_data(self):
         request = self._build_request(cmd_code=self.CMDS.single_scan)
         ret = self._communicate(request=request)
         response = self._parse_response(response_bytestr=ret)
@@ -96,28 +95,30 @@ class ExtendedMBusScanner:
                 )
             )
 
-    def scan_bus(self, baudrate=9600, parity="N", stopbits=2):
-        uart_params = dict(locals())
-        uart_params.pop("self")
+    def scan_bus(self, baudrate=9600, parity="N", stopbits=2, response_timeout=0.5):
+        uart_params = {
+            "baudrate" : baudrate,
+            "parity" : parity,
+            "stopbits" : stopbits
+        }
 
-        scanned = []
-
-        logger.debug("Scanning %s %s", self.port, str(uart_params))
+        logger.debug("Scanning %s %s response timeout: %.2f", self.port, str(uart_params), response_timeout)
         self.instrument.serial.apply_settings(uart_params)
+        self.instrument.serial.timeout = response_timeout
 
         self.init_bus_scan()
+
         sn_slaveid = self.get_next_device_data()
         while sn_slaveid is not None:
             slaveid, sn = self._parse_device_data(sn_slaveid)
             logger.debug("Got device: %d %d", slaveid, sn)
-            scanned.append((slaveid, sn))
+            yield slaveid, sn
             sn_slaveid = self.get_next_device_data()
-
-        return scanned
 
 
 if __name__ == "__main__":
     ports = ["/dev/ttyRS485-1",]
     for port in ports:
         scanner = ExtendedMBusScanner(port)
-        print(scanner.scan_bus())
+        for device in scanner.scan_bus():
+            print(device)
