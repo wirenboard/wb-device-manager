@@ -3,7 +3,7 @@
 
 import enum
 from wb_modbus import minimalmodbus, instruments
-# from . import logger
+from . import logger
 
 
 class ExtendedMBusScanner:
@@ -63,20 +63,20 @@ class ExtendedMBusScanner:
 
         ret = minimalmodbus._hexencode(ret)
 
-        while ret.startswith("FF"):
+        while ret.startswith("FF"):  # TODO: we don't know actual beginning of response; maybe search by RE?
             ret = ret[2:]
-        ret = ret.strip("0")
+        ret = ret.strip("0")  # TODO: needs fixup in wb-mqtt-serial
         return minimalmodbus._hexdecode(ret)
 
     def init_bus_scan(self):
-        # logger.debug("Init bus scan")
+        logger.debug("Init bus scan")
         request = self._build_request(cmd_code=self.CMDS.scan_init)
         try:
             self._communicate(request=request)
         except minimalmodbus.MasterReportedException:
-            pass
+            pass  # devices not answer to broadcast init-scan command
 
-    def get_next_device_data(self):  # TODO: maybe iterator?
+    def get_next_device_data(self):  # TODO: a generator
         request = self._build_request(cmd_code=self.CMDS.single_scan)
         ret = self._communicate(request=request)
         response = self._parse_response(response_bytestr=ret)
@@ -84,10 +84,10 @@ class ExtendedMBusScanner:
         hex_response = minimalmodbus._hexencode(response)
 
         if fcode == self.CMDS.single_reply:
-            # logger.debug("Scanned: %s", str(hex_response))
+            logger.debug("Scanned: %s", str(hex_response))
             return response[1:]
         elif fcode == self.CMDS.scan_end:
-            # logger.debug("Scan finished: %s", str(hex_response))
+            logger.debug("Scan finished: %s", str(hex_response))
             return None
         else:
             raise minimalmodbus.InvalidResponseError(
@@ -97,17 +97,19 @@ class ExtendedMBusScanner:
             )
 
     def scan_bus(self, baudrate=9600, parity="N", stopbits=2):
+        uart_params = dict(locals())
+        uart_params.pop("self")
+
         scanned = []
 
-        uart_params = dict(locals())
-        # logger.debug("Scanning %s %s", self.port, str(uart_params))
+        logger.debug("Scanning %s %s", self.port, str(uart_params))
         self.instrument.serial.apply_settings(uart_params)
 
         self.init_bus_scan()
         sn_slaveid = self.get_next_device_data()
         while sn_slaveid is not None:
             slaveid, sn = self._parse_device_data(sn_slaveid)
-            # logger.debug("Got device: %d %d", slaveid, sn)
+            logger.debug("Got device: %d %d", slaveid, sn)
             scanned.append((slaveid, sn))
             sn_slaveid = self.get_next_device_data()
 

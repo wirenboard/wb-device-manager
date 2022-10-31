@@ -4,5 +4,5 @@
 import logging
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.NOTSET)
+logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())

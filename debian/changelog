@@ -1,0 +1,5 @@
+wb-device-manager (0.1) stable; urgency=medium
+
+  * Initial release. Scan devices only via extended modbus.
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Mon, 31 Oct 2022 09:47:49 +0300
