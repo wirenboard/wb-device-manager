@@ -3,7 +3,7 @@ Maintainer: Vladimir Romanov <v.romanov@wirenboard.ru>
 Section: python
 Priority: optional
 XS-Python-Version: >= 3.9.1
-Build-Depends: dh-python, debhelper (>= 10), python3, python3-setuptools
+Build-Depends: dh-python, debhelper (>= 10), python3, python3-setuptools, python3-wb-mcu-fw-updater
 Standards-Version: 3.9.1
 X-Python-Version: >= 3.9.1
 
