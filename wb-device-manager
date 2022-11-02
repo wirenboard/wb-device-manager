@@ -3,7 +3,7 @@
 
 import sys
 import logging
-from wb_device_manager import serial_bus, logger
+from wb_device_manager import serial_bus, logger, main
 from wb_modbus import minimalmodbus
 
 if __name__ == "__main__":
@@ -13,10 +13,4 @@ if __name__ == "__main__":
     logger.addHandler(debug_handler)
 
     ports = sys.argv[1:]
-    for port in ports:
-        try:
-            scanner = serial_bus.ExtendedMBusScanner(port)
-            for device in scanner.scan_bus():
-                print(device)
-        except minimalmodbus.MasterReportedException:
-            logger.exception("Port: %s", port)
+    main.DeviceManager().scan_serial_bus(*ports)
