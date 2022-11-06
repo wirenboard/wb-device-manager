@@ -4,8 +4,9 @@
 import atexit
 from contextlib import contextmanager
 import paho.mqtt.client as mosquitto
+from mqttrpc import MQTTRPCResponseManager, client as rpcclient
 from wb_modbus import minimalmodbus
-from . import logger
+from . import logger, get_topic_path
 
 
 class RPCError(minimalmodbus.MasterReportedException):
@@ -18,9 +19,9 @@ class RPCCommunicationError(RPCError):
     pass
 
 
-class MQTTClient:  # TODO: split to common lib
+class MQTTConnManager:  # TODO: split to common lib
     _MQTT_CONNECTIONS = {}
-    _CLIENT_NAME = "wb-device-manager.client"
+    _CLIENT_NAME = "wb-device-manager"
 
     DEFAULT_MQTT_HOST = "127.0.0.1"
     DEFAULT_MQTT_PORT_STR = "1883"
@@ -51,10 +52,11 @@ class MQTTClient:  # TODO: split to common lib
     @contextmanager
     def get_mqtt_connection(self, hostport_str=""):
         hostport_str = hostport_str or "%s:%s" % (self.DEFAULT_MQTT_HOST, self.DEFAULT_MQTT_PORT_STR)
-        logger.debug("Get mqtt connection: %s", hostport_str)
+        logger.debug("Looking for open mqtt connection for: %s", hostport_str)
         client = self.mqtt_connections.get(hostport_str)
 
         if client:
+            logger.debug("Found")
             yield client
         else:
             try:
@@ -68,10 +70,52 @@ class MQTTClient:  # TODO: split to common lib
             except (rpcclient.TimeoutError, OSError) as e:
                 raise RPCConnectionError from e
             finally:
+                logger.debug("Registered to atexit hook: close %s", hostport_str)
                 atexit.register(lambda: self.close_mqtt(hostport_str))
 
 
+class MQTTServer:
+
+    def __init__(self, methods_dispatcher, hostport_str=""):
+        self.hostport_str = hostport_str
+        self.methods_dispatcher = methods_dispatcher
+        with MQTTConnManager().get_mqtt_connection(self.hostport_str) as connection:
+            self.connection = connection
+
+    def _subscribe(self):
+        logger.debug("Subscribing to: %s", str(self.methods_dispatcher.keys()))
+        for service, method in self.methods_dispatcher.keys():
+            topic_str = get_topic_path(service or "_", method or "_")
+            self.connection.publish(topic_str, "1", retain=True)
+            topic_str += "/+"
+            self.connection.subscribe(topic_str)
+            logger.debug("Subscribed: %s", topic_str)
+
+    def _on_mqtt_message(self, _client, _userdata, message):
+        parts = message.topic.split("/")  # TODO: re
+        service_id = parts[4]
+        method_id = parts[5]
+        client_id = parts[6]
+
+        # TODO: timeit
+        response = MQTTRPCResponseManager.handle(message.payload, service_id, method_id, self.methods_dispatcher)
+
+        self.connection.publish(
+            get_topic_path(service_id, method_id, client_id, "reply"),
+            response.json,
+            False,
+        )
+
+    def setup(self):
+        self._subscribe()
+        self.connection.on_message = self._on_mqtt_message
+        logger.debug("Binded 'on_message' callback")
+
+    def loop(self):
+        self.connection.loop_forever()
+
+
 if __name__ == "__main__":
-    client = MQTTClient()
+    client = MQTTConnManager()
     with client.get_mqtt_connection() as client:
         client.publish("/test_topic", "test_payload")
