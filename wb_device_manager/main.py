@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import json
+from sys import argv
 from typing import Any
 from itertools import product
 from dataclasses import dataclass, asdict, field
+from mqttrpc import Dispatcher
 from wb_modbus import instruments, minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS
 from wb_modbus.bindings import WBModbusDeviceBase
-from . import logger, serial_bus
+from . import logger, serial_bus, mqtt_rpc
 
 
 @dataclass
@@ -38,17 +41,24 @@ class BusScanState:
 
 class DeviceManager():
 
+    def __init__(self):
+        with mqtt_rpc.MQTTConnManager().get_mqtt_connection() as conn:
+            self.mqtt_connection = conn
+
     def _init_state(self):
         self.state = BusScanState(
-            progress=None,
+            progress=None,  # TODO: maybe separate "progress" topic?
             scanning=False
         )
 
-    def scan_serial_bus(self, *ports_list):
+    def state_json(self):
+        return json.dumps(asdict(self.state), indent=4)
+
+    def scan_serial_bus(self, state_topic, ports):
         self._init_state()
 
         for port, bd, parity, stopbits in product(
-            ports_list,
+            ports,
             ALLOWED_BAUDRATES,
             ALLOWED_PARITIES,
             ALLOWED_STOPBITS
@@ -74,10 +84,12 @@ class DeviceManager():
                         )
                     )
                     self.state.devices.append(device_state)
-                    print(self.state)  #  TODO: publish to mqtt
             except minimalmodbus.NoResponseError:
                 logger.debug("No extended-modbus devices on %s", debug_str)
+            print(self.state_json())
+            self.mqtt_connection.publish(state_topic, self.state_json(), retain=True)
             #TODO: check all slaveids via ordinary modbus
+        return True
 
     def fill_devices_info(self):
         for device_info in self.stat.devices:
@@ -89,3 +101,18 @@ class DeviceManager():
                 stopbits=device_info.cfg.stop_bits,
                 instrument=instruments.SerialRPCBackendInstrument
             )
+
+
+def main(args=argv):
+    a = lambda: DeviceManager().scan_serial_bus(
+            "/rpc/v1/wb-device-manager/bus_scan/state",
+            ["/dev/ttyRS485-1", "/dev/ttyRS485-2"]
+        )
+
+    callables_mapping = {
+        ("bus_scan", "scan") : a,
+        }
+
+    server = mqtt_rpc.MQTTServer(Dispatcher(callables_mapping))
+    server.setup()
+    server.loop()

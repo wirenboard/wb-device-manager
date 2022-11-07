@@ -61,6 +61,7 @@ class MQTTConnManager:  # TODO: split to common lib
         else:
             try:
                 client = mosquitto.Client(self.client_name)
+                client.enable_logger(logger)
                 _host, _port = self.parse_mqtt_addr(hostport_str)
                 logger.debug("New mqtt connection; host: %s; port: %d", _host, _port)
                 client.connect(_host, _port)
@@ -92,13 +93,16 @@ class MQTTServer:
             logger.debug("Subscribed: %s", topic_str)
 
     def _on_mqtt_message(self, _client, _userdata, message):
+        logger.debug("Topic: %s", message.topic)
         parts = message.topic.split("/")  # TODO: re
         service_id = parts[4]
         method_id = parts[5]
         client_id = parts[6]
+        logger.debug("service: %s method: %s client: %s", service_id, method_id, client_id)
 
         # TODO: timeit
         response = MQTTRPCResponseManager.handle(message.payload, service_id, method_id, self.methods_dispatcher)
+        logger.debug("response: %s", str(response.json))
 
         self.connection.publish(
             get_topic_path(service_id, method_id, client_id, "reply"),

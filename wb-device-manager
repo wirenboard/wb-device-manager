@@ -3,7 +3,7 @@
 
 import sys
 import logging
-from wb_device_manager import serial_bus, logger, main
+from wb_device_manager import logger, main
 from wb_modbus import minimalmodbus
 
 if __name__ == "__main__":
@@ -12,5 +12,4 @@ if __name__ == "__main__":
     debug_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     logger.addHandler(debug_handler)
 
-    ports = sys.argv[1:]
-    main.DeviceManager().scan_serial_bus(*ports)
+    main.main()
