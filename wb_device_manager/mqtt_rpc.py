@@ -2,8 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import atexit
+import time
 from contextlib import contextmanager
 from concurrent import futures
+from threading import current_thread, Lock
 import paho.mqtt.client as mosquitto
 from mqttrpc import MQTTRPCResponseManager, client as rpcclient
 from wb_modbus import minimalmodbus
@@ -77,13 +79,31 @@ class MQTTConnManager:  # TODO: split to common lib
 
 
 class MQTTServer:
+    _NOW_PROCESSING = []
 
     def __init__(self, methods_dispatcher, hostport_str=""):
         self.hostport_str = hostport_str
         self.methods_dispatcher = methods_dispatcher
-        self.executor = futures.ThreadPoolExecutor(max_workers=5, thread_name_prefix="worker_")
+        self.mutex = Lock()
+        self.executor = futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="Worker")
+        atexit.register(lambda: self.executor.shutdown(wait=False, cancel_futures=True))
         with MQTTConnManager().get_mqtt_connection(self.hostport_str) as connection:
             self.connection = connection
+
+    @property
+    def now_processing(self):
+        return type(self)._NOW_PROCESSING
+
+    def add_to_processing(self, mqtt_message):
+        with self.mutex:
+            self.now_processing.append((mqtt_message.topic, mqtt_message.payload))
+
+    def remove_from_processing(self, mqtt_message):
+        with self.mutex:
+            self.now_processing.remove((mqtt_message.topic, mqtt_message.payload))
+
+    def is_processing(self, mqtt_message):
+        return (mqtt_message.topic, mqtt_message.payload) in self.now_processing
 
     def _subscribe(self):
         logger.debug("Subscribing to: %s", str(self.methods_dispatcher.keys()))
@@ -95,28 +115,44 @@ class MQTTServer:
             logger.debug("Subscribed: %s", topic_str)
 
     def _on_mqtt_message(self, _client, _userdata, message):
-        logger.debug("Topic: %s", message.topic)
-        parts = message.topic.split("/")  # TODO: re
+        if not self.is_processing(message):
+            self.run_async(message)
+        else:
+            logger.warning("'%s' is already processing!", message.topic)  # TODO: send to mqtt
+
+    def run_async(self, message):
+        parts = message.topic.split("/")  # TODO: re?
         service_id = parts[4]
         method_id = parts[5]
         client_id = parts[6]
         logger.debug("service: %s method: %s client: %s", service_id, method_id, client_id)
 
-        # TODO: a queue with "already executing" ?
-        _future = self.executor.submit(
-            MQTTRPCResponseManager.handle,
-            message.payload,
-            service_id,
-            method_id,
-            self.methods_dispatcher
-            )
-        _future.add_done_callback(
-            lambda fut: self.connection.publish(
+        def _execute():  # Runs on worker's thread
+            thread_name = current_thread().name
+            logger.debug("Processing '%s' started on %s...", message.topic, thread_name)
+            self.add_to_processing(message.topic)
+            _now = time.time()
+            ret = MQTTRPCResponseManager.handle(  # wraps any exception into json-rpc
+                message.payload,
+                service_id,
+                method_id,
+                self.methods_dispatcher
+                )
+            _done = time.time()
+            logger.debug("Processing '%s' took %.2fs on %s", message.topic, _done - _now, thread_name)
+            return ret
+
+        def _publish(fut):
+            self.remove_from_processing(message.topic)
+            self.connection.publish(
                 get_topic_path(service_id, method_id, client_id, "reply"),
                 fut.result().json,
                 False
             )
-        )
+
+        # assign task to free worker
+        _future = self.executor.submit(_execute)
+        _future.add_done_callback(_publish)
 
     def setup(self):
         self._subscribe()

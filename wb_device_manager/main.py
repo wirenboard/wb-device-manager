@@ -104,13 +104,13 @@ class DeviceManager():
 
 
 def main(args=argv):
-    a = lambda: DeviceManager().scan_serial_bus(
-            "/rpc/v1/wb-device-manager/bus_scan/state",
-            ["/dev/ttyRS485-1", "/dev/ttyRS485-2"]
-        )
 
     callables_mapping = {
-        ("bus_scan", "scan") : a,
+        ("bus_scan", "scan") : lambda: DeviceManager().scan_serial_bus(
+                                    "/rpc/v1/wb-device-manager/bus_scan/state",
+                                    ["/dev/ttyRS485-1", "/dev/ttyRS485-2"]
+                                    ),
+        ("bus_scan", "test") : lambda: "Bang"
         }
 
     server = mqtt_rpc.MQTTServer(Dispatcher(callables_mapping))
