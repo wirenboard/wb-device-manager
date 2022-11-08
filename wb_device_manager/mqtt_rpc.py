@@ -3,6 +3,7 @@
 
 import atexit
 from contextlib import contextmanager
+from concurrent import futures
 import paho.mqtt.client as mosquitto
 from mqttrpc import MQTTRPCResponseManager, client as rpcclient
 from wb_modbus import minimalmodbus
@@ -80,6 +81,7 @@ class MQTTServer:
     def __init__(self, methods_dispatcher, hostport_str=""):
         self.hostport_str = hostport_str
         self.methods_dispatcher = methods_dispatcher
+        self.executor = futures.ThreadPoolExecutor(max_workers=5, thread_name_prefix="worker_")
         with MQTTConnManager().get_mqtt_connection(self.hostport_str) as connection:
             self.connection = connection
 
@@ -100,14 +102,20 @@ class MQTTServer:
         client_id = parts[6]
         logger.debug("service: %s method: %s client: %s", service_id, method_id, client_id)
 
-        # TODO: timeit
-        response = MQTTRPCResponseManager.handle(message.payload, service_id, method_id, self.methods_dispatcher)
-        logger.debug("response: %s", str(response.json))
-
-        self.connection.publish(
-            get_topic_path(service_id, method_id, client_id, "reply"),
-            response.json,
-            False,
+        # TODO: a queue with "already executing" ?
+        _future = self.executor.submit(
+            MQTTRPCResponseManager.handle,
+            message.payload,
+            service_id,
+            method_id,
+            self.methods_dispatcher
+            )
+        _future.add_done_callback(
+            lambda fut: self.connection.publish(
+                get_topic_path(service_id, method_id, client_id, "reply"),
+                fut.result().json,
+                False
+            )
         )
 
     def setup(self):
