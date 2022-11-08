@@ -8,18 +8,10 @@ from concurrent import futures
 from threading import current_thread, Lock
 import paho.mqtt.client as mosquitto
 from mqttrpc import MQTTRPCResponseManager, client as rpcclient
+from mqttrpc.protocol import MQTTRPC10Response
+from jsonrpc.exceptions import JSONRPCServerError
 from wb_modbus import minimalmodbus
 from . import logger, get_topic_path
-
-
-class RPCError(minimalmodbus.MasterReportedException):
-    pass
-
-class RPCConnectionError(RPCError):
-    pass
-
-class RPCCommunicationError(RPCError):
-    pass
 
 
 class MQTTConnManager:  # TODO: split to common lib
@@ -62,20 +54,23 @@ class MQTTConnManager:  # TODO: split to common lib
             logger.debug("Found")
             yield client
         else:
+            _host, _port = self.parse_mqtt_addr(hostport_str)
             try:
                 client = mosquitto.Client(self.client_name)
-                client.enable_logger(logger)
-                _host, _port = self.parse_mqtt_addr(hostport_str)
+                # client.enable_logger(logger)
                 logger.debug("New mqtt connection; host: %s; port: %d", _host, _port)
                 client.connect(_host, _port)
                 client.loop_start()
                 self.mqtt_connections.update({hostport_str : client})
                 yield client
-            except (rpcclient.TimeoutError, OSError) as e:
-                raise RPCConnectionError from e
             finally:
                 logger.debug("Registered to atexit hook: close %s", hostport_str)
                 atexit.register(lambda: self.close_mqtt(hostport_str))
+
+
+class MQTTRPCAlreadyProcessingError(JSONRPCServerError):
+    CODE = -33100
+    MESSAGE = "Task is already executing"
 
 
 class MQTTServer:
@@ -115,22 +110,25 @@ class MQTTServer:
             logger.debug("Subscribed: %s", topic_str)
 
     def _on_mqtt_message(self, _client, _userdata, message):
-        if not self.is_processing(message):
-            self.run_async(message)
+        if self.is_processing(message):
+            logger.debug("'%s' is already processing!", message.topic)
+            response = MQTTRPC10Response(error=MQTTRPCAlreadyProcessingError()._data)
+            self.reply(message, response.json)
         else:
-            logger.warning("'%s' is already processing!", message.topic)  # TODO: send to mqtt
+            self.run_async(message)
+
+    def reply(self, message, payload):
+        topic = message.topic + "/reply"
+        self.connection.publish(topic, payload, False)
 
     def run_async(self, message):
         parts = message.topic.split("/")  # TODO: re?
-        service_id = parts[4]
-        method_id = parts[5]
-        client_id = parts[6]
-        logger.debug("service: %s method: %s client: %s", service_id, method_id, client_id)
+        service_id, method_id = parts[4], parts[5]
 
         def _execute():  # Runs on worker's thread
             thread_name = current_thread().name
             logger.debug("Processing '%s' started on %s...", message.topic, thread_name)
-            self.add_to_processing(message.topic)
+            self.add_to_processing(message)
             _now = time.time()
             ret = MQTTRPCResponseManager.handle(  # wraps any exception into json-rpc
                 message.payload,
@@ -143,12 +141,8 @@ class MQTTServer:
             return ret
 
         def _publish(fut):
-            self.remove_from_processing(message.topic)
-            self.connection.publish(
-                get_topic_path(service_id, method_id, client_id, "reply"),
-                fut.result().json,
-                False
-            )
+            self.remove_from_processing(message)
+            self.reply(message, fut.result().json)
 
         # assign task to free worker
         _future = self.executor.submit(_execute)
