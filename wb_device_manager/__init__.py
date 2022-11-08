@@ -2,10 +2,14 @@
 # -*- coding: utf-8 -*-
 
 import logging
+from threading import Event
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.NullHandler())
+
+
+shutdown_event = Event()
 
 
 def get_topic_path(*args):

@@ -9,7 +9,7 @@ from dataclasses import dataclass, asdict, field
 from mqttrpc import Dispatcher
 from wb_modbus import instruments, minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS
 from wb_modbus.bindings import WBModbusDeviceBase
-from . import logger, serial_bus, mqtt_rpc
+from . import logger, serial_bus, mqtt_rpc, shutdown_event
 
 
 @dataclass
@@ -55,6 +55,12 @@ class DeviceManager():
         return json.dumps(asdict(self.state), indent=4)
 
     def scan_serial_bus(self, state_topic, ports):
+
+        def publish_state():
+            self.mqtt_connection.publish(state_topic, self.state_json(), retain=True)
+            if shutdown_event.is_set():
+                raise Exception("Shutdown event detected")
+
         self._init_state()
 
         for port, bd, parity, stopbits in product(
@@ -86,8 +92,7 @@ class DeviceManager():
                     self.state.devices.append(device_state)
             except minimalmodbus.NoResponseError:
                 logger.debug("No extended-modbus devices on %s", debug_str)
-            print(self.state_json())
-            self.mqtt_connection.publish(state_topic, self.state_json(), retain=True)
+            publish_state()
             #TODO: check all slaveids via ordinary modbus
         return True
 

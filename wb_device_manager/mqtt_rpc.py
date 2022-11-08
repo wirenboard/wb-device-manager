@@ -3,6 +3,7 @@
 
 import atexit
 import time
+import signal
 from contextlib import contextmanager
 from concurrent import futures
 from threading import current_thread, Lock
@@ -11,7 +12,7 @@ from mqttrpc import MQTTRPCResponseManager, client as rpcclient
 from mqttrpc.protocol import MQTTRPC10Response
 from jsonrpc.exceptions import JSONRPCServerError
 from wb_modbus import minimalmodbus
-from . import logger, get_topic_path
+from . import logger, get_topic_path, shutdown_event
 
 
 class MQTTConnManager:  # TODO: split to common lib
@@ -81,9 +82,16 @@ class MQTTServer:
         self.methods_dispatcher = methods_dispatcher
         self.mutex = Lock()
         self.executor = futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="Worker")
-        atexit.register(lambda: self.executor.shutdown(wait=False, cancel_futures=True))
+        signal.signal(signal.SIGINT, self.shutdown)
+        signal.signal(signal.SIGTERM, self.shutdown)
         with MQTTConnManager().get_mqtt_connection(self.hostport_str) as connection:
             self.connection = connection
+
+    def shutdown(self, *args):
+        shutdown_event.set()
+        self.executor.shutdown(wait=False, cancel_futures=True)
+        self.connection.loop(timeout=1.0)  # to publish shutdown
+        self.connection.disconnect()
 
     @property
     def now_processing(self):
