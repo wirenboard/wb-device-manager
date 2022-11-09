@@ -1,4 +1,4 @@
-wb-device-manager (0.1) stable; urgency=medium
+wb-device-manager (0.1.0) stable; urgency=medium
 
   * Initial release. Scan devices only via extended modbus.
 

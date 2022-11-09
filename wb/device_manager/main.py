@@ -71,7 +71,7 @@ class DeviceManager():
         ):
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
             logger.debug("Scanning %s", debug_str)
-            extended_scanner = serial_bus.ExtendedMBusScanner(port)
+            extended_scanner = serial_bus.WBExtendedModbusScanner(port)
             try:
                 for slaveid, sn in extended_scanner.scan_bus(
                     baudrate=bd,
@@ -96,26 +96,16 @@ class DeviceManager():
             #TODO: check all slaveids via ordinary modbus
         return True
 
-    def fill_devices_info(self):
-        for device_info in self.stat.devices:
-            mb_conn = WBModbusDeviceBase(
-                addr=device_info.cfg.slave_id,
-                port=device_info.port,
-                baudrate=device_info.cfg.baud_rate,
-                parity=device_info.cfg.parity,
-                stopbits=device_info.cfg.stop_bits,
-                instrument=instruments.SerialRPCBackendInstrument
-            )
-
 
 def main(args=argv):
+    #TODO: separate debug for mqtt/modbus/logic via -d?
 
     callables_mapping = {
         ("bus_scan", "scan") : lambda: DeviceManager().scan_serial_bus(
-                                    "/rpc/v1/wb-device-manager/bus_scan/state",
-                                    ["/dev/ttyRS485-1", "/dev/ttyRS485-2"]
+                                    state_topic=mqtt_rpc.get_topic_path("bus_scan", "state"),
+                                    ports=["/dev/ttyRS485-1", "/dev/ttyRS485-2"]
                                     ),
-        ("bus_scan", "test") : lambda: "Bang"
+        ("bus_scan", "test") : lambda: "Result of short-running task"
         }
 
     server = mqtt_rpc.MQTTServer(Dispatcher(callables_mapping))

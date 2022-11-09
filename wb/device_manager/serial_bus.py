@@ -6,7 +6,7 @@ from wb_modbus import minimalmodbus, instruments
 from . import logger
 
 
-class ExtendedMBusScanner:
+class WBExtendedModbusScanner:
     ADDR = 0xfd
     MODE = 0x60
 
@@ -119,6 +119,6 @@ class ExtendedMBusScanner:
 if __name__ == "__main__":
     ports = ["/dev/ttyRS485-1",]
     for port in ports:
-        scanner = ExtendedMBusScanner(port)
+        scanner = WBExtendedModbusScanner(port)
         for device in scanner.scan_bus():
             print(device)

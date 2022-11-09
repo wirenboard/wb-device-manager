@@ -3,8 +3,7 @@
 
 import sys
 import logging
-from wb_device_manager import logger, main
-from wb_modbus import minimalmodbus
+from wb.device_manager import logger, main
 
 if __name__ == "__main__":
     debug_handler = logging.StreamHandler(stream=sys.stdout)

@@ -5,6 +5,7 @@ import atexit
 import time
 import signal
 from contextlib import contextmanager
+from pathlib import PurePosixPath
 from concurrent import futures
 from threading import current_thread, Lock
 import paho.mqtt.client as mosquitto
@@ -12,7 +13,12 @@ from mqttrpc import MQTTRPCResponseManager, client as rpcclient
 from mqttrpc.protocol import MQTTRPC10Response
 from jsonrpc.exceptions import JSONRPCServerError
 from wb_modbus import minimalmodbus
-from . import logger, get_topic_path, shutdown_event
+from . import logger, shutdown_event, TOPIC_HEADER
+
+
+def get_topic_path(*args):
+    ret = PurePosixPath(TOPIC_HEADER, *[str(arg) for arg in args])
+    return str(ret)
 
 
 class MQTTConnManager:  # TODO: split to common lib
@@ -111,7 +117,7 @@ class MQTTServer:
     def _subscribe(self):
         logger.debug("Subscribing to: %s", str(self.methods_dispatcher.keys()))
         for service, method in self.methods_dispatcher.keys():
-            topic_str = get_topic_path(service or "_", method or "_")
+            topic_str = get_topic_path(service, method)
             self.connection.publish(topic_str, "1", retain=True)
             topic_str += "/+"
             self.connection.subscribe(topic_str)

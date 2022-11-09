@@ -8,6 +8,6 @@ setup(name = "wb-device-manager",
       author_email = "v.romanov@wirenboard.ru",
       description = "Wiren Board modbus devices manager",
       url = "https://github.com/wirenboard/wb-device-manager",
-      packages = ["wb_device_manager",],
+      packages = ["wb.device_manager",],
       test_suite = "tests"
 )

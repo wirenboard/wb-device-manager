@@ -4,11 +4,11 @@
 import unittest
 from unittest.mock import MagicMock
 
-from wb_device_manager import serial_bus
+from wb.device_manager import serial_bus
 from wb_modbus import minimalmodbus
 
 
-class DummyScanner(serial_bus.ExtendedMBusScanner):
+class DummyScanner(serial_bus.WBExtendedModbusScanner):
 
     def __init__(self, *args, **kwargs):
         self.instrument = MagicMock()
