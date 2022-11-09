@@ -1,0 +1,14 @@
+[Unit]
+Description=Wiren Board modbus devices manager
+Wants=mosquitto.service wb-mqtt-serial.service
+After=wb-mqtt-serial.service
+
+[Service]
+Type=simple
+Restart=on-failure
+RestartSec=2
+User=root
+ExecStart=/usr/bin/wb-device-manager
+
+[Install]
+WantedBy=multi-user.target
