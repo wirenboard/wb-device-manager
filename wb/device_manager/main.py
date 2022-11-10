@@ -59,7 +59,7 @@ class DeviceManager():
         def publish_state():
             self.mqtt_connection.publish(state_topic, self.state_json(), retain=True)
             if shutdown_event.is_set():
-                raise Exception("Shutdown event detected")
+                raise Exception("Shutdown event detected")  # TODO: more specified; with rpc-code
 
         self._init_state()
 

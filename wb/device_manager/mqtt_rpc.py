@@ -87,6 +87,7 @@ class MQTTServer:
         self.hostport_str = hostport_str
         self.methods_dispatcher = methods_dispatcher
         self.mutex = Lock()
+        self.is_running = False
         self.executor = futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="Worker")
         signal.signal(signal.SIGINT, self.shutdown)
         signal.signal(signal.SIGTERM, self.shutdown)
@@ -94,9 +95,10 @@ class MQTTServer:
             self.connection = connection
 
     def shutdown(self, *args):
+        self.is_running = False
         shutdown_event.set()
-        self.executor.shutdown(wait=False, cancel_futures=True)
-        self.connection.loop(timeout=1.0)  # to publish shutdown
+        self.executor.shutdown(wait=True, cancel_futures=True)
+        self.connection.loop_stop()
         self.connection.disconnect()
 
     @property
@@ -166,9 +168,11 @@ class MQTTServer:
         self._subscribe()
         self.connection.on_message = self._on_mqtt_message
         logger.debug("Binded 'on_message' callback")
+        self.is_running = True
 
     def loop(self):
-        self.connection.loop_forever()
+        while self.is_running:
+            time.sleep(1)
 
 
 if __name__ == "__main__":
