@@ -1,1 +1,1 @@
-buildDebArchAll()
+buildDebSbuild()
