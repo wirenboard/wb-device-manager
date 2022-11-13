@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import json
+import uuid
 from sys import argv
 from typing import Any
 from itertools import product
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict, field, is_dataclass
 from mqttrpc import Dispatcher
 from wb_modbus import instruments, minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS
 from wb_modbus.bindings import WBModbusDeviceBase
@@ -21,22 +22,38 @@ class SerialParams:
     stop_bits: int = 2
 
 @dataclass
-class DeviceInfo:  # TODO: make hashable by sn
-    type: str
-    serial: str  # str(int) for wb-devices
+class DeviceInfo:
+    uuid: str
     port: str  # TODO: dataclass for port?
+    type: str = None
+    serial: str = None
     is_polled: bool = False
     is_online: bool = False
     is_in_bootloader: bool = False
     error: str = None
     cfg: Any = None
 
+    def __hash__(self):
+        return hash(self.uuid) ^ hash(self.port)
+
+    def __eq__(self, o):
+        return self.__hash__() == o.__hash__()
+
 @dataclass
 class BusScanState:
     progress: int  # TODO: maybe no scanning?
     scanning: bool = False
     error: str = None
-    devices: list[DeviceInfo] = field(default_factory=list)
+    devices: set[DeviceInfo] = field(default_factory=set)
+
+
+class SetEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, set):
+            return list(o)
+        if is_dataclass(o):
+            return asdict(o)
+        super().default(o)
 
 
 class DeviceManager():
@@ -52,11 +69,11 @@ class DeviceManager():
         )
 
     def state_json(self):
-        return json.dumps(asdict(self.state), indent=4)
+        return json.dumps(asdict(self.state), indent=None, separators=(",", ":"), cls=SetEncoder)  # most compact
 
     def scan_serial_bus(self, state_topic, ports):
 
-        def publish_state():
+        def publish_state():  # TODO: an observer pattern
             self.mqtt_connection.publish(state_topic, self.state_json(), retain=True)
             if shutdown_event.is_set():
                 raise Exception("Shutdown event detected")  # TODO: more specified; with rpc-code
@@ -79,6 +96,7 @@ class DeviceManager():
                     stopbits=stopbits
                 ):
                     device_state = DeviceInfo(
+                        uuid=str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn))),
                         type="Scanned device",
                         serial=str(sn),
                         port=port,
@@ -89,7 +107,7 @@ class DeviceManager():
                             stop_bits=stopbits
                         )
                     )
-                    self.state.devices.append(device_state)
+                    self.state.devices.add(device_state)
             except minimalmodbus.NoResponseError:
                 logger.debug("No extended-modbus devices on %s", debug_str)
             publish_state()
