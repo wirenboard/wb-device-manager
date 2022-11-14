@@ -4,12 +4,13 @@
 import json
 import uuid
 import time
-from sys import argv
-from typing import Any
+import logging
+from sys import argv, stdout
+from argparse import ArgumentParser
 from itertools import product
 from dataclasses import dataclass, asdict, field, is_dataclass
 from mqttrpc import Dispatcher
-from wb_modbus import instruments, minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS
+from wb_modbus import instruments, minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, logger as mb_logger
 from wb_modbus.bindings import WBModbusDeviceBase
 from . import logger, serial_bus, mqtt_rpc, shutdown_event
 
@@ -126,7 +127,7 @@ class DeviceManager():
             ALLOWED_STOPBITS
         ):
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
-            logger.debug("Scanning (via extended modbus) %s", debug_str)
+            logger.info("Scanning (via extended modbus) %s", debug_str)
             extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port)
             try:
                 for slaveid, sn in extended_modbus_scanner.scan_bus(
@@ -170,7 +171,20 @@ class DeviceManager():
 
 
 def main(args=argv):
-    #TODO: separate debug for mqtt/modbus/logic via -d?
+
+    parser = ArgumentParser(
+        description="Wiren Board serial devices manager")
+    parser.add_argument("-d", "--debug", dest="log_level", action="store_const", default=logging.INFO,
+                const=logging.DEBUG, help="Set log_level to debug")
+    args = parser.parse_args(argv[1:])
+
+    # setup systemd logger
+    formatter = logging.Formatter("[%(levelname)s] %(message)s")
+    handler = logging.StreamHandler(stream=stdout)
+    handler.setFormatter(formatter)
+    handler.setLevel(args.log_level)
+    for lgr in (logger, mb_logger):
+        lgr.addHandler(handler)
 
     state_topic = mqtt_rpc.get_topic_path("bus_scan", "state")
 

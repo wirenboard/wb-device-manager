@@ -47,7 +47,7 @@ class MQTTConnManager:  # TODO: split to common lib
             client.loop_stop()
             client.disconnect()
             self.mqtt_connections.pop(hostport_str)
-            logger.debug("Mqtt: close %s", hostport_str)
+            logger.info("Mqtt: close %s", hostport_str)
         else:
             logger.warning("Mqtt connection %s not found in active ones!", hostport_str)
 
@@ -65,13 +65,13 @@ class MQTTConnManager:  # TODO: split to common lib
             try:
                 client = mosquitto.Client(self.client_name)
                 # client.enable_logger(logger)
-                logger.debug("New mqtt connection; host: %s; port: %d", _host, _port)
+                logger.info("New mqtt connection; host: %s; port: %d", _host, _port)
                 client.connect(_host, _port)
                 client.loop_start()
                 self.mqtt_connections.update({hostport_str : client})
                 yield client
             finally:
-                logger.debug("Registered to atexit hook: close %s", hostport_str)
+                logger.info("Registered to atexit hook: close %s", hostport_str)
                 atexit.register(lambda: self.close_mqtt(hostport_str))
 
 
@@ -127,7 +127,7 @@ class MQTTServer:
 
     def _on_mqtt_message(self, _client, _userdata, message):
         if self.is_processing(message):
-            logger.debug("'%s' is already processing!", message.topic)
+            logger.warning("'%s' is already processing!", message.topic)
             response = MQTTRPC10Response(error=MQTTRPCAlreadyProcessingError()._data)
             self.reply(message, response.json)
         else:
@@ -143,7 +143,7 @@ class MQTTServer:
 
         def _execute():  # Runs on worker's thread
             thread_name = current_thread().name
-            logger.debug("Processing '%s' started on %s...", message.topic, thread_name)
+            logger.info("Processing '%s' started on %s...", message.topic, thread_name)
             self.add_to_processing(message)
             _now = time.time()
             ret = MQTTRPCResponseManager.handle(  # wraps any exception into json-rpc
@@ -153,7 +153,7 @@ class MQTTServer:
                 self.methods_dispatcher
                 )
             _done = time.time()
-            logger.debug("Processing '%s' took %.2fs on %s", message.topic, _done - _now, thread_name)
+            logger.info("Processing '%s' took %.2fs on %s", message.topic, _done - _now, thread_name)
             return ret
 
         def _publish(fut):
