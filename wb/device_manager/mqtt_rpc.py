@@ -77,18 +77,24 @@ class MQTTConnManager:  # TODO: split to common lib
 
 class MQTTRPCAlreadyProcessingError(JSONRPCServerError):
     CODE = -33100
-    MESSAGE = "Task is already executing"
+    MESSAGE = "Task is already executing."
+
+
+class MQTTRPCNoWorkersAvailableError(JSONRPCServerError):
+    CODE = -33200
+    MESSAGE = "No workers are available! Try again later."
 
 
 class MQTTServer:
     _NOW_PROCESSING = []
+    MAX_WORKERS = 4
 
     def __init__(self, methods_dispatcher, hostport_str=""):
         self.hostport_str = hostport_str
         self.methods_dispatcher = methods_dispatcher
         self.mutex = Lock()
         self.is_running = False
-        self.executor = futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="Worker")
+        self.executor = futures.ThreadPoolExecutor(max_workers=self.MAX_WORKERS, thread_name_prefix="Worker")
         signal.signal(signal.SIGINT, self.shutdown)
         signal.signal(signal.SIGTERM, self.shutdown)
         with MQTTConnManager().get_mqtt_connection(self.hostport_str) as connection:
@@ -130,8 +136,12 @@ class MQTTServer:
             logger.warning("'%s' is already processing!", message.topic)
             response = MQTTRPC10Response(error=MQTTRPCAlreadyProcessingError()._data)
             self.reply(message, response.json)
-        else:
+        elif len(self.now_processing) < self.MAX_WORKERS:
             self.run_async(message)
+        else:
+            logger.warning("No available workers for '%s' now", message.topic)
+            response = MQTTRPC10Response(error=MQTTRPCNoWorkersAvailableError()._data)
+            self.reply(message, response.json)
 
     def reply(self, message, payload):
         topic = message.topic + "/reply"

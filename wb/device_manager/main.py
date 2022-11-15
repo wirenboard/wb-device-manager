@@ -193,7 +193,7 @@ def main(args=argv):
                                     "/dev/ttyRS485-1",
                                     "/dev/ttyRS485-2",
                                     ),
-        ("bus_scan", "test") : lambda: "Result of short-running task"
+        ("bus_scan", "test") : lambda: "Result of short-running task",
         }
 
     server = mqtt_rpc.MQTTServer(Dispatcher(callables_mapping))
