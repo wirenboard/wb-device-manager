@@ -5,6 +5,7 @@ import json
 import uuid
 import time
 import logging
+import asyncio
 from sys import argv, stdout
 from argparse import ArgumentParser
 from itertools import product
@@ -12,7 +13,7 @@ from dataclasses import dataclass, asdict, field, is_dataclass
 from mqttrpc import Dispatcher
 from wb_modbus import instruments, minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, logger as mb_logger
 from wb_modbus.bindings import WBModbusDeviceBase
-from . import logger, serial_bus, mqtt_rpc, shutdown_event
+from . import logger, serial_bus, mqtt_rpc, make_async
 
 
 @dataclass
@@ -93,8 +94,6 @@ class DeviceManager():
 
     def publish_state(self):  # TODO: an observer pattern; on_change callbacks
         self.mqtt_connection.publish(self.state_topic, self.state_json, retain=True)
-        if shutdown_event.is_set():
-            raise Exception("Shutdown event detected")  # TODO: more specified; with rpc-code
 
     def _get_mb_connection(self, device_info):
         conn = WBModbusDeviceBase(
@@ -104,16 +103,16 @@ class DeviceManager():
             parity=device_info.cfg.parity,
             stopbits=device_info.cfg.stop_bits,
             response_timeout=0.5,  # TODO: to arg
-            instrument=instruments.SerialRPCBackendInstrument
+            instrument=instruments.SerialRPCBackendInstrument  # TODO: maybe a fully-async instrument?
         )
         return conn
 
-    def _fill_fw_info(self, device_info):
+    async def _fill_fw_info(self, device_info):
         mb_conn = self._get_mb_connection(device_info)
-        device_info.fw.version = mb_conn.get_fw_version()
+        device_info.fw.version = await make_async(mb_conn.get_fw_version)()
         #TODO: fill available version from fw-releases
 
-    def scan_serial_bus(self, *ports):
+    async def scan_serial_bus(self, *ports):
 
         def make_uuid(sn):
             return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
@@ -130,7 +129,7 @@ class DeviceManager():
             logger.info("Scanning (via extended modbus) %s", debug_str)
             extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port)
             try:
-                for slaveid, sn in extended_modbus_scanner.scan_bus(
+                async for slaveid, sn in extended_modbus_scanner.scan_bus(
                     baudrate=bd,
                     parity=parity,
                     stopbits=stopbits
@@ -153,9 +152,9 @@ class DeviceManager():
                     mb_conn = self._get_mb_connection(device_info)
 
                     try:
-                        device_info.fw_signature = mb_conn.get_fw_signature()
-                        device_info.device_signature = mb_conn.get_device_signature()
-                        self._fill_fw_info(device_info)
+                        device_info.fw_signature = await make_async(mb_conn.get_fw_signature)()
+                        device_info.device_signature = await make_async(mb_conn.get_device_signature)()
+                        await self._fill_fw_info(device_info)
                     except minimalmodbus.ModbusException as e:
                         logger.exception("Treating device as offline")
                         device_info.online = False

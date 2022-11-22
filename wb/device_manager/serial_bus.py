@@ -3,7 +3,7 @@
 
 import enum
 from wb_modbus import minimalmodbus, instruments
-from . import logger
+from . import logger, mqtt_rpc
 
 
 class WBExtendedModbusScanner:
@@ -20,7 +20,7 @@ class WBExtendedModbusScanner:
         ]
     )
 
-    def __init__(self, port, instrument=instruments.SerialRPCBackendInstrument):
+    def __init__(self, port, instrument=mqtt_rpc.AsyncModbusInstrument):
         self.instrument = instrument(port=port, slaveaddress=self.ADDR)
         self.port = port
 
@@ -53,9 +53,9 @@ class WBExtendedModbusScanner:
         slaveid = ord(slaveid)  # 1 byte
         return slaveid, sn
 
-    def _communicate(self, request):
+    async def _communicate(self, request):
         number_of_bytes_to_read = 1000  # we need relatively huge one
-        ret = self.instrument._communicate(
+        ret = await self.instrument._communicate(
             request=request,
             number_of_bytes_to_read=number_of_bytes_to_read
         )
@@ -67,17 +67,17 @@ class WBExtendedModbusScanner:
         ret = ret.strip("0")  # TODO: needs fixup in wb-mqtt-serial
         return minimalmodbus._hexdecode(ret)
 
-    def init_bus_scan(self):
+    async def init_bus_scan(self):
         logger.debug("Init bus scan")
         request = self._build_request(cmd_code=self.CMDS.scan_init)
         try:
-            self._communicate(request=request)
+            await self._communicate(request=request)
         except minimalmodbus.MasterReportedException:
             pass  # devices not answer to broadcast init-scan command
 
-    def get_next_device_data(self):
+    async def get_next_device_data(self):
         request = self._build_request(cmd_code=self.CMDS.single_scan)
-        ret = self._communicate(request=request)
+        ret = await self._communicate(request=request)
         response = self._parse_response(response_bytestr=ret)
         fcode = ord(response[0])
         hex_response = minimalmodbus._hexencode(response)
@@ -95,7 +95,7 @@ class WBExtendedModbusScanner:
                 )
             )
 
-    def scan_bus(self, baudrate=9600, parity="N", stopbits=2, response_timeout=0.5):
+    async def scan_bus(self, baudrate=9600, parity="N", stopbits=2, response_timeout=0.5):
         uart_params = {
             "baudrate" : baudrate,
             "parity" : parity,
@@ -106,14 +106,14 @@ class WBExtendedModbusScanner:
         self.instrument.serial.apply_settings(uart_params)
         self.instrument.serial.timeout = response_timeout
 
-        self.init_bus_scan()
+        await self.init_bus_scan()
 
-        sn_slaveid = self.get_next_device_data()
+        sn_slaveid = await self.get_next_device_data()
         while sn_slaveid is not None:
             slaveid, sn = self._parse_device_data(sn_slaveid)
             logger.debug("Got device: %d %d", slaveid, sn)
             yield slaveid, sn
-            sn_slaveid = self.get_next_device_data()
+            sn_slaveid = await self.get_next_device_data()
 
 
 if __name__ == "__main__":
