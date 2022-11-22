@@ -73,7 +73,3 @@ class TestMBExtendedScanner(unittest.TestCase):
             minimalmodbus.InvalidResponseError,
             lambda: self.scanner.get_next_device_data()
         )
-
-
-if __name__ == '__main__':
-    unittest.main(verbosity=2)
