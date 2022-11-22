@@ -80,7 +80,7 @@ class SetEncoder(json.JSONEncoder):
 class DeviceManager():
 
     def __init__(self, state_topic):
-        with mqtt_rpc.MQTTConnManager().get_mqtt_connection() as conn:
+        with mqtt_rpc.MQTTClientConn().get_mqtt_connection() as conn:
             self.mqtt_connection = conn
         self.state_topic = state_topic
         self._init_state()

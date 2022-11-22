@@ -94,6 +94,16 @@ class MQTTConnManager:  # TODO: split to common lib
                 atexit.register(lambda: self.close_mqtt(hostport_str))
 
 
+class MQTTClientConn(MQTTConnManager):
+    _CLIENT_NAME = "wb-device-manager.client"
+    _MQTT_CONNECTIONS = {}
+
+
+class MQTTServerConn(MQTTConnManager):
+    _CLIENT_NAME = "wb-device-manager.server"
+    _MQTT_CONNECTIONS = {}
+
+
 class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
     """
     Generic minimalmodbus instrument's logic with mqtt-rpc to wb-mqtt-serial as transport
@@ -102,7 +112,7 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
 
     def __init__(self, port, slaveaddress, **kwargs):
         super().__init__(port, slaveaddress, **kwargs)
-        with MQTTConnManager().get_mqtt_connection(hostport_str=self.broker_addr) as conn:
+        with MQTTClientConn().get_mqtt_connection(hostport_str=self.broker_addr) as conn:
             self.mqtt_client = conn
 
     async def _communicate(self, request, number_of_bytes_to_read):
@@ -242,7 +252,7 @@ class MQTTServer:
         self.hostport_str = hostport_str
         self.methods_dispatcher = methods_dispatcher
 
-        with MQTTConnManager().get_mqtt_connection(self.hostport_str) as connection:
+        with MQTTServerConn().get_mqtt_connection(self.hostport_str) as connection:
             self.connection = connection
 
         self.asyncio_loop = asyncio.get_event_loop()
