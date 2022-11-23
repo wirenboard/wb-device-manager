@@ -80,7 +80,7 @@ class SetEncoder(json.JSONEncoder):
 class DeviceManager():
 
     def __init__(self, state_topic):
-        with mqtt_rpc.MQTTClientConn().get_mqtt_connection() as conn:
+        with mqtt_rpc.MQTTConnManager().get_mqtt_connection() as conn:
             self.mqtt_connection = conn
         self.state_topic = state_topic
         self._init_state()
@@ -112,19 +112,23 @@ class DeviceManager():
         device_info.fw.version = await make_async(mb_conn.get_fw_version)()
         #TODO: fill available version from fw-releases
 
-    async def scan_serial_bus(self, *ports):
-
-        def make_uuid(sn):
-            return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
-
-        self._init_state()
-
-        for port, bd, parity, stopbits in product(
-            ports,
+    async def _all_uart_params(self):
+        for bd, parity, stopbits in product(
             ALLOWED_BAUDRATES,
             ALLOWED_PARITIES,
             ALLOWED_STOPBITS
         ):
+            yield bd, parity, stopbits
+
+    async def scan_serial_port(self, port):
+
+        def make_uuid(sn):
+            return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
+
+        self._init_state()  # TODO: to generic bus_scan_method
+
+        async for bd, parity, stopbits in self._all_uart_params():
+
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
             logger.info("Scanning (via extended modbus) %s", debug_str)
             extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port)
@@ -188,11 +192,7 @@ def main(args=argv):
     state_topic = mqtt_rpc.get_topic_path("bus_scan", "state")
 
     callables_mapping = {
-        ("bus_scan", "scan") : lambda: DeviceManager(state_topic).scan_serial_bus(
-                                    "/dev/ttyRS485-1",
-                                    "/dev/ttyRS485-2",
-                                    ),
-        ("bus_scan", "test") : lambda: "Result of short-running task",
+        ("bus_scan", "scan") : DeviceManager(state_topic).scan_serial_port
         }
 
     server = mqtt_rpc.MQTTServer(Dispatcher(callables_mapping))
