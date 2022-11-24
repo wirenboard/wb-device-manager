@@ -116,7 +116,7 @@ class DeviceManager():
         device_info.fw.version = await make_async(mb_conn.get_fw_version)()
         #TODO: fill available version from fw-releases
 
-    async def _all_uart_params(self):
+    async def _get_all_uart_params(self):
         for bd, parity, stopbits in product(
             ALLOWED_BAUDRATES,
             ALLOWED_PARITIES,
@@ -124,15 +124,23 @@ class DeviceManager():
         ):
             yield bd, parity, stopbits
 
+    async def _get_ports(self):
+        #TODO: rpc call to wb-mqtt-serial
+        for port in ["/dev/ttyRS485-1", "/dev/ttyRS485-2"]:
+            yield port
+
+    async def scan_serial_bus(self):
+        self._init_state()  # TODO: to generic bus_scan_method
+        async for port in self._get_ports():
+            await self.scan_serial_port(port)
+        return True
+
     async def scan_serial_port(self, port):
 
         def make_uuid(sn):
             return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
 
-        self._init_state()  # TODO: to generic bus_scan_method
-
-        async for bd, parity, stopbits in self._all_uart_params():
-
+        async for bd, parity, stopbits in self._get_all_uart_params():
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
             logger.info("Scanning (via extended modbus) %s", debug_str)
             extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port)
@@ -202,7 +210,7 @@ def main(args=argv):
     state_topic = mqtt_rpc.get_topic_path("bus_scan", "state")
 
     callables_mapping = {
-        ("bus_scan", "scan") : DeviceManager(state_topic).scan_serial_port
+        ("bus_scan", "scan") : DeviceManager(state_topic).scan_serial_bus
         }
 
     server = mqtt_rpc.MQTTServer(Dispatcher(callables_mapping))
