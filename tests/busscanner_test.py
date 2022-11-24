@@ -23,7 +23,7 @@ class TestMBExtendedScanner(unittest.TestCase):
 
     @classmethod
     def mock_response(cls, response_hex_str):
-        ret = minimalmodbus._hexdecode(response_hex_str)
+        ret = minimalmodbus.hexdecode(response_hex_str)
         cls.scanner.instrument._communicate = MagicMock(return_value=ret)  # we have no actual serial devices
 
     def test_correct_response(self):
@@ -32,7 +32,7 @@ class TestMBExtendedScanner(unittest.TestCase):
             "fffffffffffffffffd6003fe34359603f6a80000000000000000"
         )
         ret = self.scanner.get_next_device_data()
-        ret = minimalmodbus._hexencode(ret)
+        ret = minimalmodbus.hexencode(ret)
         self.assertEqual(assumed_response, ret)
 
     def test_correct_scan_init(self):

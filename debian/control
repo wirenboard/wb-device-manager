@@ -3,13 +3,13 @@ Maintainer: Vladimir Romanov <v.romanov@wirenboard.ru>
 Section: python
 Priority: optional
 XS-Python-Version: >= 3.9.1
-Build-Depends: dh-python, debhelper (>= 10), python3-all, python3-setuptools, python3-paho-mqtt, python3-wb-mcu-fw-updater
+Build-Depends: dh-python, debhelper (>= 10), python3-all, python3-setuptools, python3-paho-mqtt, python3-wb-mcu-fw-updater (>= 1.7.0)
 Standards-Version: 3.9.1
 X-Python-Version: >= 3.9.1
 
 Package: python3-wb-device-manager
 Architecture: all
-Depends: ${python3:Depends}, ${misc:Depends}, python3-mqttrpc (>= 1.1.2), wb-mqtt-serial (>= 2.73.0), python3-wb-mcu-fw-updater (>= 1.6.1)
+Depends: ${python3:Depends}, ${misc:Depends}, python3-mqttrpc (>= 1.1.2), wb-mqtt-serial (>= 2.73.0), python3-wb-mcu-fw-updater (>= 1.7.0)
 Description: Wiren Board modbus devices manager (python3 library)
 
 Package: wb-device-manager
