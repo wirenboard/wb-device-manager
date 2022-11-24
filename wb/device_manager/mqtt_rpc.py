@@ -215,15 +215,15 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
             self.rpc_client = SRPCClient(conn)
 
     async def _communicate(self, request, number_of_bytes_to_read):
-        minimalmodbus._check_string(request, minlength=1, description="request")
-        minimalmodbus._check_int(number_of_bytes_to_read)
+        minimalmodbus.check_string(request, minlength=1, description="request")
+        minimalmodbus.check_int(number_of_bytes_to_read)
 
         min_response_timeout = 0.5  # hardcoded in wb-mqtt-serial's validation
 
         rpc_request = {
             "response_size": number_of_bytes_to_read,
             "format": "HEX",
-            "msg": minimalmodbus._hexencode(request),
+            "msg": minimalmodbus.hexencode(request),
             "response_timeout": round(max(self.serial.timeout, min_response_timeout) * 1E3),
             "path": self.serial.port,  # TODO: support modbus tcp in minimalmodbus
             "baud_rate" : self.serial.SERIAL_SETTINGS["baudrate"],
@@ -245,7 +245,7 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
             reraise_err = minimalmodbus.NoResponseError if e.code == self.RPC_ERR_STATES["REQUEST_HANDLING"] else RPCCommunicationError
             raise reraise_err from e
         else:
-            return minimalmodbus._hexdecode(str(response.get("response", "")))
+            return minimalmodbus.hexdecode(str(response.get("response", "")))
 
 
 class MQTTRPCAlreadyProcessingError(JSONRPCServerError):
