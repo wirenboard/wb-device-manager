@@ -6,7 +6,7 @@ import uuid
 import time
 import logging
 import asyncio
-from sys import argv, stdout
+from sys import argv, stdout, stderr
 from argparse import ArgumentParser
 from itertools import product
 from dataclasses import dataclass, asdict, field, is_dataclass
@@ -14,6 +14,10 @@ from mqttrpc import Dispatcher
 from wb_modbus import instruments, minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, logger as mb_logger
 from wb_modbus.bindings import WBModbusDeviceBase
 from . import logger, serial_bus, mqtt_rpc, make_async
+
+
+EXIT_SUCCESS = 0
+EXIT_INVALIDARGUMENT = 2
 
 
 @dataclass
@@ -173,9 +177,15 @@ class DeviceManager():
         return True
 
 
+class RetcodeArgParser(ArgumentParser):
+    def error(self, message):
+        self.print_usage(stderr)
+        self.exit(EXIT_INVALIDARGUMENT, "%s: error: %s\n" % (self.prog, message))
+
+
 def main(args=argv):
 
-    parser = ArgumentParser(
+    parser = RetcodeArgParser(
         description="Wiren Board serial devices manager")
     parser.add_argument("-d", "--debug", dest="log_level", action="store_const", default=logging.INFO,
                 const=logging.DEBUG, help="Set log_level to debug")
@@ -198,3 +208,4 @@ def main(args=argv):
     server = mqtt_rpc.MQTTServer(Dispatcher(callables_mapping))
     server.setup()
     server.loop()
+    return EXIT_SUCCESS

@@ -67,7 +67,3 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(minimalmodbus.InvalidResponseError):
             await self.scanner.get_next_device_data()
-
-
-if __name__ == '__main__':
-    unittest.main(verbosity=2)
