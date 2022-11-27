@@ -5,7 +5,6 @@ import atexit
 import time
 import signal
 import asyncio
-from contextlib import contextmanager
 from pathlib import PurePosixPath
 from concurrent import futures
 from threading import current_thread, Lock
@@ -21,7 +20,15 @@ def get_topic_path(*args):
     return str(ret)
 
 
-class MQTTConnManager:  # TODO: split to common lib
+class Singleton(type):
+    _instances = {}
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+
+class MQTTConnManager(metaclass=Singleton):  # TODO: split to common lib
     _MQTT_CONNECTIONS = {}
     _CLIENT_NAME = "wb-device-manager"
 
@@ -31,10 +38,6 @@ class MQTTConnManager:  # TODO: split to common lib
     @property
     def mqtt_connections(self):
         return type(self)._MQTT_CONNECTIONS
-
-    @property
-    def client_name(self):
-        return type(self)._CLIENT_NAME
 
     def parse_mqtt_addr(self, hostport_str=""):
         host, port = hostport_str.split(":", 1)
@@ -51,7 +54,6 @@ class MQTTConnManager:  # TODO: split to common lib
         else:
             logger.warning("Mqtt connection %s not found in active ones!", hostport_str)
 
-    @contextmanager
     def get_mqtt_connection(self, hostport_str=""):
         hostport_str = hostport_str or "%s:%s" % (self.DEFAULT_MQTT_HOST, self.DEFAULT_MQTT_PORT_STR)
         logger.debug("Looking for open mqtt connection for: %s", hostport_str)
@@ -59,31 +61,20 @@ class MQTTConnManager:  # TODO: split to common lib
 
         if client:
             logger.debug("Found")
-            yield client
+            return client
         else:
             _host, _port = self.parse_mqtt_addr(hostport_str)
             try:
-                client = mosquitto.Client(self.client_name)
+                client = mosquitto.Client(self._CLIENT_NAME)
                 # client.enable_logger(logger)
                 logger.info("New mqtt connection; host: %s; port: %d", _host, _port)
                 client.connect(_host, _port)
                 client.loop_start()
                 self.mqtt_connections.update({hostport_str : client})
-                yield client
-            except mosquitto.MQTT_ERR_INVAL as e:
-                logger.exception("Loop for '%s' is already running" % hostport_str)
-                yield client
+                return client
             finally:
                 logger.info("Registered to atexit hook: close %s", hostport_str)
                 atexit.register(lambda: self.close_mqtt(hostport_str))
-
-
-class Singleton(type):
-    _instances = {}
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
-        return cls._instances[cls]
 
 
 class SRPCClient(rpcclient.TMQTTRPCClient, metaclass=Singleton):
@@ -112,8 +103,8 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
 
     def __init__(self, port, slaveaddress, **kwargs):
         super().__init__(port, slaveaddress, **kwargs)
-        with MQTTConnManager().get_mqtt_connection(hostport_str=self.broker_addr) as conn:
-            self.rpc_client = SRPCClient(conn)
+        mqtt_conn = MQTTConnManager().get_mqtt_connection(hostport_str=self.broker_addr)
+        self.rpc_client = SRPCClient(mqtt_conn)
 
     async def _communicate(self, request, number_of_bytes_to_read):
         minimalmodbus.check_string(request, minlength=1, description="request")
@@ -167,8 +158,7 @@ class MQTTServer:
         self.hostport_str = hostport_str
         self.methods_dispatcher = methods_dispatcher
 
-        with MQTTConnManager().get_mqtt_connection(self.hostport_str) as connection:
-            self.connection = connection
+        self.connection = MQTTConnManager().get_mqtt_connection(self.hostport_str)
 
         self.asyncio_loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
