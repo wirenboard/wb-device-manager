@@ -192,13 +192,14 @@ class SRPCClient(rpcclient.TMQTTRPCClient, metaclass=Singleton):
     """
     async def make_rpc_call(self, driver, service, method, params, timeout=10):
         logger.debug("RPC Client -> %s (rpc timeout: %.2fs)", params, timeout)
-        response_futurelike = self.call_async(  # not a real future-obj :c
+        response_f = self.call_async(
             driver,
             service,
             method,
-            params
+            params,
+            result_future=asyncio.Future
             )
-        response = await make_async(response_futurelike.result)(timeout)  # TODO: fair async rpcclient?
+        response = await asyncio.wait_for(response_f, timeout)
         logger.debug("RPC Client <- %s", response)
         return response
 
