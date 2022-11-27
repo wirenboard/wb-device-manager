@@ -25,16 +25,16 @@ class WBExtendedModbusScanner:
         self.port = port
 
     def _build_request(self, cmd_code):
-        payload = minimalmodbus.embed_payload(
+        payload = minimalmodbus._embed_payload(
             slaveaddress=self.ADDR,
             mode=minimalmodbus.MODE_RTU,
             functioncode=self.MODE,
-            payloaddata=minimalmodbus.num_to_onebyte_string(cmd_code)
+            payloaddata=minimalmodbus._num_to_onebyte_string(cmd_code)
         )
         return payload
 
     def _parse_response(self, response_bytestr):
-        payloaddata = minimalmodbus.extract_payload(
+        payloaddata = minimalmodbus._extract_payload(
             response=response_bytestr,
             slaveaddress=self.ADDR,
             mode=minimalmodbus.MODE_RTU,
@@ -44,7 +44,7 @@ class WBExtendedModbusScanner:
 
     def _parse_device_data(self, device_data_bytestr):
         sn, slaveid = device_data_bytestr[:4], device_data_bytestr[4:]
-        sn = minimalmodbus.bytestring_to_long(  # u32, 4 bytes
+        sn = minimalmodbus._bytestring_to_long(  # u32, 4 bytes
             bytestring=sn,
             signed=False,
             number_of_registers=2,
@@ -60,12 +60,12 @@ class WBExtendedModbusScanner:
             number_of_bytes_to_read=number_of_bytes_to_read
         )
 
-        ret = minimalmodbus.hexencode(ret)
+        ret = minimalmodbus._hexencode(ret)
 
         while ret.startswith("FF"):  # TODO: we don't know actual beginning of response; maybe search by RE?
             ret = ret[2:]
         ret = ret.strip("0")  # TODO: needs fixup in wb-mqtt-serial
-        return minimalmodbus.hexdecode(ret)
+        return minimalmodbus._hexdecode(ret)
 
     async def init_bus_scan(self):
         logger.debug("Init bus scan")
@@ -80,7 +80,7 @@ class WBExtendedModbusScanner:
         ret = await self._communicate(request=request)
         response = self._parse_response(response_bytestr=ret)
         fcode = ord(response[0])
-        hex_response = minimalmodbus.hexencode(response)
+        hex_response = minimalmodbus._hexencode(response)
 
         if fcode == self.CMDS.single_reply:
             logger.debug("Scanned: %s", str(hex_response))
