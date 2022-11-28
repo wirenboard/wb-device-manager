@@ -83,9 +83,8 @@ class SetEncoder(json.JSONEncoder):
 
 class DeviceManager():
 
-    def __init__(self, state_topic):
+    def __init__(self):
         self.mqtt_connection = mqtt_rpc.MQTTConnManager().get_mqtt_connection()
-        self.state_topic = state_topic
         self._init_state()
 
     def _init_state(self):
@@ -95,8 +94,8 @@ class DeviceManager():
     def state_json(self):
         return json.dumps(asdict(self.state), indent=None, separators=(",", ":"), cls=SetEncoder)  # most compact
 
-    def publish_state(self):  # TODO: an observer pattern; on_change callbacks
-        self.mqtt_connection.publish(self.state_topic, self.state_json, retain=True)
+    async def publish_state(self):  # TODO: an observer pattern; on_change callbacks
+        await mqtt_rpc.STATE_PUBLISH_QUEUE.put(self.state_json)
 
     def _get_mb_connection(self, device_info):
         conn = serial_bus.WBAsyncModbus(
@@ -177,7 +176,7 @@ class DeviceManager():
             except minimalmodbus.NoResponseError:
                 logger.debug("No extended-modbus devices on %s", debug_str)
             self.state.progress += 1
-            self.publish_state()
+            await self.publish_state()
             #TODO: check all slaveids via ordinary modbus
         return True
 
@@ -207,10 +206,10 @@ def main(args=argv):
     state_topic = mqtt_rpc.get_topic_path("bus_scan", "state")
 
     callables_mapping = {
-        ("bus_scan", "scan") : DeviceManager(state_topic).scan_serial_bus
+        ("bus_scan", "scan") : DeviceManager().scan_serial_bus
         }
 
-    server = mqtt_rpc.MQTTServer(Dispatcher(callables_mapping))
+    server = mqtt_rpc.MQTTServer(Dispatcher(callables_mapping), state_topic)
     server.setup()
     server.loop()
     return EXIT_SUCCESS

@@ -18,6 +18,9 @@ from wb_modbus import minimalmodbus, instruments
 from . import logger, TOPIC_HEADER
 
 
+STATE_PUBLISH_QUEUE = asyncio.Queue()
+
+
 def get_topic_path(*args):
     ret = PurePosixPath(TOPIC_HEADER, *[str(arg) for arg in args])
     return str(ret)
@@ -172,9 +175,10 @@ class MQTTServer:
     _NOW_PROCESSING = []
     MAX_CONCURRENT_TASKS = 10  # TODO: make a performance research
 
-    def __init__(self, methods_dispatcher, hostport_str=""):
+    def __init__(self, methods_dispatcher, state_publish_topic, hostport_str=""):
         self.hostport_str = hostport_str
         self.methods_dispatcher = methods_dispatcher
+        self.state_publish_topic = state_publish_topic
 
         self.connection = MQTTConnManager().get_mqtt_connection(self.hostport_str)
 
@@ -245,15 +249,16 @@ class MQTTServer:
         self.reply(message, ret.json)
         self.remove_from_processing(message)
 
-    async def loop_forever(self):
+    async def publish_overall_state(self):
         while True:
-            await asyncio.sleep(1)
+            state_json = await STATE_PUBLISH_QUEUE.get()
+            self.connection.publish(self.state_publish_topic, state_json, retain=True)
 
     def setup(self):
         self._subscribe()
         self.connection.on_message = self._on_mqtt_message
         logger.debug("Binded 'on_message' callback")
-        self.asyncio_loop.create_task(self.loop_forever())
+        self.asyncio_loop.create_task(self.publish_overall_state())
 
     def loop(self):
         self.asyncio_loop.run_forever()
