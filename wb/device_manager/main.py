@@ -13,7 +13,7 @@ from dataclasses import dataclass, asdict, field, is_dataclass
 from mqttrpc import Dispatcher
 from wb_modbus import instruments, minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, logger as mb_logger
 from wb_modbus.bindings import WBModbusDeviceBase
-from . import logger, serial_bus, mqtt_rpc, make_async
+from . import logger, serial_bus, mqtt_rpc
 
 
 EXIT_SUCCESS = 0
@@ -99,20 +99,18 @@ class DeviceManager():
         self.mqtt_connection.publish(self.state_topic, self.state_json, retain=True)
 
     def _get_mb_connection(self, device_info):
-        conn = WBModbusDeviceBase(
+        conn = serial_bus.WBAsyncModbus(
             addr=device_info.cfg.slave_id,
             port=device_info.port.path,
             baudrate=device_info.cfg.baud_rate,
             parity=device_info.cfg.parity,
-            stopbits=device_info.cfg.stop_bits,
-            response_timeout=0.5,  # TODO: to arg
-            instrument=instruments.SerialRPCBackendInstrument  # TODO: maybe a fully-async instrument?
+            stopbits=device_info.cfg.stop_bits
         )
         return conn
 
     async def _fill_fw_info(self, device_info):
         mb_conn = self._get_mb_connection(device_info)
-        device_info.fw.version = await make_async(mb_conn.get_fw_version)()
+        device_info.fw.version = await mb_conn.read_string(first_addr=250, regs_length=16)
         #TODO: fill available version from fw-releases
 
     async def _get_all_uart_params(self):
@@ -167,8 +165,8 @@ class DeviceManager():
                     mb_conn = self._get_mb_connection(device_info)
 
                     try:
-                        device_info.fw_signature = await make_async(mb_conn.get_fw_signature)()
-                        device_info.device_signature = await make_async(mb_conn.get_device_signature)()
+                        device_info.fw_signature = await mb_conn.read_string(first_addr=290, regs_length=12)
+                        device_info.device_signature = await mb_conn.read_string(first_addr=200, regs_length=6)
                         await self._fill_fw_info(device_info)
                     except minimalmodbus.ModbusException as e:
                         logger.exception("Treating device as offline")

@@ -7,12 +7,15 @@ import signal
 import asyncio
 from pathlib import PurePosixPath
 from concurrent import futures
+from functools import partial
 from threading import current_thread, Lock
 import paho.mqtt.client as mosquitto
-from mqttrpc import AMQTTRPCResponseManager, client as rpcclient
+from mqttrpc import client as rpcclient
+from mqttrpc.manager import AMQTTRPCResponseManager
 from mqttrpc.protocol import MQTTRPC10Response
+from jsonrpc.exceptions import JSONRPCServerError
 from wb_modbus import minimalmodbus, instruments
-from . import logger, TOPIC_HEADER, make_async
+from . import logger, TOPIC_HEADER
 
 
 def get_topic_path(*args):
@@ -77,6 +80,22 @@ class MQTTConnManager(metaclass=Singleton):  # TODO: split to common lib
                 atexit.register(lambda: self.close_mqtt(hostport_str))
 
 
+class RPCResultFuture(asyncio.Future):
+    """
+    an rpc-call-result obj:
+        - is future;
+        - supposed to be filled from another thread (on_message callback)
+        - compatible with mqttrpc api
+    """
+
+    def set_result(self, result):
+        if result is not None:
+            self._loop.call_soon_threadsafe(partial(super().set_result, result))
+
+    def set_exception(self, exception):
+        self._loop.call_soon_threadsafe(partial(super().set_exception, exception))
+
+
 class SRPCClient(rpcclient.TMQTTRPCClient, metaclass=Singleton):
     """
     Stores internal future-like objs (with rpc-call result), filled from outer on_mqtt_message callback
@@ -88,7 +107,7 @@ class SRPCClient(rpcclient.TMQTTRPCClient, metaclass=Singleton):
             service,
             method,
             params,
-            result_future=asyncio.Future
+            result_future=RPCResultFuture
             )
         response = await asyncio.wait_for(response_f, timeout)
         logger.debug("RPC Client <- %s", response)
@@ -105,18 +124,17 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
         super().__init__(port, slaveaddress, **kwargs)
         mqtt_conn = MQTTConnManager().get_mqtt_connection(hostport_str=self.broker_addr)
         self.rpc_client = SRPCClient(mqtt_conn)
+        self.serial.timeout = kwargs.get("response_timeout", 0.5)
 
     async def _communicate(self, request, number_of_bytes_to_read):
-        minimalmodbus.check_string(request, minlength=1, description="request")
-        minimalmodbus.check_int(number_of_bytes_to_read)
-
-        min_response_timeout = 0.5  # hardcoded in wb-mqtt-serial's validation
+        minimalmodbus._check_string(request, minlength=1, description="request")
+        minimalmodbus._check_int(number_of_bytes_to_read)
 
         rpc_request = {
             "response_size": number_of_bytes_to_read,
             "format": "HEX",
-            "msg": minimalmodbus.hexencode(request),
-            "response_timeout": round(max(self.serial.timeout, min_response_timeout) * 1E3),
+            "msg": minimalmodbus._hexencode(request),
+            "response_timeout": round(self.serial.timeout * 1E3),
             "path": self.serial.port,  # TODO: support modbus tcp in minimalmodbus
             "baud_rate" : self.serial.SERIAL_SETTINGS["baudrate"],
             "parity" : self.serial.SERIAL_SETTINGS["parity"],
@@ -134,10 +152,10 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
                 timeout=rpc_call_timeout
                 )
         except rpcclient.MQTTRPCError as e:
-            reraise_err = minimalmodbus.NoResponseError if e.code == self.RPC_ERR_STATES["REQUEST_HANDLING"] else RPCCommunicationError
+            reraise_err = minimalmodbus.NoResponseError if e.code == self.RPC_ERR_STATES["REQUEST_HANDLING"] else rpcclient.MQTTRPCError
             raise reraise_err from e
         else:
-            return minimalmodbus.hexdecode(str(response.get("response", "")))
+            return minimalmodbus._hexdecode(str(response.get("response", "")))
 
 
 class MQTTRPCAlreadyProcessingError(JSONRPCServerError):
@@ -152,7 +170,7 @@ class MQTTRPCMaxTasksProcessingError(JSONRPCServerError):
 
 class MQTTServer:
     _NOW_PROCESSING = []
-    MAX_TASKS = 4
+    MAX_CONCURRENT_TASKS = 10  # TODO: make a performance research
 
     def __init__(self, methods_dispatcher, hostport_str=""):
         self.hostport_str = hostport_str
@@ -198,7 +216,7 @@ class MQTTServer:
                 logger.warning("'%s' is already processing!", message.topic)
                 response = MQTTRPC10Response(error=MQTTRPCAlreadyProcessingError()._data)
                 self.reply(message, response.json)
-            elif len(self.now_processing) < self.MAX_TASKS:
+            elif len(self.now_processing) < self.MAX_CONCURRENT_TASKS:
                 self.add_to_processing(message)
                 asyncio.run_coroutine_threadsafe(self.run_async(message), self.asyncio_loop)
             else:

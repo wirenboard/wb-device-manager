@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import enum
+from binascii import unhexlify
 from wb_modbus import minimalmodbus, instruments
 from . import logger, mqtt_rpc
 
@@ -114,6 +115,89 @@ class WBExtendedModbusScanner:
             logger.debug("Got device: %d %d", slaveid, sn)
             yield slaveid, sn
             sn_slaveid = await self.get_next_device_data()
+
+
+class WBAsyncModbus:
+    def __init__(self, addr, port, baudrate, parity, stopbits, **kwargs):
+        self.device = mqtt_rpc.AsyncModbusInstrument(port, addr)
+        self.addr = addr
+        self.port = port
+        self.device.serial.apply_settings(
+            {
+                "baudrate" : baudrate,
+                "parity" : parity,
+                "stopbits" : stopbits
+            }
+        )
+
+    def _make_payload(self, reg, number_of_regs):
+        return minimalmodbus._num_to_twobyte_string(reg) + minimalmodbus._num_to_twobyte_string(
+            number_of_regs
+            )
+
+    def _build_request(self, funcode, reg, number_of_regs=1):
+        payload = self._make_payload(reg, number_of_regs)
+        request = minimalmodbus._embed_payload(
+            slaveaddress=self.addr,
+            mode=minimalmodbus.MODE_RTU,
+            functioncode=funcode,
+            payloaddata=payload
+            )
+        return request
+
+    def _parse_response(self, funcode, reg, number_of_regs, response_bytestr, payloadformat):
+        payloaddata = minimalmodbus._extract_payload(
+            response=response_bytestr,
+            slaveaddress=self.addr,
+            mode=minimalmodbus.MODE_RTU,
+            functioncode=funcode
+            )
+
+        return minimalmodbus._parse_payload(
+            payload=payloaddata,
+            functioncode=funcode,
+            registeraddress=reg,
+            value=None,
+            number_of_decimals=None,
+            number_of_registers=number_of_regs,
+            number_of_bits=number_of_regs,
+            signed=None,
+            byteorder=None,
+            payloadformat=payloadformat
+            )
+
+    def _str_to_wb(self, string):
+        ret = minimalmodbus._hexencode(string, insert_spaces=True)
+        for placeholder in ('00', 'FF', ' '):  # Clearing a string to only meaningful bytes
+            ret = ret.replace(placeholder, '')  # 'A1B2C3' bytes-only string
+        return str(unhexlify(ret).decode(encoding="utf-8", errors="backslashreplace")).strip()
+
+    async def read_string(self, first_addr, regs_length):
+        funcode = 3
+        payloadformat = minimalmodbus._PAYLOADFORMAT_STRING
+
+        request = self._build_request(
+            funcode=funcode,
+            reg=first_addr,
+            number_of_regs=regs_length
+            )
+
+        number_of_bytes_to_read = minimalmodbus._predict_response_size(
+            mode=minimalmodbus.MODE_RTU,
+            functioncode=funcode,
+            payload_to_slave=self._make_payload(first_addr, regs_length)
+            )
+
+        response = await self.device._communicate(request, number_of_bytes_to_read)
+
+        ret = self._parse_response(
+            funcode=funcode,
+            reg=first_addr,
+            number_of_regs=regs_length,
+            response_bytestr=response,
+            payloadformat=payloadformat
+            )
+        return self._str_to_wb(ret)
 
 
 if __name__ == "__main__":
