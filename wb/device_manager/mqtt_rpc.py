@@ -6,9 +6,7 @@ import time
 import signal
 import asyncio
 from pathlib import PurePosixPath
-from concurrent import futures
 from functools import partial
-from threading import current_thread, Lock
 import paho.mqtt.client as mosquitto
 from mqttrpc import client as rpcclient
 from mqttrpc.manager import AMQTTRPCResponseManager
@@ -18,69 +16,9 @@ from wb_modbus import minimalmodbus, instruments
 from . import logger, TOPIC_HEADER
 
 
-STATE_PUBLISH_QUEUE = asyncio.Queue()
-
-
 def get_topic_path(*args):
     ret = PurePosixPath(TOPIC_HEADER, *[str(arg) for arg in args])
     return str(ret)
-
-
-class Singleton(type):
-    _instances = {}
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
-        return cls._instances[cls]
-
-
-class MQTTConnManager(metaclass=Singleton):  # TODO: split to common lib
-    _MQTT_CONNECTIONS = {}
-    _CLIENT_NAME = "wb-device-manager"
-
-    DEFAULT_MQTT_HOST = "127.0.0.1"
-    DEFAULT_MQTT_PORT_STR = "1883"
-
-    @property
-    def mqtt_connections(self):
-        return type(self)._MQTT_CONNECTIONS
-
-    def parse_mqtt_addr(self, hostport_str=""):
-        host, port = hostport_str.split(":", 1)
-        return host or self.DEFAULT_MQTT_HOST, int(port or self.DEFAULT_MQTT_PORT_STR, 0)
-
-    def close_mqtt(self, hostport_str):
-        client = self.mqtt_connections.get(hostport_str)
-
-        if client:
-            client.loop_stop()
-            client.disconnect()
-            self.mqtt_connections.pop(hostport_str)
-            logger.info("Mqtt: close %s", hostport_str)
-        else:
-            logger.warning("Mqtt connection %s not found in active ones!", hostport_str)
-
-    def get_mqtt_connection(self, hostport_str=""):
-        hostport_str = hostport_str or "%s:%s" % (self.DEFAULT_MQTT_HOST, self.DEFAULT_MQTT_PORT_STR)
-        logger.debug("Looking for open mqtt connection for: %s", hostport_str)
-        client = self.mqtt_connections.get(hostport_str)
-
-        if client:
-            logger.debug("Found")
-            return client
-        else:
-            _host, _port = self.parse_mqtt_addr(hostport_str)
-            try:
-                client = mosquitto.Client(self._CLIENT_NAME)
-                # client.enable_logger(logger)
-                logger.info("New mqtt connection; host: %s; port: %d", _host, _port)
-                client.connect(_host, _port)
-                client.loop_start()
-                self.mqtt_connections.update({hostport_str : client})
-                return client
-            finally:
-                logger.info("Registered to atexit hook: close %s", hostport_str)
-                atexit.register(lambda: self.close_mqtt(hostport_str))
 
 
 class RPCResultFuture(asyncio.Future):
@@ -99,7 +37,7 @@ class RPCResultFuture(asyncio.Future):
         self._loop.call_soon_threadsafe(partial(super().set_exception, exception))
 
 
-class SRPCClient(rpcclient.TMQTTRPCClient, metaclass=Singleton):
+class SRPCClient(rpcclient.TMQTTRPCClient):
     """
     Stores internal future-like objs (with rpc-call result), filled from outer on_mqtt_message callback
     """
@@ -123,10 +61,9 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
     (instead of pyserial)
     """
 
-    def __init__(self, port, slaveaddress, **kwargs):
+    def __init__(self, port, slaveaddress, rpc_client, **kwargs):
         super().__init__(port, slaveaddress, **kwargs)
-        mqtt_conn = MQTTConnManager().get_mqtt_connection(hostport_str=self.broker_addr)
-        self.rpc_client = SRPCClient(mqtt_conn)
+        self.rpc_client = rpc_client
         self.serial.timeout = kwargs.get("response_timeout", 0.5)
 
     async def _communicate(self, request, number_of_bytes_to_read):
@@ -137,7 +74,7 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
             "response_size": number_of_bytes_to_read,
             "format": "HEX",
             "msg": minimalmodbus._hexencode(request),
-            "response_timeout": round(self.serial.timeout * 1E3),
+            "response_timeout": round(self.serial.timeout * 1000),
             "path": self.serial.port,  # TODO: support modbus tcp in minimalmodbus
             "baud_rate" : self.serial.SERIAL_SETTINGS["baudrate"],
             "parity" : self.serial.SERIAL_SETTINGS["parity"],
@@ -166,32 +103,54 @@ class MQTTRPCAlreadyProcessingError(JSONRPCServerError):
     MESSAGE = "Task is already executing."
 
 
-class MQTTRPCMaxTasksProcessingError(JSONRPCServerError):
-    CODE = -33200
-    MESSAGE = "Max number of tasks are processing! Try again later."
-
-
-class MQTTServer:
+class AsyncMQTTServer:
     _NOW_PROCESSING = []
-    MAX_CONCURRENT_TASKS = 10  # TODO: make a performance research
+    _EXITCODE = 0
 
-    def __init__(self, methods_dispatcher, state_publish_topic, hostport_str=""):
-        self.hostport_str = hostport_str
+    def __init__(self, methods_dispatcher, mqtt_connection, rpc_client,
+            asyncio_loop=asyncio.get_event_loop(), mqtt_hostport_str="127.0.0.1:1883"):
         self.methods_dispatcher = methods_dispatcher
-        self.state_publish_topic = state_publish_topic
-
-        self.connection = MQTTConnManager().get_mqtt_connection(self.hostport_str)
-
-        self.asyncio_loop = asyncio.get_event_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            self.asyncio_loop.add_signal_handler(sig, lambda: self.asyncio_loop.stop())
-        self.asyncio_loop.set_debug(True)
-
-        self.rpc_client = SRPCClient(self.connection)
+        self.mqtt_connection = mqtt_connection
+        self.rpc_client = rpc_client
+        self.asyncio_loop = asyncio_loop
+        self.mqtt_hostport_str = mqtt_hostport_str
 
     @property
     def now_processing(self):
         return type(self)._NOW_PROCESSING
+
+    def _parse_mqtt_addr(self):
+        default_host, default_port = "127.0.0.1", "1883"
+        host, port = self.mqtt_hostport_str.split(":", 1)
+        return host or default_host, int(port or default_port, 0)
+
+    def _close_mqtt_connection(self):
+        self.mqtt_connection.loop_stop()
+        self.mqtt_connection.disconnect()
+        logger.info("Mqtt: close %s", self.mqtt_hostport_str)
+
+    def _setup_event_loop(self):
+        signals = [signal.SIGINT, signal.SIGTERM]
+        for sig in signals:
+            self.asyncio_loop.add_signal_handler(sig, lambda: self.asyncio_loop.stop())
+        logger.debug("Add handler for: %s; event loop: %s", str(signals), str(self.asyncio_loop))
+        self.asyncio_loop.set_debug(True)
+
+    def _setup_mqtt_connection(self):
+        host, port = self._parse_mqtt_addr()
+        self.mqtt_connection.on_connect = self._on_mqtt_connect
+        logger.debug("Bind on_connect callback to %s", self.mqtt_hostport_str)
+        self.mqtt_connection.on_disconnect = self._on_mqtt_disconnect
+        logger.debug("Bind on_disconnect callback to %s", self.mqtt_hostport_str)
+        self.mqtt_connection.on_message = self._on_mqtt_message
+        logger.debug("Bind on_message callback to %s", self.mqtt_hostport_str)
+
+        try:
+            self.mqtt_connection.connect(host, port)
+            self.mqtt_connection.loop_start()
+        finally:
+            logger.info("Registered to atexit hook: close %s", self.mqtt_hostport_str)
+            atexit.register(lambda: self._close_mqtt_connection())
 
     def add_to_processing(self, mqtt_message):
         self.now_processing.append((mqtt_message.topic, mqtt_message.payload))
@@ -206,10 +165,24 @@ class MQTTServer:
         logger.debug("Subscribing to: %s", str(self.methods_dispatcher.keys()))
         for service, method in self.methods_dispatcher.keys():
             topic_str = get_topic_path(service, method)
-            self.connection.publish(topic_str, "1", retain=True)
+            self.mqtt_connection.publish(topic_str, "1", retain=True)
             topic_str += "/+"
-            self.connection.subscribe(topic_str)
+            self.mqtt_connection.subscribe(topic_str)
             logger.debug("Subscribed: %s", topic_str)
+
+    def _on_mqtt_connect(self, client, userdata, flags, rc):
+        logger.info("Mqtt: reconnect to %s -> %d", self.mqtt_hostport_str, rc)
+        if rc == 0:
+            self._subscribe()
+        else:
+            logger.warning("Got rc %d; shutting down...", rc)
+            self._EXITCODE = rc
+            self.asyncio_loop.stop()
+
+    def _on_mqtt_disconnect(self, client, userdata, rc):
+        logger.warning("Mqtt: disconnect from %s -> %d", self.mqtt_hostport_str, rc)
+        self.rpc_client.subscribes = set()  # rpc_client re-subscribes if not subscribed
+        logger.debug("Clear rpc_client subscribes")
 
     def _on_mqtt_message(self, _client, _userdata, message):
         if mosquitto.topic_matches_sub('/rpc/v1/+/+/+/%s/reply' % self.rpc_client.rpc_client_id, message.topic):
@@ -220,18 +193,13 @@ class MQTTServer:
                 logger.warning("'%s' is already processing!", message.topic)
                 response = MQTTRPC10Response(error=MQTTRPCAlreadyProcessingError()._data)
                 self.reply(message, response.json)
-            elif len(self.now_processing) < self.MAX_CONCURRENT_TASKS:
+            else:
                 self.add_to_processing(message)
                 asyncio.run_coroutine_threadsafe(self.run_async(message), self.asyncio_loop)
-            else:
-                logger.warning("Max number of tasks (%d) is running already", len(self.now_processing))
-                logger.warning("Doing nothing for '%s'", message.topic)
-                response = MQTTRPC10Response(error=MQTTRPCMaxTasksProcessingError()._data)
-                self.reply(message, response.json)
 
     def reply(self, message, payload):
         topic = message.topic + "/reply"
-        self.connection.publish(topic, payload, False)
+        self.mqtt_connection.publish(topic, payload, False)
 
     async def run_async(self, message):
         parts = message.topic.split("/")  # TODO: re?
@@ -249,16 +217,10 @@ class MQTTServer:
         self.reply(message, ret.json)
         self.remove_from_processing(message)
 
-    async def publish_overall_state(self):
-        while True:
-            state_json = await STATE_PUBLISH_QUEUE.get()
-            self.connection.publish(self.state_publish_topic, state_json, retain=True)
-
     def setup(self):
-        self._subscribe()
-        self.connection.on_message = self._on_mqtt_message
-        logger.debug("Binded 'on_message' callback")
-        self.asyncio_loop.create_task(self.publish_overall_state())
+        self._setup_event_loop()
+        self._setup_mqtt_connection()
 
-    def loop(self):
+    def run(self):
         self.asyncio_loop.run_forever()
+        return self._EXITCODE

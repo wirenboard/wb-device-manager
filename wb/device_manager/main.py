@@ -6,18 +6,18 @@ import uuid
 import time
 import logging
 import asyncio
+import paho.mqtt.client as mosquitto
 from sys import argv, stdout, stderr
 from argparse import ArgumentParser
 from itertools import product
 from dataclasses import dataclass, asdict, field, is_dataclass
 from mqttrpc import Dispatcher
-from wb_modbus import instruments, minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, logger as mb_logger
-from wb_modbus.bindings import WBModbusDeviceBase
+from wb_modbus import minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, logger as mb_logger
 from . import logger, serial_bus, mqtt_rpc
 
 
-EXIT_SUCCESS = 0
 EXIT_INVALIDARGUMENT = 2
+EXIT_UNKNOWN = 4
 
 
 @dataclass
@@ -82,20 +82,47 @@ class SetEncoder(json.JSONEncoder):
 
 
 class DeviceManager():
+    MQTT_CLIENT_NAME = "wb-device-manager"
+    STATE_PUBLISH_TOPIC = "/rpc/v1/wb-device-manager/bus-scan/state"
 
     def __init__(self):
-        self.mqtt_connection = mqtt_rpc.MQTTConnManager().get_mqtt_connection()
+        self._mqtt_connection = mosquitto.Client(self.MQTT_CLIENT_NAME)
+        self._rpc_client = mqtt_rpc.SRPCClient(self.mqtt_connection)
+        self._state_publish_queue = asyncio.Queue()
+        self._asyncio_loop = asyncio.get_event_loop()
         self._init_state()
+        self.asyncio_loop.create_task(self.publish_state_consume())
 
     def _init_state(self):
         self.state = BusScanState()
 
     @property
+    def mqtt_connection(self):
+        return self._mqtt_connection
+
+    @property
+    def rpc_client(self):
+        return self._rpc_client
+
+    @property
+    def state_publish_queue(self):
+        return self._state_publish_queue
+
+    @property
+    def asyncio_loop(self):
+        return self._asyncio_loop
+
+    @property
     def state_json(self):
         return json.dumps(asdict(self.state), indent=None, separators=(",", ":"), cls=SetEncoder)  # most compact
 
-    async def publish_state(self):  # TODO: an observer pattern; on_change callbacks
-        await mqtt_rpc.STATE_PUBLISH_QUEUE.put(self.state_json)
+    async def publish_state_produce(self):  # TODO: an observer pattern; on_change callbacks
+        await self.state_publish_queue.put(self.state_json)
+
+    async def publish_state_consume(self):
+        while True:
+            state_json = await self.state_publish_queue.get()
+            self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, state_json, retain=True)
 
     def _get_mb_connection(self, device_info):
         conn = serial_bus.WBAsyncModbus(
@@ -103,7 +130,8 @@ class DeviceManager():
             port=device_info.port.path,
             baudrate=device_info.cfg.baud_rate,
             parity=device_info.cfg.parity,
-            stopbits=device_info.cfg.stop_bits
+            stopbits=device_info.cfg.stop_bits,
+            rpc_client=self.rpc_client
         )
         return conn
 
@@ -139,7 +167,7 @@ class DeviceManager():
         async for bd, parity, stopbits in self._get_all_uart_params():
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
             logger.info("Scanning (via extended modbus) %s", debug_str)
-            extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port)
+            extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
             try:
                 async for slaveid, sn in extended_modbus_scanner.scan_bus(
                     baudrate=bd,
@@ -176,7 +204,7 @@ class DeviceManager():
             except minimalmodbus.NoResponseError:
                 logger.debug("No extended-modbus devices on %s", debug_str)
             self.state.progress += 1
-            await self.publish_state()
+            await self.publish_state_produce()
             #TODO: check all slaveids via ordinary modbus
         return True
 
@@ -203,13 +231,23 @@ def main(args=argv):
     for lgr in (logger, mb_logger):
         lgr.addHandler(handler)
 
-    state_topic = mqtt_rpc.get_topic_path("bus_scan", "state")
+    device_manager = DeviceManager()
 
     callables_mapping = {
-        ("bus_scan", "scan") : DeviceManager().scan_serial_bus
+        ("bus-scan", "scan") : device_manager.scan_serial_bus
         }
 
-    server = mqtt_rpc.MQTTServer(Dispatcher(callables_mapping), state_topic)
-    server.setup()
-    server.loop()
-    return EXIT_SUCCESS
+    server = mqtt_rpc.AsyncMQTTServer(
+        methods_dispatcher=Dispatcher(callables_mapping),
+        mqtt_connection=device_manager.mqtt_connection,
+        rpc_client=device_manager.rpc_client,
+        asyncio_loop=device_manager.asyncio_loop
+    )
+
+    try:
+        server.setup()
+    except Exception:
+        ec = EXIT_UNKNOWN
+        logger.exception("Exiting with %d", ec)
+        return ec
+    return server.run()

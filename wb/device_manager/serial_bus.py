@@ -21,8 +21,8 @@ class WBExtendedModbusScanner:
         ]
     )
 
-    def __init__(self, port, instrument=mqtt_rpc.AsyncModbusInstrument):
-        self.instrument = instrument(port=port, slaveaddress=self.ADDR)
+    def __init__(self, port, rpc_client):
+        self.instrument = mqtt_rpc.AsyncModbusInstrument(port, self.ADDR, rpc_client)
         self.port = port
 
     def _build_request(self, cmd_code):
@@ -118,8 +118,8 @@ class WBExtendedModbusScanner:
 
 
 class WBAsyncModbus:
-    def __init__(self, addr, port, baudrate, parity, stopbits, **kwargs):
-        self.device = mqtt_rpc.AsyncModbusInstrument(port, addr)
+    def __init__(self, addr, port, baudrate, parity, stopbits, rpc_client, **kwargs):
+        self.device = mqtt_rpc.AsyncModbusInstrument(port, addr, rpc_client)
         self.addr = addr
         self.port = port
         self.device.serial.apply_settings(
@@ -198,11 +198,3 @@ class WBAsyncModbus:
             payloadformat=payloadformat
             )
         return self._str_to_wb(ret)
-
-
-if __name__ == "__main__":
-    ports = ["/dev/ttyRS485-1",]
-    for port in ports:
-        scanner = WBExtendedModbusScanner(port)
-        for device in scanner.scan_bus():
-            print(device)
