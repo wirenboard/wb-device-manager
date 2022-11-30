@@ -157,9 +157,12 @@ class DeviceManager():
     async def scan_serial_bus(self):
         tasks = []
         self._init_state()
+        self.state.scanning = True
         async for port in self._get_ports():
             tasks.append(self.scan_serial_port(port))
         await asyncio.gather(*tasks)
+        self.state.scanning = False
+        self.publish_state_produce()
         return True
 
     async def scan_serial_port(self, port):
