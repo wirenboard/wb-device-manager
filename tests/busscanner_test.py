@@ -31,7 +31,7 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
         self.mock_response(
             "fffffffffffffffffd6003fe34359603f6a80000000000000000"
         )
-        ret = await self.scanner.get_next_device_data()
+        ret, _ = await self.scanner.get_next_device_data()
         ret = minimalmodbus._hexencode(ret)
         self.assertEqual(assumed_response, ret)
 
@@ -44,7 +44,7 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
         self.mock_response(
             "fffffffd60" + operation_code + "c9f3000000"
         )
-        ret = await self.scanner.get_next_device_data()
+        ret, _ = await self.scanner.get_next_device_data()
         self.assertIsNone(ret)
 
     async def test_unsupported_operation_code(self):

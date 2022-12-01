@@ -79,16 +79,17 @@ class WBExtendedModbusScanner:
     async def get_next_device_data(self):
         request = self._build_request(cmd_code=self.CMDS.single_scan)
         ret = await self._communicate(request=request)
+        uart_params = self.instrument.serial.SERIAL_SETTINGS
         response = self._parse_response(response_bytestr=ret)
         fcode = ord(response[0])
         hex_response = minimalmodbus._hexencode(response)
 
         if fcode == self.CMDS.single_reply:
             logger.debug("Scanned: %s", str(hex_response))
-            return response[1:]
+            return response[1:], uart_params
         elif fcode == self.CMDS.scan_end:
             logger.debug("Scan finished: %s", str(hex_response))
-            return None
+            return None, uart_params
         else:
             raise minimalmodbus.InvalidResponseError(
                 "Parsed payload {!r} is incorrect: should begin with one of {}".format(
@@ -109,12 +110,12 @@ class WBExtendedModbusScanner:
 
         await self.init_bus_scan()
 
-        sn_slaveid = await self.get_next_device_data()
+        sn_slaveid, uart_params = await self.get_next_device_data()
         while sn_slaveid is not None:
             slaveid, sn = self._parse_device_data(sn_slaveid)
             logger.debug("Got device: %d %d", slaveid, sn)
             yield slaveid, sn, uart_params
-            sn_slaveid = await self.get_next_device_data()
+            sn_slaveid, uart_params = await self.get_next_device_data()
 
 
 class WBAsyncModbus:
