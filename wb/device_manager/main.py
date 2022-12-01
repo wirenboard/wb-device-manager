@@ -83,7 +83,7 @@ class SetEncoder(json.JSONEncoder):
 
 class DeviceManager():
     MQTT_CLIENT_NAME = "wb-device-manager"
-    STATE_PUBLISH_TOPIC = "/rpc/v1/wb-device-manager/bus-scan/state"
+    STATE_PUBLISH_TOPIC = "/wb-device-manager/state"
 
     def __init__(self):
         self._mqtt_connection = mosquitto.Client(self.MQTT_CLIENT_NAME)
@@ -264,8 +264,8 @@ def main(args=argv):
     device_manager = DeviceManager()
 
     callables_mapping = {
-        ("bus-scan", "scan") : device_manager.launch_scan,
-        ("bus-scan", "fwsigs") : device_manager.read_fwsigs  # for testing purpose
+        ("bus-scan", "Scan") : device_manager.launch_scan,
+        ("bus-scan", "Fwsigs") : device_manager.read_fwsigs  # for testing purpose
         }
 
     server = mqtt_rpc.AsyncMQTTServer(
