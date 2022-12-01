@@ -91,7 +91,7 @@ class DeviceManager():
         self._state_publish_queue = asyncio.Queue()
         self._asyncio_loop = asyncio.get_event_loop()
         self._init_state()
-        self.asyncio_loop.create_task(self.publish_state_consume())
+        self.asyncio_loop.create_task(self.publish_state_consume(), name="Publish overall state")
         self.state_correctness_lock = asyncio.Lock()
 
     def _init_state(self):
@@ -154,16 +154,26 @@ class DeviceManager():
         for port in ["/dev/ttyRS485-1", "/dev/ttyRS485-2"]:
             yield port
 
+    async def launch_scan(self):
+        if self.state.scanning:
+            raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
+        else:
+            self.asyncio_loop.create_task(self.scan_serial_bus(), name="Scan serial bus (long running)")
+            return "Ok"
+
     async def scan_serial_bus(self):
         tasks = []
         self._init_state()
         self.state.scanning = True
         async for port in self._get_ports():
             tasks.append(self.scan_serial_port(port))
-        await asyncio.gather(*tasks)
-        self.state.scanning = False
-        self.publish_state_produce()
-        return True
+        try:
+            await asyncio.gather(*tasks)
+        except Exception as e:
+            self.state.error = str(e)
+        finally:
+            self.state.scanning = False
+            await self.publish_state_produce()
 
     async def scan_serial_port(self, port):
 
@@ -254,7 +264,7 @@ def main(args=argv):
     device_manager = DeviceManager()
 
     callables_mapping = {
-        ("bus-scan", "scan") : device_manager.scan_serial_bus,
+        ("bus-scan", "scan") : device_manager.launch_scan,
         ("bus-scan", "fwsigs") : device_manager.read_fwsigs  # for testing purpose
         }
 

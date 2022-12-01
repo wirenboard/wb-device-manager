@@ -11,7 +11,7 @@ import paho.mqtt.client as mosquitto
 from mqttrpc import client as rpcclient
 from mqttrpc.manager import AMQTTRPCResponseManager
 from mqttrpc.protocol import MQTTRPC10Response
-from jsonrpc.exceptions import JSONRPCServerError
+from jsonrpc.exceptions import JSONRPCServerError, JSONRPCDispatchException
 from wb_modbus import minimalmodbus, instruments
 from . import logger, TOPIC_HEADER
 
@@ -101,6 +101,17 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
 class MQTTRPCAlreadyProcessingError(JSONRPCServerError):
     CODE = -33100
     MESSAGE = "Task is already executing."
+
+
+class MQTTRPCAlreadyProcessingException(JSONRPCDispatchException):
+    """
+    Compatible with mqttrpc.TMQTTRPCResponseManager
+    """
+    CODE = -33100
+
+    def __init__(self, code=None, message=None, data=None, *args, **kwargs):
+        self.error = MQTTRPCAlreadyProcessingError(code=code, data=data, message=message)
+        super().__init__(code=self.error.code, message=self.error.message, data=self.error.data)
 
 
 class AsyncMQTTServer:
@@ -205,17 +216,17 @@ class AsyncMQTTServer:
         parts = message.topic.split("/")  # TODO: re?
         service_id, method_id = parts[4], parts[5]
 
-        _now = time.time()
-        ret = await AMQTTRPCResponseManager.handle(  # wraps any exception into json-rpc
-            message.payload,
-            service_id,
-            method_id,
-            self.methods_dispatcher
-            )
-        _done = time.time()
-        logger.info("Processing '%s' took %.2fs", message.topic, _done - _now)
-        self.reply(message, ret.json)
-        self.remove_from_processing(message)
+        try:
+            ret = await AMQTTRPCResponseManager.handle(  # wraps any exception into json-rpc
+                message.payload,
+                service_id,
+                method_id,
+                self.methods_dispatcher
+                )
+
+            self.reply(message, ret.json)
+        finally:
+            self.remove_from_processing(message)
 
     def setup(self):
         self._setup_event_loop()
