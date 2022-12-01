@@ -69,7 +69,13 @@ class DeviceInfo:
 class BusScanState:
     progress: int = 0
     scanning: bool = False
+    error: str = None
     devices: set[DeviceInfo] = field(default_factory=set)
+
+    def update(self, new):
+        for k, v in new.items():
+            if hasattr(self, k):
+                setattr(self, k, v)
 
 
 class SetEncoder(json.JSONEncoder):
@@ -88,11 +94,10 @@ class DeviceManager():
     def __init__(self):
         self._mqtt_connection = mosquitto.Client(self.MQTT_CLIENT_NAME)
         self._rpc_client = mqtt_rpc.SRPCClient(self.mqtt_connection)
-        self._state_publish_queue = asyncio.Queue()
+        self._state_update_queue = asyncio.Queue()
         self._asyncio_loop = asyncio.get_event_loop()
+        self.asyncio_loop.create_task(self.consume_state_update(), name="Build & publish overall state")
         self._init_state()
-        self.asyncio_loop.create_task(self.publish_state_consume(), name="Publish overall state")
-        self.state_correctness_lock = asyncio.Lock()
 
     def _init_state(self):
         self.state = BusScanState()
@@ -106,8 +111,8 @@ class DeviceManager():
         return self._rpc_client
 
     @property
-    def state_publish_queue(self):
-        return self._state_publish_queue
+    def state_update_queue(self):
+        return self._state_update_queue
 
     @property
     def state_publish_topic(self):
@@ -121,13 +126,27 @@ class DeviceManager():
     def state_json(self):
         return json.dumps(asdict(self.state), indent=None, separators=(",", ":"), cls=SetEncoder)  # most compact
 
-    async def publish_state_produce(self):  # TODO: an observer pattern; on_change callbacks
-        await self.state_publish_queue.put(self.state_json)
+    async def produce_state_update(self, event={}):  # TODO: an observer pattern; on_change callbacks
+        await self.state_update_queue.put(event)
 
-    async def publish_state_consume(self):
+    async def consume_state_update(self):
+        """
+        The only func, allowed to change state directly
+        """
         while True:
-            state_json = await self.state_publish_queue.get()
-            self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, state_json, retain=True)
+            event = await self.state_update_queue.get()
+            try:
+                if isinstance(event, DeviceInfo):
+                    self.state.devices.add(event)
+                elif isinstance(event, dict):
+                    self.state.update(event)
+                else:
+                    e = RuntimeError("Got incorrect state-update event: %s", repr(event))
+                    self.state.error = str(e)
+                    self.state.scanning = False
+                    raise e
+            finally:
+                self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json, retain=True)
 
     def _get_mb_connection(self, device_info):
         conn = serial_bus.WBAsyncModbus(
@@ -168,67 +187,74 @@ class DeviceManager():
     async def scan_serial_bus(self):
         tasks = []
         self._init_state()
-        self.state.scanning = True
+        await self.produce_state_update(
+                {
+                    "scanning" : True,
+                    "progress" : 0
+                }
+            )
         async for port in self._get_ports():
             tasks.append(self.scan_serial_port(port))
         try:
             await asyncio.gather(*tasks)
         except Exception as e:
-            self.state.error = str(e)
+            await self.produce_state_update({"error" : str(e)})
         finally:
-            self.state.scanning = False
-            await self.publish_state_produce()
+            await self.produce_state_update(
+                {
+                    "scanning" : False,
+                    "progress" : 0
+                }
+            )
 
     async def scan_serial_port(self, port):
 
         def make_uuid(sn):
             return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
 
+        extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
+
         async for bd, parity, stopbits in self._get_all_uart_params():
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
             logger.info("Scanning (via extended modbus) %s", debug_str)
-            extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
-            async with self.state_correctness_lock:
-                try:
-                    async for slaveid, sn in extended_modbus_scanner.scan_bus(
-                        baudrate=bd,
-                        parity=parity,
-                        stopbits=stopbits
-                    ):
-                        device_info = DeviceInfo(
-                            uuid=make_uuid(sn),
-                            title="Scanned device",
-                            sn=str(sn),
-                            last_seen=int(time.time()),
-                            online=True,
-                            port=Port(path=port),
-                            cfg=SerialParams(
-                                slave_id=slaveid,
-                                baud_rate=bd,
-                                parity=parity,
-                                stop_bits=stopbits
-                            )
+            try:
+                async for slaveid, sn, uart_params in extended_modbus_scanner.scan_bus(
+                    baudrate=bd,
+                    parity=parity,
+                    stopbits=stopbits
+                ):
+                    device_info = DeviceInfo(
+                        uuid=make_uuid(sn),
+                        title="Scanned device",
+                        sn=str(sn),
+                        last_seen=int(time.time()),
+                        online=True,
+                        port=Port(path=port),
+                        cfg=SerialParams(
+                            slave_id=slaveid,
+                            baud_rate=uart_params["baudrate"],
+                            parity=uart_params["parity"],
+                            stop_bits=uart_params["stopbits"]
                         )
+                    )
 
-                        mb_conn = self._get_mb_connection(device_info)
+                    mb_conn = self._get_mb_connection(device_info)
 
-                        try:
-                            device_info.fw_signature = await mb_conn.read_string(first_addr=290, regs_length=12)
-                            device_info.device_signature = await mb_conn.read_string(first_addr=200, regs_length=6)
-                            await self._fill_fw_info(device_info)
-                        except minimalmodbus.ModbusException as e:
-                            logger.exception("Treating device as offline")
-                            device_info.online = False
-                            device_info.error = str(e)
+                    try:
+                        device_info.fw_signature = await mb_conn.read_string(first_addr=290, regs_length=12)
+                        device_info.device_signature = await mb_conn.read_string(first_addr=200, regs_length=6)
+                        await self._fill_fw_info(device_info)
+                    except minimalmodbus.ModbusException as e:
+                        logger.exception("Treating device %s as offline", str(device_info))
+                        device_info.online = False
+                        device_info.error = str(e)
+                    finally:
+                        await self.produce_state_update(device_info)
 
-                        self.state.devices.add(device_info)
-                        await self.publish_state_produce()
-                except minimalmodbus.NoResponseError:
+            except minimalmodbus.NoResponseError:
                     logger.debug("No extended-modbus devices on %s", debug_str)
-            self.state.progress += 1
-            await self.publish_state_produce()
+            await self.produce_state_update({"progress" : self.state.progress + 1})
             #TODO: check all slaveids via ordinary modbus
-        return True
 
     async def _all_devices(self):
         for device in self.state.devices:

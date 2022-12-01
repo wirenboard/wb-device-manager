@@ -113,7 +113,7 @@ class WBExtendedModbusScanner:
         while sn_slaveid is not None:
             slaveid, sn = self._parse_device_data(sn_slaveid)
             logger.debug("Got device: %d %d", slaveid, sn)
-            yield slaveid, sn
+            yield slaveid, sn, uart_params
             sn_slaveid = await self.get_next_device_data()
 
 
