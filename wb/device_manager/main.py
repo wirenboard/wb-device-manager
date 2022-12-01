@@ -110,6 +110,10 @@ class DeviceManager():
         return self._state_publish_queue
 
     @property
+    def state_publish_topic(self):
+        return self.STATE_PUBLISH_TOPIC
+
+    @property
     def asyncio_loop(self):
         return self._asyncio_loop
 
@@ -272,6 +276,7 @@ def main(args=argv):
         methods_dispatcher=Dispatcher(callables_mapping),
         mqtt_connection=device_manager.mqtt_connection,
         rpc_client=device_manager.rpc_client,
+        additional_topics_to_clear=[device_manager.state_publish_topic, ],
         asyncio_loop=device_manager.asyncio_loop
     )
 

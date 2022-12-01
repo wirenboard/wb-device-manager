@@ -118,13 +118,14 @@ class AsyncMQTTServer:
     _NOW_PROCESSING = []
     _EXITCODE = 0
 
-    def __init__(self, methods_dispatcher, mqtt_connection, rpc_client,
+    def __init__(self, methods_dispatcher, mqtt_connection, rpc_client, additional_topics_to_clear=[],
             asyncio_loop=asyncio.get_event_loop(), mqtt_hostport_str="127.0.0.1:1883"):
         self.methods_dispatcher = methods_dispatcher
         self.mqtt_connection = mqtt_connection
         self.rpc_client = rpc_client
         self.asyncio_loop = asyncio_loop
         self.mqtt_hostport_str = mqtt_hostport_str
+        self.additional_topics_to_clear = additional_topics_to_clear
 
     @property
     def now_processing(self):
@@ -135,9 +136,17 @@ class AsyncMQTTServer:
         host, port = self.mqtt_hostport_str.split(":", 1)
         return host or default_host, int(port or default_port, 0)
 
+    def _delete_retained(self):
+        to_clear = [get_topic_path(service, method) for service, method in self.methods_dispatcher.keys()]
+        to_clear.extend(self.additional_topics_to_clear)
+        for topic in to_clear:
+            logger.debug("Delete retained from: %s", topic)
+            self.mqtt_connection.publish(topic, payload=None, retain=True)
+
     def _close_mqtt_connection(self):
-        self.mqtt_connection.loop_stop()
+        self._delete_retained()
         self.mqtt_connection.disconnect()
+        self.mqtt_connection.loop_stop()
         logger.info("Mqtt: close %s", self.mqtt_hostport_str)
 
     def _setup_event_loop(self):
