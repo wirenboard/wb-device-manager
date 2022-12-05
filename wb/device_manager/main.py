@@ -241,11 +241,13 @@ class DeviceManager():
                         )
                     )
 
-                    mb_conn = self._get_mb_connection(device_info)
-
                     try:
-                        device_info.fw_signature = await mb_conn.read_string(first_addr=290, regs_length=12)
-                        device_info.device_signature = await mb_conn.read_string(first_addr=200, regs_length=6)
+                        device_info.fw_signature = await self._get_mb_connection(device_info).read_string(
+                            first_addr=290, regs_length=12
+                            )
+                        device_info.device_signature = await self._get_mb_connection(device_info).read_string(
+                            first_addr=200, regs_length=6
+                            )
                         await self._fill_fw_info(device_info)
                     except minimalmodbus.ModbusException as e:
                         logger.exception("Treating device %s as offline", str(device_info))
