@@ -189,6 +189,7 @@ class DeviceManager():
         self._init_state()
         await self.produce_state_update(
                 {
+                    "devices" : set(),  # TODO: unit test?
                     "scanning" : True,
                     "progress" : 0
                 }

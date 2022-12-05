@@ -141,7 +141,8 @@ class AsyncMQTTServer:
         to_clear.extend(self.additional_topics_to_clear)
         for topic in to_clear:
             logger.debug("Delete retained from: %s", topic)
-            self.mqtt_connection.publish(topic, payload=None, retain=True)
+            m_info = self.mqtt_connection.publish(topic, payload=None, retain=True)
+            m_info.wait_for_publish()
 
     def _close_mqtt_connection(self):
         self._delete_retained()
