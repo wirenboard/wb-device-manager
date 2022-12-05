@@ -50,9 +50,17 @@ class SRPCClient(rpcclient.TMQTTRPCClient):
             params,
             result_future=RPCResultFuture
             )
-        response = await asyncio.wait_for(response_f, timeout)
-        logger.debug("RPC Client <- %s", response)
-        return response
+        try:
+            response = await asyncio.wait_for(response_f, timeout)
+            logger.debug("RPC Client <- %s", response)
+            return response
+        except asyncio.exceptions.TimeoutError as e:
+            raise MQTTRPCInternalServerError(
+                message="No response to rpc (%s %s %s): server not answered during %.2fs" % (
+                    driver, service, method, timeout
+                ),
+                data="rpc call params: %s" % str(params)
+                )
 
 
 class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
@@ -91,11 +99,24 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
                 params=rpc_request,
                 timeout=rpc_call_timeout
                 )
+
         except rpcclient.MQTTRPCError as e:
-            reraise_err = minimalmodbus.NoResponseError if e.code == self.RPC_ERR_STATES["REQUEST_HANDLING"] else rpcclient.MQTTRPCError
+            reraise_err = minimalmodbus.NoResponseError(
+                "RPC: no response with %.2fs timeout: server returned code %d; rpc call: %s" % (
+                    rpc_call_timeout, e.code, str(rpc_request)
+                    )
+                ) if e.code == self.RPC_ERR_STATES["REQUEST_HANDLING"] else e  # TODO: wb-mqtt-serial should return TimeoutError
             raise reraise_err from e
+
         else:
             return minimalmodbus._hexdecode(str(response.get("response", "")))
+
+
+class MQTTRPCInternalServerError(rpcclient.MQTTRPCError):
+    CODE = -33000
+
+    def __init__(self, message, code=None, data=""):
+        super().__init__(message, code or self.CODE, data)
 
 
 class MQTTRPCAlreadyProcessingError(JSONRPCServerError):
