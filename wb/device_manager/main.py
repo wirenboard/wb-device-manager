@@ -170,9 +170,13 @@ class DeviceManager():
             yield bd, parity, stopbit
 
     async def _get_ports(self):
-        #TODO: rpc call to wb-mqtt-serial
-        for port in ["/dev/ttyRS485-1", "/dev/ttyRS485-2"]:
-            yield port
+        response = await self.rpc_client.make_rpc_call(
+            driver="wb-mqtt-serial",
+            service="ports",
+            method="Load",
+            params={}
+            )
+        return [port["path"] for port in response]  # TODO: use serial_params from response?
 
     async def launch_scan(self):
         if self.state.scanning:
@@ -191,9 +195,10 @@ class DeviceManager():
                     "progress" : 0
                 }
             )
-        async for port in self._get_ports():
-            tasks.append(self.scan_serial_port(port))
         try:
+            ports = await self._get_ports()
+            for port in ports:
+                tasks.append(self.scan_serial_port(port))
             await asyncio.gather(*tasks)
         except Exception as e:
             await self.produce_state_update({"error" : str(e)})
