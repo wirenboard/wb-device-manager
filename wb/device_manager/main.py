@@ -164,13 +164,10 @@ class DeviceManager():
         device_info.fw.version = await mb_conn.read_string(first_addr=250, regs_length=16)
         #TODO: fill available version from fw-releases
 
-    async def _get_all_uart_params(self):
-        for bd, parity, stopbits in product(
-            ALLOWED_BAUDRATES,
-            ALLOWED_PARITIES,
-            ALLOWED_STOPBITS
-        ):
-            yield bd, parity, stopbits
+    async def _get_all_uart_params(self, bds=ALLOWED_BAUDRATES, parities=ALLOWED_PARITIES.keys(),
+        stopbits=ALLOWED_STOPBITS):
+        for bd, parity, stopbit in product(bds, parities, stopbits):
+            yield bd, parity, stopbit
 
     async def _get_ports(self):
         #TODO: rpc call to wb-mqtt-serial
@@ -215,7 +212,7 @@ class DeviceManager():
 
         extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
 
-        async for bd, parity, stopbits in self._get_all_uart_params():
+        async for bd, parity, stopbits in self._get_all_uart_params(stopbits=[1,]):
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
             logger.info("Scanning (via extended modbus) %s", debug_str)
             try:
