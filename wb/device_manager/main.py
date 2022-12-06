@@ -221,7 +221,7 @@ class DeviceManager():
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
             logger.info("Scanning (via extended modbus) %s", debug_str)
             try:
-                async for slaveid, sn, uart_params in extended_modbus_scanner.scan_bus(
+                async for slaveid, sn in extended_modbus_scanner.scan_bus(
                     baudrate=bd,
                     parity=parity,
                     stopbits=stopbits
@@ -235,9 +235,9 @@ class DeviceManager():
                         port=Port(path=port),
                         cfg=SerialParams(
                             slave_id=slaveid,
-                            baud_rate=uart_params["baudrate"],
-                            parity=uart_params["parity"],
-                            stop_bits=uart_params["stopbits"]
+                            baud_rate=bd,
+                            parity=parity,
+                            stop_bits=stopbits
                         )
                     )
 

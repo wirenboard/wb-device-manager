@@ -57,7 +57,16 @@ class WBExtendedModbusScanner:
     def _get_arbitration_timeout(self, bd):
         return minimalmodbus._calculate_minimum_silent_period(bd)
 
-    async def _communicate(self, request):
+    async def _communicate(
+        self,
+        request,
+        uart_params={
+            "baudrate" : 9600,
+            "parity" : "N",
+            "stopbits" : 1
+        }
+        ):
+        self.instrument.serial.apply_settings(uart_params)
         number_of_bytes_to_read = 1000  # we need relatively huge one
         ret = await self.instrument._communicate(
             request=request,
@@ -71,20 +80,19 @@ class WBExtendedModbusScanner:
         ret = ret.strip("0")  # TODO: needs fixup in wb-mqtt-serial
         return minimalmodbus._hexdecode(ret)
 
-    async def get_next_device_data(self, cmd_code):
+    async def get_next_device_data(self, cmd_code, uart_params):
         request = self._build_request(cmd_code)
-        ret = await self._communicate(request=request)
-        uart_params = self.instrument.serial.SERIAL_SETTINGS
+        ret = await self._communicate(request=request, uart_params=uart_params)
         response = self._parse_response(response_bytestr=ret)
         fcode = ord(response[0])
         hex_response = minimalmodbus._hexencode(response)
 
         if fcode == self.CMDS.single_reply:
             logger.debug("Scanned: %s", str(hex_response))
-            return response[1:], uart_params
+            return response[1:]
         elif fcode == self.CMDS.scan_end:
             logger.debug("Scan finished: %s", str(hex_response))
-            return None, uart_params
+            return None
         else:
             raise minimalmodbus.InvalidResponseError(
                 "Parsed payload {!r} is incorrect: should begin with one of {}".format(
@@ -100,16 +108,15 @@ class WBExtendedModbusScanner:
         }
 
         response_timeout = self._get_arbitration_timeout(baudrate)
-        logger.debug("Scanning %s %s response timeout: %.2f", self.port, str(uart_params), response_timeout)
-        self.instrument.serial.apply_settings(uart_params)
         self.instrument.serial.timeout = response_timeout
+        logger.debug("Scanning %s %s response timeout: %.2f", self.port, str(uart_params), response_timeout)
 
-        sn_slaveid, uart_params = await self.get_next_device_data(cmd_code=self.CMDS.scan_init)
+        sn_slaveid = await self.get_next_device_data(cmd_code=self.CMDS.scan_init, uart_params=uart_params)
         while sn_slaveid is not None:
             slaveid, sn = self._parse_device_data(sn_slaveid)
             logger.debug("Got device: %d %d", slaveid, sn)
-            yield slaveid, sn, uart_params
-            sn_slaveid, uart_params = await self.get_next_device_data(cmd_code=self.CMDS.single_scan)
+            yield slaveid, sn
+            sn_slaveid = await self.get_next_device_data(cmd_code=self.CMDS.single_scan, uart_params=uart_params)
 
 
 class WBAsyncModbus:
