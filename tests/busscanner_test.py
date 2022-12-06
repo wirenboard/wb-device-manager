@@ -26,25 +26,36 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
         ret = minimalmodbus._hexdecode(response_hex_str)
         cls.scanner.instrument._communicate = AsyncMock(return_value=ret)  # we have no actual serial devices
 
+    def test_arbitration_timeout_calculation(self):
+        timeouts = {  # TODO: get rid of minimalmodbus
+            1200 : minimalmodbus._calculate_minimum_silent_period(1200),
+            2400 : minimalmodbus._calculate_minimum_silent_period(2400),
+            4800 : minimalmodbus._calculate_minimum_silent_period(4800),
+            9600 : minimalmodbus._calculate_minimum_silent_period(9600),
+            19200 : minimalmodbus._calculate_minimum_silent_period(19200),
+            38400 : minimalmodbus._calculate_minimum_silent_period(38400),
+            57600 : minimalmodbus._calculate_minimum_silent_period(57600),
+            115200 : minimalmodbus._calculate_minimum_silent_period(115200),
+        }
+
+        for bd, assumed_timeout in timeouts.items():
+            self.assertEqual(self.scanner._get_arbitration_timeout(bd), assumed_timeout)
+
     async def test_correct_response(self):
         assumed_response = "FE34359603"
         self.mock_response(
             "fffffffffffffffffd6003fe34359603f6a80000000000000000"
         )
-        ret, _ = await self.scanner.get_next_device_data()
+        ret, _ = await self.scanner.get_next_device_data(cmd_code=self.scanner.CMDS.single_scan)
         ret = minimalmodbus._hexencode(ret)
         self.assertEqual(assumed_response, ret)
-
-    async def test_correct_scan_init(self):
-        self.mock_response("")  # No answer to broadcast scan-init cmd
-        await self.scanner.init_bus_scan()
 
     async def test_correct_scan_end(self):
         operation_code = "04"
         self.mock_response(
             "fffffffd60" + operation_code + "c9f3000000"
         )
-        ret, _ = await self.scanner.get_next_device_data()
+        ret, _ = await self.scanner.get_next_device_data(cmd_code=self.scanner.CMDS.single_scan)
         self.assertIsNone(ret)
 
     async def test_unsupported_operation_code(self):
@@ -53,12 +64,12 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
             "fffffffffffffffffd60" + unsupported_code + "fe34359603f6a80000000000000000"
         )
         with self.assertRaises(minimalmodbus.InvalidResponseError):
-            await self.scanner.get_next_device_data()
+            await self.scanner.get_next_device_data(self.scanner.CMDS.single_scan)
 
     async def test_empty_answer(self):
         self.mock_response("")  # TODO: empty rpc-answer means no support in wb-mqtt-serial; maybe custom error?
         with self.assertRaises(minimalmodbus.InvalidResponseError):
-            await self.scanner.get_next_device_data()
+            await self.scanner.get_next_device_data(self.scanner.CMDS.single_scan)
 
     async def test_corrupted_answer(self):
         incorrect_crc = "ffff"
@@ -66,4 +77,4 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
             "fffffffffd6003fe34359603" + incorrect_crc + "00000000"
         )
         with self.assertRaises(minimalmodbus.InvalidResponseError):
-            await self.scanner.get_next_device_data()
+            await self.scanner.get_next_device_data(self.scanner.CMDS.single_scan)
