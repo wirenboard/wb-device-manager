@@ -105,7 +105,7 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
                 "RPC: no response with %.2fs timeout: server returned code %d; rpc call: %s" % (
                     rpc_call_timeout, e.code, str(rpc_request)
                     )
-                ) if e.code == self.RPC_ERR_STATES["REQUEST_HANDLING"] else e  # TODO: wb-mqtt-serial should return TimeoutError
+                ) if "request timed out" in e.data else e  # TODO: fix rpc errcodes in wb-mqtt-serial
             raise reraise_err from e
 
         else:
