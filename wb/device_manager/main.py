@@ -6,10 +6,12 @@ import uuid
 import time
 import logging
 import asyncio
+import copy
 import paho.mqtt.client as mosquitto
 from sys import argv, stdout, stderr
 from argparse import ArgumentParser
-from itertools import product
+from itertools import product, count
+from collections import deque
 from dataclasses import dataclass, asdict, field, is_dataclass
 from mqttrpc import Dispatcher
 from wb_modbus import minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, logger as mb_logger
@@ -18,6 +20,13 @@ from . import logger, serial_bus, mqtt_rpc
 
 EXIT_INVALIDARGUMENT = 2
 EXIT_UNKNOWN = 4
+
+
+def count_any_iterable(iterable):
+    it = copy.deepcopy(iterable)
+    counter = count()
+    deque(zip(it, counter), maxlen=0)
+    return next(counter)
 
 
 @dataclass
@@ -166,8 +175,10 @@ class DeviceManager():
 
     async def _get_all_uart_params(self, bds=ALLOWED_BAUDRATES, parities=ALLOWED_PARITIES.keys(),
         stopbits=ALLOWED_STOPBITS):
-        for bd, parity, stopbit in product(bds, parities, stopbits):
-            yield bd, parity, stopbit
+        iterable = product(bds, parities, stopbits)
+        len_iterable = count_any_iterable(iterable)
+        for pos, (bd, parity, stopbit) in enumerate(iterable):
+            yield bd, parity, stopbit, int(pos / len_iterable * 100)
 
     async def _get_ports(self):
         response = await self.rpc_client.make_rpc_call(
@@ -200,6 +211,12 @@ class DeviceManager():
             for port in ports:
                 tasks.append(self.scan_serial_port(port))
             await asyncio.gather(*tasks)
+            await self.produce_state_update(
+                {
+                    "scanning" : False,
+                    "progress" : 100
+                }
+            )
         except Exception as e:
             await self.produce_state_update({"error" : str(e)})
         finally:
@@ -217,7 +234,7 @@ class DeviceManager():
 
         extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
 
-        async for bd, parity, stopbits in self._get_all_uart_params(stopbits=[1,]):
+        async for bd, parity, stopbits, progress_precent in self._get_all_uart_params(stopbits=[1,]):
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
             logger.info("Scanning (via extended modbus) %s", debug_str)
             try:
@@ -258,7 +275,8 @@ class DeviceManager():
 
             except minimalmodbus.NoResponseError:
                     logger.debug("No extended-modbus devices on %s", debug_str)
-            await self.produce_state_update({"progress" : self.state.progress + 1})
+            if progress_precent > self.state.progress:
+                await self.produce_state_update({"progress" : progress_precent})
             #TODO: check all slaveids via ordinary modbus
 
     async def _all_devices(self):
