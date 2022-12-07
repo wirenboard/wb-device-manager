@@ -245,7 +245,6 @@ class DeviceManager():
                 ):
                     device_info = DeviceInfo(
                         uuid=make_uuid(sn),
-                        title="Scanned device",
                         sn=str(sn),
                         last_seen=int(time.time()),
                         online=True,
@@ -259,6 +258,9 @@ class DeviceManager():
                     )
 
                     try:
+                        device_info.title = await self._get_mb_connection(device_info).read_string(
+                            first_addr=200, regs_length=6
+                            )
                         device_info.fw_signature = await self._get_mb_connection(device_info).read_string(
                             first_addr=290, regs_length=12
                             )
