@@ -68,11 +68,20 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
     Generic minimalmodbus instrument's logic with mqtt-rpc to wb-mqtt-serial as transport
     (instead of pyserial)
     """
+    _WB_DEVICES_RESPONSE_TIME = 8E-3  # wb devices with old fws
 
     def __init__(self, port, slaveaddress, rpc_client, **kwargs):
         super().__init__(port, slaveaddress, **kwargs)
         self.rpc_client = rpc_client
-        self.serial.timeout = kwargs.get("response_timeout", 0.5)
+        self.serial.timeout = kwargs.get("response_timeout", self._calculate_default_response_timeout())
+
+    def _calculate_default_response_timeout(self):
+        """
+        response_timeout (on mb_master side): roundtrip + device_processing + uart_processing
+        """
+        onebyte_on_1200bd = 10E-3
+        linux_uart_processing = 50E-3  # with huge upper reserve
+        return self._WB_DEVICES_RESPONSE_TIME + onebyte_on_1200bd + linux_uart_processing
 
     async def _communicate(self, request, number_of_bytes_to_read):
         minimalmodbus._check_string(request, minlength=1, description="request")
