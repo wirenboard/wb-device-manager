@@ -19,7 +19,7 @@ from . import logger, serial_bus, mqtt_rpc
 
 
 EXIT_INVALIDARGUMENT = 2
-EXIT_UNKNOWN = 4
+EXIT_FAILURE = 1
 
 
 def count_any_iterable(iterable):
@@ -335,7 +335,7 @@ def main(args=argv):
     try:
         server.setup()
     except Exception:
-        ec = EXIT_UNKNOWN
+        ec = EXIT_FAILURE
         logger.exception("Exiting with %d", ec)
         return ec
     return server.run()
