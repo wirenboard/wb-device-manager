@@ -68,7 +68,6 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
     Generic minimalmodbus instrument's logic with mqtt-rpc to wb-mqtt-serial as transport
     (instead of pyserial)
     """
-    _WB_DEVICES_RESPONSE_TIME = 8E-3  # wb devices with old fws
 
     def __init__(self, port, slaveaddress, rpc_client, **kwargs):
         super().__init__(port, slaveaddress, **kwargs)
@@ -79,9 +78,10 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
         """
         response_timeout (on mb_master side): roundtrip + device_processing + uart_processing
         """
-        onebyte_on_1200bd = 10E-3
-        linux_uart_processing = 50E-3  # with huge upper reserve
-        return self._WB_DEVICES_RESPONSE_TIME + onebyte_on_1200bd + linux_uart_processing
+        wb_devices_response_time_s = 8E-3  # devices with old fws
+        onebyte_on_1200bd_s = 10E-3
+        linux_uart_processing_s = 50E-3  # with huge upper reserve
+        return wb_devices_response_time_s + onebyte_on_1200bd_s + linux_uart_processing_s
 
     async def _communicate(self, request, number_of_bytes_to_read):
         minimalmodbus._check_string(request, minlength=1, description="request")
@@ -93,7 +93,6 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
             - depends on wb-mqtt-serial's poll scheduler => overall val is relatively huge
         """
         rpc_call_timeout = 10
-        overall_serial_rpccall_processing = rpc_call_timeout - 1.0  # network roundtrip
 
         rpc_request = {
             "response_size": number_of_bytes_to_read,
@@ -105,7 +104,7 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
             "parity" : self.serial.SERIAL_SETTINGS["parity"],
             "stop_bits" : self.serial.SERIAL_SETTINGS["stopbits"],
             "data_bits" : 8,
-            "total_timeout": round(overall_serial_rpccall_processing * 1000),
+            "total_timeout": round(rpc_call_timeout * 1000),
         }
 
         try:
@@ -198,11 +197,8 @@ class AsyncMQTTServer:
     def _setup_mqtt_connection(self):
         host, port = self._parse_mqtt_addr()
         self.mqtt_connection.on_connect = self._on_mqtt_connect
-        logger.debug("Bind on_connect callback to %s", self.mqtt_hostport_str)
         self.mqtt_connection.on_disconnect = self._on_mqtt_disconnect
-        logger.debug("Bind on_disconnect callback to %s", self.mqtt_hostport_str)
         self.mqtt_connection.on_message = self._on_mqtt_message
-        logger.debug("Bind on_message callback to %s", self.mqtt_hostport_str)
 
         try:
             self.mqtt_connection.connect(host, port)
