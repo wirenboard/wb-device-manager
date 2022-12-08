@@ -22,13 +22,6 @@ EXIT_INVALIDARGUMENT = 2
 EXIT_FAILURE = 1
 
 
-def count_any_iterable(iterable):
-    it = copy.deepcopy(iterable)
-    counter = count()
-    deque(zip(it, counter), maxlen=0)
-    return next(counter)
-
-
 @dataclass
 class Port:
     path: str = None
@@ -173,10 +166,10 @@ class DeviceManager():
         device_info.fw.version = await mb_conn.read_string(first_addr=250, regs_length=16)
         #TODO: fill available version from fw-releases
 
-    async def _get_all_uart_params(self, bds=ALLOWED_BAUDRATES, parities=ALLOWED_PARITIES.keys(),
+    def _get_all_uart_params(self, bds=ALLOWED_BAUDRATES, parities=ALLOWED_PARITIES.keys(),
         stopbits=ALLOWED_STOPBITS):
         iterable = product(bds, parities, stopbits)
-        len_iterable = count_any_iterable(iterable)
+        len_iterable = len(bds) * len(parities) * len(stopbits)
         for pos, (bd, parity, stopbit) in enumerate(iterable):
             yield bd, parity, stopbit, int(pos / len_iterable * 100)
 
@@ -188,10 +181,10 @@ class DeviceManager():
             params={},
             timeout=1.0  # rpc call goes around scheduler queue => relatively small
             )
-        return [port["path"] for port in response]  # TODO: use serial_params from response?
+        return [port["path"] for port in response]
 
     async def launch_scan(self):
-        if self.state.scanning:
+        if self.state.scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         else:
             self.asyncio_loop.create_task(self.scan_serial_bus(), name="Scan serial bus (long running)")
@@ -235,7 +228,7 @@ class DeviceManager():
 
         extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
 
-        async for bd, parity, stopbits, progress_precent in self._get_all_uart_params(stopbits=[1,]):
+        for bd, parity, stopbits, progress_precent in self._get_all_uart_params(stopbits=[1,]):
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
             logger.info("Scanning (via extended modbus) %s", debug_str)
             try:
@@ -282,18 +275,6 @@ class DeviceManager():
                 await self.produce_state_update({"progress" : progress_precent})
             #TODO: check all slaveids via ordinary modbus
 
-    async def _all_devices(self):
-        for device in self.state.devices:
-            yield device
-
-    async def read_fwsigs(self):  # For testing purpose
-        fwsigs = []
-        async for device in self._all_devices():
-            mb_conn = self._get_mb_connection(device)
-            ret = await mb_conn.read_string(290, 12)
-            fwsigs.append(ret)
-        return fwsigs
-
 
 class RetcodeArgParser(ArgumentParser):
     def error(self, message):
@@ -319,13 +300,12 @@ def main(args=argv):
 
     device_manager = DeviceManager()
 
-    callables_mapping = {
-        ("bus-scan", "Scan") : device_manager.launch_scan,
-        ("bus-scan", "Fwsigs") : device_manager.read_fwsigs  # for testing purpose
+    async_callables_mapping = {
+        ("bus-scan", "Scan") : device_manager.launch_scan
         }
 
     server = mqtt_rpc.AsyncMQTTServer(
-        methods_dispatcher=Dispatcher(callables_mapping),
+        methods_dispatcher=Dispatcher(async_callables_mapping),
         mqtt_connection=device_manager.mqtt_connection,
         rpc_client=device_manager.rpc_client,
         additional_topics_to_clear=[device_manager.state_publish_topic, ],
