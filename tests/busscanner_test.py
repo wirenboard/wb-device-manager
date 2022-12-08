@@ -72,7 +72,7 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
             await self.scanner.get_next_device_data(self.scanner.CMDS.single_scan, uart_params=self.uart_params)
 
     async def test_empty_answer(self):
-        self.mock_response("")  # TODO: empty rpc-answer means no support in wb-mqtt-serial; maybe custom error?
+        self.mock_response("")
         with self.assertRaises(minimalmodbus.InvalidResponseError):
             await self.scanner.get_next_device_data(self.scanner.CMDS.single_scan, uart_params=self.uart_params)
 
