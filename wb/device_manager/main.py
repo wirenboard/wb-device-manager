@@ -185,7 +185,8 @@ class DeviceManager():
             driver="wb-mqtt-serial",
             service="ports",
             method="Load",
-            params={}
+            params={},
+            timeout=1.0  # rpc call goes around scheduler queue => relatively small
             )
         return [port["path"] for port in response]  # TODO: use serial_params from response?
 

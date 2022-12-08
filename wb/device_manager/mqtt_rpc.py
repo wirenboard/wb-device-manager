@@ -41,7 +41,7 @@ class SRPCClient(rpcclient.TMQTTRPCClient):
     """
     Stores internal future-like objs (with rpc-call result), filled from outer on_mqtt_message callback
     """
-    async def make_rpc_call(self, driver, service, method, params, timeout=10):
+    async def make_rpc_call(self, driver, service, method, params, timeout):
         logger.debug("RPC Client -> %s (rpc timeout: %.2fs)", params, timeout)
         response_f = self.call_async(
             driver,
@@ -87,6 +87,14 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
         minimalmodbus._check_string(request, minlength=1, description="request")
         minimalmodbus._check_int(number_of_bytes_to_read)
 
+        """
+        overall rpc-request action timeout:
+            - device is supposed to be alive (small modbus response_timeout inside)
+            - depends on wb-mqtt-serial's poll scheduler => overall val is relatively huge
+        """
+        rpc_call_timeout = 10
+        overall_serial_rpccall_processing = rpc_call_timeout - 1.0  # network roundtrip
+
         rpc_request = {
             "response_size": number_of_bytes_to_read,
             "format": "HEX",
@@ -97,9 +105,9 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
             "parity" : self.serial.SERIAL_SETTINGS["parity"],
             "stop_bits" : self.serial.SERIAL_SETTINGS["stopbits"],
             "data_bits" : 8,
+            "total_timeout": round(overall_serial_rpccall_processing * 1000),
         }
 
-        rpc_call_timeout = 10
         try:
             response = await self.rpc_client.make_rpc_call(
                 driver="wb-mqtt-serial",
