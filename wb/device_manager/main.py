@@ -10,8 +10,7 @@ import copy
 import paho.mqtt.client as mosquitto
 from sys import argv, stdout, stderr
 from argparse import ArgumentParser
-from itertools import product, count
-from collections import deque
+from itertools import product
 from dataclasses import dataclass, asdict, field, is_dataclass
 from mqttrpc import Dispatcher
 from wb_modbus import minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, logger as mb_logger
@@ -99,10 +98,7 @@ class DeviceManager():
         self._state_update_queue = asyncio.Queue()
         self._asyncio_loop = asyncio.get_event_loop()
         self.asyncio_loop.create_task(self.consume_state_update(), name="Build & publish overall state")
-        self._init_state()
-
-    def _init_state(self):
-        self.state = BusScanState()
+        self._is_scanning = False
 
     @property
     def mqtt_connection(self):
@@ -124,9 +120,9 @@ class DeviceManager():
     def asyncio_loop(self):
         return self._asyncio_loop
 
-    @property
-    def state_json(self):
-        return json.dumps(asdict(self.state), indent=None, separators=(",", ":"), cls=SetEncoder)  # most compact
+    @staticmethod
+    def state_json(state_obj):
+        return json.dumps(asdict(state_obj), indent=None, separators=(",", ":"), cls=SetEncoder)  # most compact
 
     async def produce_state_update(self, event={}):  # TODO: an observer pattern; on_change callbacks
         await self.state_update_queue.put(event)
@@ -135,20 +131,25 @@ class DeviceManager():
         """
         The only func, allowed to change state directly
         """
+        state = BusScanState()
         while True:
             event = await self.state_update_queue.get()
             try:
                 if isinstance(event, DeviceInfo):
-                    self.state.devices.add(event)
+                    state.devices.add(event)
                 elif isinstance(event, dict):
-                    self.state.update(event)
+                    progress = event.pop("progress", -1)  # could be filled asynchronously
+                    if (progress == 0) or (progress > state.progress):
+                        state.progress = progress
+                    state.update(event)
                 else:
                     e = RuntimeError("Got incorrect state-update event: %s", repr(event))
-                    self.state.error = str(e)
-                    self.state.scanning = False
+                    state.error = str(e)
+                    state.scanning = False
+                    state.progress = 0
                     raise e
             finally:
-                self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json, retain=True)
+                self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
     def _get_mb_connection(self, device_info):
         conn = serial_bus.WBAsyncModbus(
@@ -170,7 +171,7 @@ class DeviceManager():
         stopbits=ALLOWED_STOPBITS):
         iterable = product(bds, parities, stopbits)
         len_iterable = len(bds) * len(parities) * len(stopbits)
-        for pos, (bd, parity, stopbit) in enumerate(iterable):
+        for pos, (bd, parity, stopbit) in enumerate(iterable, start=1):
             yield bd, parity, stopbit, int(pos / len_iterable * 100)
 
     async def _get_ports(self):
@@ -184,15 +185,15 @@ class DeviceManager():
         return [port["path"] for port in response]
 
     async def launch_scan(self):
-        if self.state.scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
+        if self._is_scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         else:
             self.asyncio_loop.create_task(self.scan_serial_bus(), name="Scan serial bus (long running)")
             return "Ok"
 
     async def scan_serial_bus(self):
+        self._is_scanning = True
         tasks = []
-        self._init_state()
         await self.produce_state_update(
                 {
                     "devices" : set(),  # TODO: unit test?
@@ -220,6 +221,7 @@ class DeviceManager():
                     "progress" : 0
                 }
             )
+            self._is_scanning = False
 
     async def scan_serial_port(self, port):
 
@@ -271,8 +273,7 @@ class DeviceManager():
 
             except minimalmodbus.NoResponseError:
                     logger.debug("No extended-modbus devices on %s", debug_str)
-            if progress_precent > self.state.progress:
-                await self.produce_state_update({"progress" : progress_precent})
+            await self.produce_state_update({"progress" : progress_precent})
             #TODO: check all slaveids via ordinary modbus
 
 
