@@ -3,7 +3,7 @@
 
 import enum
 from binascii import unhexlify
-from wb_modbus import minimalmodbus, instruments
+from wb_modbus import minimalmodbus
 from . import logger, mqtt_rpc
 
 

@@ -6,12 +6,11 @@ import uuid
 import time
 import logging
 import asyncio
-import copy
-import paho.mqtt.client as mosquitto
 from sys import argv, stdout, stderr
 from argparse import ArgumentParser
 from itertools import product
 from dataclasses import dataclass, asdict, field, is_dataclass
+import paho.mqtt.client as mosquitto
 from mqttrpc import Dispatcher
 from wb_modbus import minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, logger as mb_logger
 from . import logger, serial_bus, mqtt_rpc
@@ -272,7 +271,7 @@ class DeviceManager():
                         await self.produce_state_update(device_info)
 
             except minimalmodbus.NoResponseError:
-                    logger.debug("No extended-modbus devices on %s", debug_str)
+                logger.debug("No extended-modbus devices on %s", debug_str)
             await self.produce_state_update({"progress" : progress_precent})
             #TODO: check all slaveids via ordinary modbus
 

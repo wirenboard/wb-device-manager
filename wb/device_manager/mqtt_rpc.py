@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import atexit
-import time
 import signal
 import asyncio
 from pathlib import PurePosixPath
