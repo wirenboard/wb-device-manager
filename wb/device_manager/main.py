@@ -197,7 +197,8 @@ class DeviceManager():
                 {
                     "devices" : set(),  # TODO: unit test?
                     "scanning" : True,
-                    "progress" : 0
+                    "progress" : 0,
+                    "error" : None
                 }
             )
         try:
