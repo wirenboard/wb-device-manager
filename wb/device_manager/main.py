@@ -52,7 +52,7 @@ class DeviceInfo:
     device_signature: str = None
     fw_signature: str = None
     online: bool = False
-    poll: bool = False
+    # poll: bool = False  # TODO:  show, when wb-mqtt-serial get this feature
     last_seen: int = None
     bootloader_mode: bool = False
     error: str = None
