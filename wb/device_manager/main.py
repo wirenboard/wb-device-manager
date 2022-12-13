@@ -215,6 +215,7 @@ class DeviceManager():
                 }
             )
         except Exception as e:
+            logger.exception("Pass error to overall state topic and stop scanning")
             await self.produce_state_update({"error" : str(e)})
         finally:
             await self.produce_state_update(
