@@ -47,13 +47,15 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.scanner._get_arbitration_timeout(bd), assumed_timeout)
 
     async def test_correct_response(self):
-        assumed_response = "FE34359603"
-        self.mock_response(
-            "fffffffffffffffffd6003fe34359603f6a80000000000000000"
-        )
-        ret = await self.scanner.get_next_device_data(cmd_code=self.scanner.CMDS.single_scan, uart_params=self.uart_params)
-        ret = minimalmodbus._hexencode(ret)
-        self.assertEqual(assumed_response, ret)
+        mocks = [
+            ("fffffffffffffffffd6003fe34359603f6a80000000000000000", "FE34359603"),
+            ("fffffffffffffffffd600300019424c7f4610000000000000000", "00019424C7"),
+        ]
+        for (mock, assumed_response) in mocks:
+            self.mock_response(mock)
+            ret = await self.scanner.get_next_device_data(cmd_code=self.scanner.CMDS.single_scan, uart_params=self.uart_params)
+            ret = minimalmodbus._hexencode(ret)
+            self.assertEqual(assumed_response, ret)
 
     async def test_correct_scan_end(self):
         operation_code = "04"
@@ -73,6 +75,11 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
 
     async def test_empty_answer(self):
         self.mock_response("")
+        with self.assertRaises(minimalmodbus.InvalidResponseError):
+            await self.scanner.get_next_device_data(self.scanner.CMDS.single_scan, uart_params=self.uart_params)
+
+    async def test_incorrect_response_extraction(self):
+        self.mock_response("0d6003c9f3000000")
         with self.assertRaises(minimalmodbus.InvalidResponseError):
             await self.scanner.get_next_device_data(self.scanner.CMDS.single_scan, uart_params=self.uart_params)
 

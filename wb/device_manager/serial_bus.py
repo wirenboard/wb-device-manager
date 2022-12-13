@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import re
 import enum
 from binascii import unhexlify
 from wb_modbus import minimalmodbus
@@ -54,6 +55,26 @@ class WBExtendedModbusScanner:
         slaveid = ord(slaveid)  # 1 byte
         return slaveid, sn
 
+    def _extract_response(self, plain_response_str):
+        """
+        Typical plain_response_str looks like: ffffffff<response>00000000
+        """
+        mat = re.match(
+            "^.*(FF)*(?P<header>%X%X)(?P<cmd>[0-9A-F][0-9A-F]).+" % (self.ADDR, self.MODE),
+            plain_response_str
+            )
+        if mat:
+            fcode = int(mat.group("cmd"), 16)
+            response_beginning = mat.span("header")[0]
+            payload_beginning = mat.span("cmd")[-1]
+            sn_slaveid_len, crc_len = 5, 2
+            payload_bytelen = sn_slaveid_len + crc_len if fcode == self.CMDS.single_reply else crc_len
+            return plain_response_str[response_beginning : payload_beginning + payload_bytelen * 2]
+        else:
+            raise minimalmodbus.InvalidResponseError(
+                "Failed to extract correct response! Plain response: %s", plain_response_str
+                )
+
     def _get_arbitration_timeout(self, bd):
         return minimalmodbus._calculate_minimum_silent_period(bd)
 
@@ -74,10 +95,7 @@ class WBExtendedModbusScanner:
         )
 
         ret = minimalmodbus._hexencode(ret)
-
-        while ret.startswith("FF"):  # TODO: we don't know actual beginning of response; maybe search by RE?
-            ret = ret[2:]
-        ret = ret.strip("0")  # TODO: needs fixup in wb-mqtt-serial
+        ret = self._extract_response(ret)
         return minimalmodbus._hexdecode(ret)
 
     async def get_next_device_data(self, cmd_code, uart_params):
