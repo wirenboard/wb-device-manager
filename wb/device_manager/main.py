@@ -131,6 +131,8 @@ class DeviceManager():
         The only func, allowed to change state directly
         """
         state = BusScanState()
+        self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
+
         while True:
             event = await self.state_update_queue.get()
             try:
