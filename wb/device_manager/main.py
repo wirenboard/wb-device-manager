@@ -52,7 +52,7 @@ class DeviceInfo:
     device_signature: str = None
     fw_signature: str = None
     online: bool = False
-    # poll: bool = False  # TODO:  show, when wb-mqtt-serial get this feature
+    poll: bool = False
     last_seen: int = None
     bootloader_mode: bool = False
     error: str = None
@@ -246,6 +246,7 @@ class DeviceManager():
                         sn=str(sn),
                         last_seen=int(time.time()),
                         online=True,
+                        poll=True,  # TODO: support "is_polling" rpc call in wb-mqtt-serial
                         port=Port(path=port),
                         cfg=SerialParams(
                             slave_id=slaveid,
