@@ -219,6 +219,8 @@ class DeviceManager():
             logger.exception("Pass error to overall state topic and stop scanning")
             if isinstance(e, mqtt_rpc.MQTTRPCInternalServerError):
                 err_to_webui = "Check, wb-mqtt-serial is running"
+            elif isinstance(e, minimalmodbus.ModbusException):
+                err_to_webui = "Modbus error, while bus scanning. Check logs and try to rescan again"
             await self.produce_state_update({"error" : err_to_webui})
         finally:
             await self.produce_state_update(
