@@ -215,8 +215,11 @@ class DeviceManager():
                 }
             )
         except Exception as e:
+            err_to_webui = str(e)
             logger.exception("Pass error to overall state topic and stop scanning")
-            await self.produce_state_update({"error" : str(e)})
+            if isinstance(e, mqtt_rpc.MQTTRPCInternalServerError):
+                err_to_webui = "Check, wb-mqtt-serial is running"
+            await self.produce_state_update({"error" : err_to_webui})
         finally:
             await self.produce_state_update(
                 {
@@ -271,7 +274,6 @@ class DeviceManager():
                     except minimalmodbus.ModbusException as e:
                         logger.exception("Treating device %s as offline", str(device_info))
                         device_info.online = False
-                        device_info.error = str(e)
                     finally:
                         await self.produce_state_update(device_info)
 

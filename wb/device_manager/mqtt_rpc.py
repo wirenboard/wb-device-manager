@@ -55,7 +55,7 @@ class SRPCClient(rpcclient.TMQTTRPCClient):
             return response
         except asyncio.exceptions.TimeoutError as e:
             raise MQTTRPCInternalServerError(
-                message="No response to rpc (%s %s %s): server not answered during %.2fs" % (
+                message="rpc call to %s/%s/%s -> %.2fs: no answer" % (
                     driver, service, method, timeout
                 ),
                 data="rpc call params: %s" % str(params)
