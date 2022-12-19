@@ -181,7 +181,7 @@ class DeviceManager():
             service="ports",
             method="Load",
             params={},
-            timeout=1.0  # rpc call goes around scheduler queue => relatively small
+            timeout=1.0  #s; rpc call goes around scheduler queue => relatively small
             )
         return [port["path"] for port in response]
 
