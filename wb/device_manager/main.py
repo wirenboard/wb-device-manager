@@ -5,18 +5,19 @@ import json
 import uuid
 import time
 import logging
+import asyncio
 from sys import argv, stdout, stderr
 from argparse import ArgumentParser
 from itertools import product
 from dataclasses import dataclass, asdict, field, is_dataclass
+import paho.mqtt.client as mosquitto
 from mqttrpc import Dispatcher
-from wb_modbus import instruments, minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, logger as mb_logger
-from wb_modbus.bindings import WBModbusDeviceBase
-from . import logger, serial_bus, mqtt_rpc, shutdown_event
+from wb_modbus import minimalmodbus, ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, logger as mb_logger
+from . import logger, serial_bus, mqtt_rpc
 
 
-EXIT_SUCCESS = 0
 EXIT_INVALIDARGUMENT = 2
+EXIT_FAILURE = 1
 
 
 @dataclass
@@ -68,7 +69,13 @@ class DeviceInfo:
 class BusScanState:
     progress: int = 0
     scanning: bool = False
+    error: str = None
     devices: set[DeviceInfo] = field(default_factory=set)
+
+    def update(self, new):
+        for k, v in new.items():
+            if hasattr(self, k):
+                setattr(self, k, v)
 
 
 class SetEncoder(json.JSONEncoder):
@@ -81,70 +88,171 @@ class SetEncoder(json.JSONEncoder):
 
 
 class DeviceManager():
+    MQTT_CLIENT_NAME = "wb-device-manager"
+    STATE_PUBLISH_TOPIC = "/wb-device-manager/state"
 
-    def __init__(self, state_topic):
-        with mqtt_rpc.MQTTConnManager().get_mqtt_connection() as conn:
-            self.mqtt_connection = conn
-        self.state_topic = state_topic
-        self._init_state()
-
-    def _init_state(self):
-        self.state = BusScanState()
+    def __init__(self):
+        self._mqtt_connection = mosquitto.Client(self.MQTT_CLIENT_NAME)
+        self._rpc_client = mqtt_rpc.SRPCClient(self.mqtt_connection)
+        self._state_update_queue = asyncio.Queue()
+        self._asyncio_loop = asyncio.get_event_loop()
+        self.asyncio_loop.create_task(self.consume_state_update(), name="Build & publish overall state")
+        self._is_scanning = False
 
     @property
-    def state_json(self):
-        return json.dumps(asdict(self.state), indent=None, separators=(",", ":"), cls=SetEncoder)  # most compact
+    def mqtt_connection(self):
+        return self._mqtt_connection
 
-    def publish_state(self):  # TODO: an observer pattern; on_change callbacks
-        self.mqtt_connection.publish(self.state_topic, self.state_json, retain=True)
-        if shutdown_event.is_set():
-            raise Exception("Shutdown event detected")  # TODO: more specified; with rpc-code
+    @property
+    def rpc_client(self):
+        return self._rpc_client
+
+    @property
+    def state_update_queue(self):
+        return self._state_update_queue
+
+    @property
+    def state_publish_topic(self):
+        return self.STATE_PUBLISH_TOPIC
+
+    @property
+    def asyncio_loop(self):
+        return self._asyncio_loop
+
+    @staticmethod
+    def state_json(state_obj):
+        return json.dumps(asdict(state_obj), indent=None, separators=(",", ":"), cls=SetEncoder)  # most compact
+
+    async def produce_state_update(self, event={}):  # TODO: an observer pattern; on_change callbacks
+        await self.state_update_queue.put(event)
+
+    async def consume_state_update(self):
+        """
+        The only func, allowed to change state directly
+        """
+        state = BusScanState()
+        self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
+
+        while True:
+            event = await self.state_update_queue.get()
+            try:
+                if isinstance(event, DeviceInfo):
+                    state.devices.add(event)
+                elif isinstance(event, dict):
+                    progress = event.pop("progress", -1)  # could be filled asynchronously
+                    if (progress == 0) or (progress > state.progress):
+                        state.progress = progress
+                    state.update(event)
+                else:
+                    e = RuntimeError("Got incorrect state-update event: %s", repr(event))
+                    state.error = str(e)
+                    state.scanning = False
+                    state.progress = 0
+                    raise e
+            finally:
+                self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
     def _get_mb_connection(self, device_info):
-        conn = WBModbusDeviceBase(
+        conn = serial_bus.WBAsyncModbus(
             addr=device_info.cfg.slave_id,
             port=device_info.port.path,
             baudrate=device_info.cfg.baud_rate,
             parity=device_info.cfg.parity,
             stopbits=device_info.cfg.stop_bits,
-            response_timeout=0.5,  # TODO: to arg
-            instrument=instruments.SerialRPCBackendInstrument
+            rpc_client=self.rpc_client
         )
         return conn
 
-    def _fill_fw_info(self, device_info):
+    async def _fill_fw_info(self, device_info):
         mb_conn = self._get_mb_connection(device_info)
-        device_info.fw.version = mb_conn.get_fw_version()
+        device_info.fw.version = await mb_conn.read_string(first_addr=250, regs_length=16)
         #TODO: fill available version from fw-releases
 
-    def scan_serial_bus(self, *ports):
+    def _get_all_uart_params(self, bds=ALLOWED_BAUDRATES, parities=ALLOWED_PARITIES.keys(),
+        stopbits=ALLOWED_STOPBITS):
+        iterable = product(bds, parities, stopbits)
+        len_iterable = len(bds) * len(parities) * len(stopbits)
+        for pos, (bd, parity, stopbit) in enumerate(iterable, start=1):
+            yield bd, parity, stopbit, int(pos / len_iterable * 100)
+
+    async def _get_ports(self):
+        response = await self.rpc_client.make_rpc_call(
+            driver="wb-mqtt-serial",
+            service="ports",
+            method="Load",
+            params={},
+            timeout=1.0  #s; rpc call goes around scheduler queue => relatively small
+            )
+        return [port["path"] for port in response]
+
+    async def launch_scan(self):
+        if self._is_scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
+            raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
+        else:
+            self.asyncio_loop.create_task(self.scan_serial_bus(), name="Scan serial bus (long running)")
+            return "Ok"
+
+    async def scan_serial_bus(self):
+        self._is_scanning = True
+        tasks = []
+        await self.produce_state_update(
+                {
+                    "devices" : set(),  # TODO: unit test?
+                    "scanning" : True,
+                    "progress" : 0,
+                    "error" : None
+                }
+            )
+        try:
+            ports = await self._get_ports()
+            for port in ports:
+                tasks.append(self.scan_serial_port(port))
+            await asyncio.gather(*tasks)
+            await self.produce_state_update(
+                {
+                    "scanning" : False,
+                    "progress" : 100
+                }
+            )
+        except Exception as e:
+            err_to_webui = str(e)
+            logger.exception("Pass error to overall state topic and stop scanning")
+            if isinstance(e, mqtt_rpc.MQTTRPCInternalServerError):
+                err_to_webui = "Check, wb-mqtt-serial is running"
+            elif isinstance(e, minimalmodbus.ModbusException):
+                err_to_webui = "Modbus error, while bus scanning. Check logs and try to rescan again"
+            await self.produce_state_update({"error" : err_to_webui})
+        finally:
+            await self.produce_state_update(
+                {
+                    "scanning" : False,
+                    "progress" : 0
+                }
+            )
+            self._is_scanning = False
+
+    async def scan_serial_port(self, port):
 
         def make_uuid(sn):
             return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
 
-        self._init_state()
+        extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
 
-        for port, bd, parity, stopbits in product(
-            ports,
-            ALLOWED_BAUDRATES,
-            ALLOWED_PARITIES,
-            ALLOWED_STOPBITS
-        ):
+        for bd, parity, stopbits, progress_precent in self._get_all_uart_params(stopbits=[1,]):
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
             logger.info("Scanning (via extended modbus) %s", debug_str)
-            extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port)
             try:
-                for slaveid, sn in extended_modbus_scanner.scan_bus(
+                async for slaveid, sn in extended_modbus_scanner.scan_bus(
                     baudrate=bd,
                     parity=parity,
                     stopbits=stopbits
                 ):
                     device_info = DeviceInfo(
                         uuid=make_uuid(sn),
-                        title="Scanned device",
                         sn=str(sn),
                         last_seen=int(time.time()),
                         online=True,
+                        poll=True,  # TODO: support "is_polling" rpc call in wb-mqtt-serial
                         port=Port(path=port),
                         cfg=SerialParams(
                             slave_id=slaveid,
@@ -154,24 +262,27 @@ class DeviceManager():
                         )
                     )
 
-                    mb_conn = self._get_mb_connection(device_info)
-
                     try:
-                        device_info.fw_signature = mb_conn.get_fw_signature()
-                        device_info.device_signature = mb_conn.get_device_signature()
-                        self._fill_fw_info(device_info)
+                        device_info.title = await self._get_mb_connection(device_info).read_string(
+                            first_addr=200, regs_length=6
+                            )
+                        device_info.fw_signature = await self._get_mb_connection(device_info).read_string(
+                            first_addr=290, regs_length=12
+                            )
+                        device_info.device_signature = await self._get_mb_connection(device_info).read_string(
+                            first_addr=200, regs_length=6
+                            )
+                        await self._fill_fw_info(device_info)
                     except minimalmodbus.ModbusException as e:
-                        logger.exception("Treating device as offline")
+                        logger.exception("Treating device %s as offline", str(device_info))
                         device_info.online = False
-                        device_info.error = str(e)
+                    finally:
+                        await self.produce_state_update(device_info)
 
-                    self.state.devices.add(device_info)
             except minimalmodbus.NoResponseError:
                 logger.debug("No extended-modbus devices on %s", debug_str)
-            self.state.progress += 1
-            self.publish_state()
+            await self.produce_state_update({"progress" : progress_precent})
             #TODO: check all slaveids via ordinary modbus
-        return True
 
 
 class RetcodeArgParser(ArgumentParser):
@@ -196,17 +307,24 @@ def main(args=argv):
     for lgr in (logger, mb_logger):
         lgr.addHandler(handler)
 
-    state_topic = mqtt_rpc.get_topic_path("bus_scan", "state")
+    device_manager = DeviceManager()
 
-    callables_mapping = {
-        ("bus_scan", "scan") : lambda: DeviceManager(state_topic).scan_serial_bus(
-                                    "/dev/ttyRS485-1",
-                                    "/dev/ttyRS485-2",
-                                    ),
-        ("bus_scan", "test") : lambda: "Result of short-running task",
+    async_callables_mapping = {
+        ("bus-scan", "Scan") : device_manager.launch_scan
         }
 
-    server = mqtt_rpc.MQTTServer(Dispatcher(callables_mapping))
-    server.setup()
-    server.loop()
-    return EXIT_SUCCESS
+    server = mqtt_rpc.AsyncMQTTServer(
+        methods_dispatcher=Dispatcher(async_callables_mapping),
+        mqtt_connection=device_manager.mqtt_connection,
+        rpc_client=device_manager.rpc_client,
+        additional_topics_to_clear=[device_manager.state_publish_topic, ],
+        asyncio_loop=device_manager.asyncio_loop
+    )
+
+    try:
+        server.setup()
+    except Exception:
+        ec = EXIT_FAILURE
+        logger.exception("Exiting with %d", ec)
+        return ec
+    return server.run()
