@@ -21,7 +21,7 @@ EXIT_FAILURE = 1
 
 
 @dataclass
-class Error:
+class StateError:
     id: str = None
     message: str = None
 
@@ -40,7 +40,7 @@ class SerialParams:
 @dataclass
 class FWUpdate:
     progress: int = 0
-    error: Error = field(default_factory=Error)
+    error: StateError = None
     available_fw: str = None
 
 @dataclass
@@ -60,7 +60,7 @@ class DeviceInfo:
     poll: bool = False
     last_seen: int = None
     bootloader_mode: bool = False
-    error: Error = field(default_factory=Error)
+    error: StateError = None
     cfg: SerialParams = field(default_factory=SerialParams)
     fw: Firmware = field(default_factory=Firmware)
 
@@ -74,7 +74,7 @@ class DeviceInfo:
 class BusScanState:
     progress: int = 0
     scanning: bool = False
-    error: Error = field(default_factory=Error)
+    error: StateError = None
     devices: set[DeviceInfo] = field(default_factory=set)
 
     def update(self, new):
@@ -95,7 +95,7 @@ class SetEncoder(json.JSONEncoder):
 """
 Errors, shown in json-state
 """
-class GenericStateError(Error):
+class GenericStateError(StateError):
     ID = "com.wb.device_manager.generic_error"
     MESSAGE = "Internal error. Check logs for more info"
 
@@ -171,7 +171,7 @@ class DeviceManager():
                     state.update(event)
                 else:
                     e = RuntimeError("Got incorrect state-update event: %s", repr(event))
-                    state.error = Error(message=str(e))
+                    state.error = StateError(message=str(e))
                     state.scanning = False
                     state.progress = 0
                     raise e
@@ -226,7 +226,7 @@ class DeviceManager():
                     "devices" : set(),  # TODO: unit test?
                     "scanning" : True,
                     "progress" : 0,
-                    "error" : Error()
+                    "error" : None
                 }
             )
         try:
@@ -241,7 +241,7 @@ class DeviceManager():
                 }
             )
         except Exception as e:
-            err_to_webui = Error(message=str(e))
+            err_to_webui = StateError(message=str(e))
             logger.exception("Pass error to overall state topic and stop scanning")
             if isinstance(e, mqtt_rpc.MQTTRPCInternalServerError):
                 err_to_webui = RPCCallTimeoutStateError()
