@@ -171,7 +171,7 @@ class DeviceManager():
                     state.update(event)
                 else:
                     e = RuntimeError("Got incorrect state-update event: %s", repr(event))
-                    state.error = StateError(message=str(e))
+                    state.error = GenericStateError()
                     state.scanning = False
                     state.progress = 0
                     raise e
@@ -241,7 +241,7 @@ class DeviceManager():
                 }
             )
         except Exception as e:
-            err_to_webui = StateError(message=str(e))
+            err_to_webui = GenericStateError()
             logger.exception("Pass error to overall state topic and stop scanning")
             if isinstance(e, mqtt_rpc.MQTTRPCInternalServerError):
                 err_to_webui = RPCCallTimeoutStateError()
