@@ -153,8 +153,8 @@ class DeviceManager():
                 self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
     def _get_mb_connection(self, device_info):
-        conn = serial_bus.WBAsyncModbus(
-            addr=device_info.cfg.slave_id,
+        conn = serial_bus.WBAsyncExtendedModbus(
+            sn=int(device_info.sn, 0),
             port=device_info.port.path,
             baudrate=device_info.cfg.baud_rate,
             parity=device_info.cfg.parity,

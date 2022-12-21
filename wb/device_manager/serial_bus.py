@@ -257,9 +257,17 @@ class WBAsyncExtendedModbus(WBAsyncModbus):
     def _build_request(self, funcode, reg, number_of_regs=1):
         actual_payload = minimalmodbus._hexencode(super()._build_request(funcode, reg, number_of_regs))
         stripped_payload = minimalmodbus._hexdecode(actual_payload[2:-4])  # No slaveid and crc
+
+        sn = minimalmodbus._long_to_bytestring(
+            value=self.serial_number,
+            byteorder=minimalmodbus.BYTEORDER_BIG,
+            number_of_registers=2,
+            signed=False
+        )
+
         return self.extended_modbus_wrapper.build_request(
             cmd_code=self.extended_modbus_wrapper.CMDS.standart_send,
-            payloaddata=stripped_payload
+            payloaddata=sn + stripped_payload
         )
 
     def _predict_response_length(self, funcode, payload):
@@ -267,11 +275,9 @@ class WBAsyncExtendedModbus(WBAsyncModbus):
 
     def _parse_response(self, funcode, reg, number_of_regs, response_bytestr, payloadformat):
         pdu_without_crc = self.extended_modbus_wrapper.parse_response(response_bytestr)
-        # pdu_without_crc = pdu_without_crc[6:]  # standart modbus fmt (with 1byte fake slaveid)
-        sn, pdu = pdu_without_crc[:8], pdu_without_crc[8:]
-        fcode, payload = pdu[:2], pdu[2:]
+        sn, pdu = pdu_without_crc[1:5], pdu_without_crc[5:]
+        fcode, payload = pdu[:1], pdu[1:]
 
-        print(minimalmodbus._hexencode(sn), minimalmodbus._hexencode(pdu))
         sn = minimalmodbus._bytestring_to_long(
             bytestring=sn,
             byteorder=minimalmodbus.BYTEORDER_BIG,
@@ -282,7 +288,7 @@ class WBAsyncExtendedModbus(WBAsyncModbus):
         if self.serial_number != sn:
             raise minimalmodbus.InvalidResponseError(
                 "Parsed sn (%d) != assumed (%d). Plain response: %s" % (
-                    sn, self.serial_number, minimalmodbus.hexencode(response_bytestr)
+                    sn, self.serial_number, minimalmodbus._hexencode(response_bytestr)
                     )
                 )
 
