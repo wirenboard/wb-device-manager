@@ -13,6 +13,7 @@ class DummyScanner(serial_bus.WBExtendedModbusScanner):
     def __init__(self, *args, **kwargs):
         self.instrument = AsyncMock()
         self.port = kwargs.get("port", "/dev/dummyport")
+        self.extended_modbus_wrapper = serial_bus.WBExtendedModbusWrapper()
 
 
 class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
@@ -53,7 +54,9 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
         ]
         for (mock, assumed_response) in mocks:
             self.mock_response(mock)
-            ret = await self.scanner.get_next_device_data(cmd_code=self.scanner.CMDS.single_scan, uart_params=self.uart_params)
+            ret = await self.scanner.get_next_device_data(
+                cmd_code=self.scanner.extended_modbus_wrapper.CMDS.single_scan, uart_params=self.uart_params
+                )
             ret = minimalmodbus._hexencode(ret)
             self.assertEqual(assumed_response, ret)
 
@@ -62,7 +65,9 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
         self.mock_response(
             "fffffffd60" + operation_code + "c9f3000000"
         )
-        ret = await self.scanner.get_next_device_data(cmd_code=self.scanner.CMDS.single_scan, uart_params=self.uart_params)
+        ret = await self.scanner.get_next_device_data(
+            cmd_code=self.scanner.extended_modbus_wrapper.CMDS.single_scan, uart_params=self.uart_params
+            )
         self.assertIsNone(ret)
 
     async def test_unsupported_operation_code(self):
@@ -71,17 +76,23 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
             "fffffffffffffffffd60" + unsupported_code + "fe34359603f6a80000000000000000"
         )
         with self.assertRaises(minimalmodbus.InvalidResponseError):
-            await self.scanner.get_next_device_data(self.scanner.CMDS.single_scan, uart_params=self.uart_params)
+            await self.scanner.get_next_device_data(
+                self.scanner.extended_modbus_wrapper.CMDS.single_scan, uart_params=self.uart_params
+                )
 
     async def test_empty_answer(self):
         self.mock_response("")
         with self.assertRaises(minimalmodbus.InvalidResponseError):
-            await self.scanner.get_next_device_data(self.scanner.CMDS.single_scan, uart_params=self.uart_params)
+            await self.scanner.get_next_device_data(
+                self.scanner.extended_modbus_wrapper.CMDS.single_scan, uart_params=self.uart_params
+                )
 
     async def test_incorrect_response_extraction(self):
         self.mock_response("0d6003c9f3000000")
         with self.assertRaises(minimalmodbus.InvalidResponseError):
-            await self.scanner.get_next_device_data(self.scanner.CMDS.single_scan, uart_params=self.uart_params)
+            await self.scanner.get_next_device_data(
+                self.scanner.extended_modbus_wrapper.CMDS.single_scan, uart_params=self.uart_params
+                )
 
     async def test_corrupted_answer(self):
         incorrect_crc = "ffff"
@@ -89,4 +100,6 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
             "fffffffffd6003fe34359603" + incorrect_crc + "00000000"
         )
         with self.assertRaises(minimalmodbus.InvalidResponseError):
-            await self.scanner.get_next_device_data(self.scanner.CMDS.single_scan, uart_params=self.uart_params)
+            await self.scanner.get_next_device_data(
+                self.scanner.extended_modbus_wrapper.CMDS.single_scan, uart_params=self.uart_params
+                )
