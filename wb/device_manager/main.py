@@ -56,6 +56,7 @@ class DeviceInfo:
     last_seen: int = None
     bootloader_mode: bool = False
     error: str = None
+    slave_id_collision: bool = False
     cfg: SerialParams = field(default_factory=SerialParams)
     fw: Firmware = field(default_factory=Firmware)
 
