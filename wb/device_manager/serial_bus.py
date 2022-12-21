@@ -46,20 +46,6 @@ class WBExtendedModbusWrapper:
         return payloaddata
 
 
-# class PartialFrameBulder():
-
-#     def __init__(self, id):
-#         if id <= 0xff:
-#             self.id_bytestr = minimalmodbus._num_to_onebyte_string(id)
-#         else:
-#             self.id_bytestr = minimalmodbus._long_to_bytestring(
-#                 value=id,
-#                 signed=False,
-#                 number_of_registers=2,
-#                 byteorder=minimalmodbus.BYTEORDER_BIG
-#             )
-
-
 class WBExtendedModbusScanner:
     def __init__(self, port, rpc_client):
         self.extended_modbus_wrapper = WBExtendedModbusWrapper()
