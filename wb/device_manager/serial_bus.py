@@ -26,7 +26,7 @@ class WBExtendedModbusWrapper:
 
     def build_request(self, cmd_code, payloaddata=""):
         """
-        payloaddata could be scan* cmd or generic modbus pdu
+        payloaddata could be scan* cmd or standart modbus pdu
         """
         payload = minimalmodbus._embed_payload(
             slaveaddress=self.ADDR,
@@ -235,14 +235,22 @@ class WBAsyncModbus:
 
 
 class WBAsyncExtendedModbus(WBAsyncModbus):
+    """
+    Standart modbus frame is wrapped into wb-extension
+    Look at https://github.com/wirenboard/libwbmcu-modbus/blob/master/wbm_ext.md for more info
+    """
     def __init__(self, sn, port, baudrate, parity, stopbits, rpc_client):
-        super().__init__(0, port, baudrate, parity, stopbits, rpc_client)
+        dummy_slaveid = 0  # for compatibility with minimalmodbus checks
+        super().__init__(dummy_slaveid, port, baudrate, parity, stopbits, rpc_client)
         self.serial_number = sn
         self.extended_modbus_wrapper = WBExtendedModbusWrapper()
 
     def _build_request(self, funcode, reg, number_of_regs=1):
-        actual_payload = minimalmodbus._hexencode(super()._build_request(funcode, reg, number_of_regs))
-        stripped_payload = minimalmodbus._hexdecode(actual_payload[2:-4])  # No slaveid and crc
+        """
+        Wrapping standart modbus frame into a wb modbus extension
+        """
+        standart_frame = minimalmodbus._hexencode(super()._build_request(funcode, reg, number_of_regs))
+        standart_pdu = minimalmodbus._hexdecode(standart_frame[2:-4])
 
         sn = minimalmodbus._long_to_bytestring(
             value=self.serial_number,
@@ -253,16 +261,21 @@ class WBAsyncExtendedModbus(WBAsyncModbus):
 
         return self.extended_modbus_wrapper.build_request(
             cmd_code=self.extended_modbus_wrapper.CMDS.standart_send,
-            payloaddata=sn + stripped_payload
+            payloaddata=sn + standart_pdu
         )
 
     def _predict_response_length(self, funcode, payload):
-        return super()._predict_response_length(funcode, payload) + 6  # look at extended modbus specs
+        # broadcast_addr, extended_modbus_cmd, standart_modbus_emulation_cmd, serial_number, original_modbus_slaveid
+        additional_bytes = 1 + 1 + 1 + 4 - 1
+        return super()._predict_response_length(funcode, payload) + additional_bytes
 
     def _parse_response(self, funcode, reg, number_of_regs, response_bytestr, payloadformat):
-        pdu_without_crc = self.extended_modbus_wrapper.parse_response(response_bytestr)
-        sn, pdu = pdu_without_crc[1:5], pdu_without_crc[5:]
-        fcode, payload = pdu[:1], pdu[1:]
+        """
+        Extracting standart modbus payload from extended-modbus frame
+        """
+        extended_modbus_pdu = self.extended_modbus_wrapper.parse_response(response_bytestr)
+        sn, pdu = extended_modbus_pdu[1:5], extended_modbus_pdu[5:]
+        fcode, payload = pdu[:1], pdu[1:]  # standart modbus
 
         sn = minimalmodbus._bytestring_to_long(
             bytestring=sn,
