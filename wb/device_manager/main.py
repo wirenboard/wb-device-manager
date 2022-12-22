@@ -134,11 +134,23 @@ class DeviceManager():
         state = BusScanState()
         self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
+        def mark_duplicated_device_cfg():
+            unique = []
+            for device_info in state.devices:
+                unique_serial_params = (device_info.cfg, device_info.port)
+                if unique_serial_params in unique:
+                    logger.warning("Mark %s as duplicated settings", str(device_info))
+                    device_info.slave_id_collision = True
+                else:
+                    unique.append(unique_serial_params)
+                    device_info.slave_id_collision = False
+
         while True:
             event = await self.state_update_queue.get()
             try:
                 if isinstance(event, DeviceInfo):
                     state.devices.append(event)
+                    mark_duplicated_device_cfg()
                 elif isinstance(event, dict):
                     progress = event.pop("progress", -1)  # could be filled asynchronously
                     if (progress == 0) or (progress > state.progress):
