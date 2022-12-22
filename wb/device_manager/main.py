@@ -8,7 +8,8 @@ import logging
 import asyncio
 from sys import argv, stdout, stderr
 from argparse import ArgumentParser
-from itertools import product
+from itertools import product, chain
+from collections import defaultdict
 from dataclasses import dataclass, asdict, field, is_dataclass
 import paho.mqtt.client as mosquitto
 from mqttrpc import Dispatcher
@@ -134,23 +135,22 @@ class DeviceManager():
         state = BusScanState()
         self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
-        def mark_duplicated_device_cfg():
-            unique = []
-            for device_info in state.devices:
-                unique_serial_params = (device_info.cfg, device_info.port)
-                if unique_serial_params in unique:
-                    logger.warning("Mark %s as duplicated settings", str(device_info))
-                    device_info.slave_id_collision = True
-                else:
-                    unique.append(unique_serial_params)
-                    device_info.slave_id_collision = False
+        def remark_duplicated_serial_params():  # slaveid, bd, parity, stopbits, port
+            possible_collisions = defaultdict(list)
+            for device in state.devices:
+                device.slave_id_collision = False
+                params = str((device.cfg, device.port))
+                possible_collisions[params].append(device)  # {serial_params: [device_infos]}
+            actual_collisions = list(chain.from_iterable([v for v in possible_collisions.values() if len(v) > 1]))
+            for device in actual_collisions:
+                device.slave_id_collision = True
 
         while True:
             event = await self.state_update_queue.get()
             try:
                 if isinstance(event, DeviceInfo):
                     state.devices.append(event)
-                    mark_duplicated_device_cfg()
+                    remark_duplicated_serial_params()
                 elif isinstance(event, dict):
                     progress = event.pop("progress", -1)  # could be filled asynchronously
                     if (progress == 0) or (progress > state.progress):
