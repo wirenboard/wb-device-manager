@@ -71,7 +71,7 @@ class BusScanState:
     progress: int = 0
     scanning: bool = False
     error: str = None
-    devices: set[DeviceInfo] = field(default_factory=set)
+    devices: list[DeviceInfo] = field(default_factory=list)
 
     def update(self, new):
         for k, v in new.items():
@@ -138,7 +138,7 @@ class DeviceManager():
             event = await self.state_update_queue.get()
             try:
                 if isinstance(event, DeviceInfo):
-                    state.devices.add(event)
+                    state.devices.append(event)
                 elif isinstance(event, dict):
                     progress = event.pop("progress", -1)  # could be filled asynchronously
                     if (progress == 0) or (progress > state.progress):
@@ -198,7 +198,7 @@ class DeviceManager():
         tasks = []
         await self.produce_state_update(
                 {
-                    "devices" : set(),  # TODO: unit test?
+                    "devices" : [],  # TODO: unit test?
                     "scanning" : True,
                     "progress" : 0,
                     "error" : None
