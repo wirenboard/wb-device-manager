@@ -114,3 +114,11 @@
 ### Работа с ошибками
 * поле ```error.id``` имеет строго определённый формат: ```com.wb.название_пакета.тип_ошибки```
 * подробные ошибки из питона (со stack trace) доступны в логах (```journalctl -u wb-device-manager -f```)
+
+#### Ошибки, выдаваемые наружу:
+| Id | Условия возникновения |
+| :- | :-------------------- |
+| **com.wb.device_manager.generic_error** | Неотловленная ошибка внутри сервиса |
+| Наследники: |
+| **com.wb.device_manager.rpc_call_timeout_error** | Таймаут rpc-запроса к wb-mqtt-serial (wb-device-manager - клиент) |
+| **com.wb.device_manager.modbus_error** | Ошибка modbus-коммуникации с устройством (rpc-запрос к wb-mqtt-serial был удачным)
