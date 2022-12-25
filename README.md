@@ -14,9 +14,9 @@
     // (например, rpc-timeout при неработающем wb-mqtt-serial)
     "error": {
         // принятый внутри команды идентификатор сообщения (формат строго определён!)
-        "id": "com.wb.device_manager.generic_error",
+        "id": "com.wb.device_manager.rpc_call_timeout_error",
         // fallback человекочитаемое сообщение
-        "message": "RPC call to wb-mqtt-serial timed out"
+        "message": "RPC call to wb-mqtt-serial timed out. Check, wb-mqtt-serial is running"
     },
 
     // список устройств
@@ -53,9 +53,9 @@
             // последняя ошибка при работе с конкретным устройством
             "error": {
                 // принятый внутри команды идентификатор сообщения (формат строго определён!)
-                "id": "com.wb.device_manager.device_error",
+                "id": "com.wb.device_manager.modbus_error",
                 // fallback человекочитаемое сообщение
-                "message": "Modbus communication failed. Check logs for more info"
+                "message": "Modbus communication error. Check logs for more info"
             },
 
             // порт, к которому подключено устройство
@@ -95,7 +95,7 @@
                     // последняя ошибка обновления прошивки конкретного устройства
                     "error": {
                         // принятый внутри команды идентификатор сообщения (формат строго определён!)
-                        "id": "com.wb.device_manager.fw_update_error",
+                        "id": "com.wb.device_manager.fw_update_error",  // обновление fw пока не реализовано
                         // fallback человекочитаемое сообщение
                         "message": "FW update failed. Check logs for more info"
                     },
@@ -112,7 +112,5 @@
 
 
 ### Работа с ошибками
-* ошибки в понятном человеку виде отображаются в webui
-* ошибки в webui переведены. Webui смотрит в поле ```error.id``` и ищет для него человекочитаемое сообщение для нужной локали. Если таковое не найдено - показывает то, что в ```error.message```
 * поле ```error.id``` имеет строго определённый формат: ```com.wb.название_пакета.тип_ошибки```
 * подробные ошибки из питона (со stack trace) доступны в логах (```journalctl -u wb-device-manager -f```)
