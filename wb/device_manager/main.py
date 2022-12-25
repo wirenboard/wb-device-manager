@@ -133,40 +133,28 @@ class DeviceManager():
         The only func, allowed to change state directly
         """
         state = BusScanState()
-        serial_params = []
         self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
-        def get_serial_params(device_info):
-            return str((device_info.cfg, device_info.port))
-
-        def full_recheck_serial_collisions():  # slaveid, bd, parity, stopbits, port
-            possible_collisions = defaultdict(list)
-            for device in state.devices:
-                device.slave_id_collision = False
-                params = get_serial_params(device)
-                possible_collisions[params].append(device)  # {serial_params: [device_infos]}
-            actual_collisions = list(chain.from_iterable([v for v in possible_collisions.values() if len(v) > 1]))
-            for device in actual_collisions:
-                device.slave_id_collision = True
+        devices_by_connection_params = defaultdict(list)
 
         while True:
-            if not self._is_scanning:
-                serial_params.clear()
             event = await self.state_update_queue.get()
             try:
                 if isinstance(event, DeviceInfo):
                     state.devices.append(event)
-                    connection_params = get_serial_params(event)
-                    if connection_params in serial_params:
-                        logger.warning("Trigger full serial_params collision recheck from %s", str(event))
-                        full_recheck_serial_collisions()
-                    else:
-                        serial_params.append(connection_params)
+                    neighbors = devices_by_connection_params[str((event.cfg, event.port))]
+                    neighbors.append(event)
+                    if len(neighbors) > 1:
+                        for entry in neighbors:
+                            entry.slave_id_collision = True
+                        logger.debug("Collision on: %s", str(neighbors))
                 elif isinstance(event, dict):
                     progress = event.pop("progress", -1)  # could be filled asynchronously
                     if (progress == 0) or (progress > state.progress):
                         state.progress = progress
                     state.update(event)
+                    if not event.get("scanning", True):
+                        devices_by_connection_params.clear()
                 else:
                     e = RuntimeError("Got incorrect state-update event: %s", repr(event))
                     state.error = str(e)
