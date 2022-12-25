@@ -265,9 +265,14 @@ class WBAsyncExtendedModbus(WBAsyncModbus):
         )
 
     def _predict_response_length(self, funcode, payload):
-        # broadcast_addr, extended_modbus_cmd, standart_modbus_emulation_cmd, serial_number, original_modbus_slaveid
-        additional_bytes = 1 + 1 + 1 + 4 - 1
-        return super()._predict_response_length(funcode, payload) + additional_bytes
+        """
+        WB-extended modbus frame is always fixed-bytes longer, than a standart modbus frame
+
+        Byte-sizes:
+        broadcast_addr, extended_modbus_cmd, standart_modbus_emulation_cmd, serial_number, standart_modbus_slaveid
+        """
+        wb_extension_additional_bytes = 1 + 1 + 1 + 4 - 1  # (4-byte sn is like slaveid (1-byte) => 4-1)
+        return super()._predict_response_length(funcode, payload) + wb_extension_additional_bytes
 
     def _parse_response(self, funcode, reg, number_of_regs, response_bytestr, payloadformat):
         """
