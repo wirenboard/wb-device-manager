@@ -21,6 +21,11 @@ EXIT_FAILURE = 1
 
 
 @dataclass
+class StateError:
+    id: str = None
+    message: str = None
+
+@dataclass
 class Port:
     path: str = None
 
@@ -35,7 +40,7 @@ class SerialParams:
 @dataclass
 class FWUpdate:
     progress: int = 0
-    error: str = None
+    error: StateError = None
     available_fw: str = None
 
 @dataclass
@@ -55,7 +60,7 @@ class DeviceInfo:
     poll: bool = False
     last_seen: int = None
     bootloader_mode: bool = False
-    error: str = None
+    error: StateError = None
     slave_id_collision: bool = False
     cfg: SerialParams = field(default_factory=SerialParams)
     fw: Firmware = field(default_factory=Firmware)
@@ -70,7 +75,7 @@ class DeviceInfo:
 class BusScanState:
     progress: int = 0
     scanning: bool = False
-    error: str = None
+    error: StateError = None
     devices: set[DeviceInfo] = field(default_factory=set)
 
     def update(self, new):
@@ -86,6 +91,27 @@ class SetEncoder(json.JSONEncoder):
         if is_dataclass(o):
             return asdict(o)
         super().default(o)
+
+
+"""
+Errors, shown in json-state
+"""
+class GenericStateError(StateError):
+    ID = "com.wb.device_manager.generic_error"
+    MESSAGE = "Internal error. Check logs for more info"
+
+    def __init__(self):
+        super().__init__(id=self.ID, message=self.MESSAGE)
+
+
+class RPCCallTimeoutStateError(GenericStateError):
+    ID = "com.wb.device_manager.rpc_call_timeout_error"
+    MESSAGE = "RPC call to wb-mqtt-serial timed out. Check, wb-mqtt-serial is running"
+
+
+class ModbusCommunicationStateError(GenericStateError):
+    ID = "com.wb.device_manager.modbus_error"
+    MESSAGE = "Modbus communication error. Check logs for more info"
 
 
 class DeviceManager():
@@ -146,7 +172,7 @@ class DeviceManager():
                     state.update(event)
                 else:
                     e = RuntimeError("Got incorrect state-update event: %s", repr(event))
-                    state.error = str(e)
+                    state.error = GenericStateError()
                     state.scanning = False
                     state.progress = 0
                     raise e
@@ -216,12 +242,12 @@ class DeviceManager():
                 }
             )
         except Exception as e:
-            err_to_webui = str(e)
+            err_to_webui = GenericStateError()
             logger.exception("Pass error to overall state topic and stop scanning")
             if isinstance(e, mqtt_rpc.MQTTRPCInternalServerError):
-                err_to_webui = "Check, wb-mqtt-serial is running"
+                err_to_webui = RPCCallTimeoutStateError()
             elif isinstance(e, minimalmodbus.ModbusException):
-                err_to_webui = "Modbus error, while bus scanning. Check logs and try to rescan again"
+                err_to_webui = ModbusCommunicationStateError()
             await self.produce_state_update({"error" : err_to_webui})
         finally:
             await self.produce_state_update(
