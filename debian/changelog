@@ -1,3 +1,10 @@
+wb-device-manager (1.0.0) stable; urgency=medium
+
+  * Public release:
+  *   - remove serial_params from slaveid-collisions check
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Mon, 26 Dec 2022 14:18:21 +0300
+
 wb-device-manager (0.1.0) stable; urgency=medium
 
   * Initial release:
