@@ -22,6 +22,11 @@ EXIT_FAILURE = 1
 
 
 @dataclass
+class StateError:
+    id: str = None
+    message: str = None
+
+@dataclass
 class Port:
     path: str = None
 
@@ -36,7 +41,7 @@ class SerialParams:
 @dataclass
 class FWUpdate:
     progress: int = 0
-    error: str = None
+    error: StateError = None
     available_fw: str = None
 
 @dataclass
@@ -56,7 +61,7 @@ class DeviceInfo:
     poll: bool = False
     last_seen: int = None
     bootloader_mode: bool = False
-    error: str = None
+    error: StateError = None
     slave_id_collision: bool = False
     cfg: SerialParams = field(default_factory=SerialParams)
     fw: Firmware = field(default_factory=Firmware)
@@ -71,7 +76,7 @@ class DeviceInfo:
 class BusScanState:
     progress: int = 0
     scanning: bool = False
-    error: str = None
+    error: StateError = None
     devices: list[DeviceInfo] = field(default_factory=list)
 
     def update(self, new):
@@ -87,6 +92,27 @@ class SetEncoder(json.JSONEncoder):
         if is_dataclass(o):
             return asdict(o)
         super().default(o)
+
+
+"""
+Errors, shown in json-state
+"""
+class GenericStateError(StateError):
+    ID = "com.wb.device_manager.generic_error"
+    MESSAGE = "Internal error. Check logs for more info"
+
+    def __init__(self):
+        super().__init__(id=self.ID, message=self.MESSAGE)
+
+
+class RPCCallTimeoutStateError(GenericStateError):
+    ID = "com.wb.device_manager.rpc_call_timeout_error"
+    MESSAGE = "RPC call to wb-mqtt-serial timed out. Check, wb-mqtt-serial is running"
+
+
+class ModbusCommunicationStateError(GenericStateError):
+    ID = "com.wb.device_manager.modbus_error"
+    MESSAGE = "Modbus communication error. Check logs for more info"
 
 
 class DeviceManager():
@@ -157,7 +183,7 @@ class DeviceManager():
                         devices_by_connection_params.clear()
                 else:
                     e = RuntimeError("Got incorrect state-update event: %s", repr(event))
-                    state.error = str(e)
+                    state.error = GenericStateError()
                     state.scanning = False
                     state.progress = 0
                     raise e
@@ -165,8 +191,8 @@ class DeviceManager():
                 self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
     def _get_mb_connection(self, device_info):
-        conn = serial_bus.WBAsyncModbus(
-            addr=device_info.cfg.slave_id,
+        conn = serial_bus.WBAsyncExtendedModbus(
+            sn=int(device_info.sn, 0),
             port=device_info.port.path,
             baudrate=device_info.cfg.baud_rate,
             parity=device_info.cfg.parity,
@@ -227,12 +253,12 @@ class DeviceManager():
                 }
             )
         except Exception as e:
-            err_to_webui = str(e)
+            err_to_webui = GenericStateError()
             logger.exception("Pass error to overall state topic and stop scanning")
             if isinstance(e, mqtt_rpc.MQTTRPCInternalServerError):
-                err_to_webui = "Check, wb-mqtt-serial is running"
+                err_to_webui = RPCCallTimeoutStateError()
             elif isinstance(e, minimalmodbus.ModbusException):
-                err_to_webui = "Modbus error, while bus scanning. Check logs and try to rescan again"
+                err_to_webui = ModbusCommunicationStateError()
             await self.produce_state_update({"error" : err_to_webui})
         finally:
             await self.produce_state_update(
@@ -275,14 +301,13 @@ class DeviceManager():
                     )
 
                     try:
-                        device_info.title = await self._get_mb_connection(device_info).read_string(
-                            first_addr=200, regs_length=6
+                        device_signature = await self._get_mb_connection(device_info).read_string(
+                            first_addr=200, regs_length=20
                             )
+                        device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
+                        device_info.title = device_signature.strip("\x02")  # TODO: store somewhere human-readable titles
                         device_info.fw_signature = await self._get_mb_connection(device_info).read_string(
                             first_addr=290, regs_length=12
-                            )
-                        device_info.device_signature = await self._get_mb_connection(device_info).read_string(
-                            first_addr=200, regs_length=6
                             )
                         await self._fill_fw_info(device_info)
                     except minimalmodbus.ModbusException as e:
