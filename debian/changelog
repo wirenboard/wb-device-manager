@@ -1,0 +1,7 @@
+wb-device-manager (0.1.0) stable; urgency=medium
+
+  * Initial release:
+  *   - scan devices via WB-extended modbus (latest FWs required on devices)
+  *   - inform about slaveid collisions on serial bus
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Mon, 31 Oct 2022 09:47:49 +0300
