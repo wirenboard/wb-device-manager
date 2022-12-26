@@ -7,12 +7,11 @@ Build-Depends: dh-python, debhelper (>= 10), python3-all, python3-setuptools, py
 Standards-Version: 3.9.1
 X-Python-Version: >= 3.9.1
 
-Package: python3-wb-device-manager
-Architecture: all
-Depends: ${python3:Depends}, ${misc:Depends}, python3-mqttrpc (>= 1.1.5), wb-mqtt-serial (>= 2.77.6), python3-wb-mcu-fw-updater (>= 1.6.1)
-Description: Wiren Board modbus devices manager (python3 library)
-
 Package: wb-device-manager
 Architecture: all
-Depends: ${misc:Depends}, python3-wb-device-manager (= ${binary:Version})
-Description: Wiren Board modbus devices manager (python3 library)
+Breaks: python3-wb-device-manager
+Replaces: python3-wb-device-manager
+Provides: python3-wb-device-manager
+Depends: ${python3:Depends}, ${misc:Depends}, python3-mqttrpc (>= 1.1.5), wb-mqtt-serial (>= 2.77.6), python3-wb-mcu-fw-updater (>= 1.6.1)
+Recommends: wb-mqtt-homeui (>= 2.50.0)
+Description: Wiren Board modbus devices manager (python3 service; backend)
