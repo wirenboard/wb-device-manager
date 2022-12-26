@@ -8,7 +8,8 @@ import logging
 import asyncio
 from sys import argv, stdout, stderr
 from argparse import ArgumentParser
-from itertools import product
+from itertools import product, chain
+from collections import defaultdict
 from dataclasses import dataclass, asdict, field, is_dataclass
 import paho.mqtt.client as mosquitto
 from mqttrpc import Dispatcher
@@ -76,7 +77,7 @@ class BusScanState:
     progress: int = 0
     scanning: bool = False
     error: StateError = None
-    devices: set[DeviceInfo] = field(default_factory=set)
+    devices: list[DeviceInfo] = field(default_factory=list)
 
     def update(self, new):
         for k, v in new.items():
@@ -160,16 +161,26 @@ class DeviceManager():
         state = BusScanState()
         self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
+        devices_by_connection_params = defaultdict(list)
+
         while True:
             event = await self.state_update_queue.get()
             try:
                 if isinstance(event, DeviceInfo):
-                    state.devices.add(event)
+                    state.devices.append(event)
+                    neighbors = devices_by_connection_params[str((event.cfg, event.port))]
+                    neighbors.append(event)
+                    if len(neighbors) > 1:
+                        for entry in neighbors:
+                            entry.slave_id_collision = True
+                        logger.debug("Collision on: %s", str(neighbors))
                 elif isinstance(event, dict):
                     progress = event.pop("progress", -1)  # could be filled asynchronously
                     if (progress == 0) or (progress > state.progress):
                         state.progress = progress
                     state.update(event)
+                    if not event.get("scanning", True):
+                        devices_by_connection_params.clear()
                 else:
                     e = RuntimeError("Got incorrect state-update event: %s", repr(event))
                     state.error = GenericStateError()
@@ -224,7 +235,7 @@ class DeviceManager():
         tasks = []
         await self.produce_state_update(
                 {
-                    "devices" : set(),  # TODO: unit test?
+                    "devices" : [],  # TODO: unit test?
                     "scanning" : True,
                     "progress" : 0,
                     "error" : None
