@@ -58,6 +58,9 @@
                 "message": "Modbus communication error. Check logs for more info"
             },
 
+            // slave_id одинаковый с кем-то еще (флаг выставляется у всех устройств с таким же slave_id)
+            "slave_id_collision": true,
+
             // порт, к которому подключено устройство
             "port": {
 

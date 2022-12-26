@@ -61,6 +61,7 @@ class DeviceInfo:
     last_seen: int = None
     bootloader_mode: bool = False
     error: StateError = None
+    slave_id_collision: bool = False
     cfg: SerialParams = field(default_factory=SerialParams)
     fw: Firmware = field(default_factory=Firmware)
 
@@ -179,8 +180,8 @@ class DeviceManager():
                 self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
     def _get_mb_connection(self, device_info):
-        conn = serial_bus.WBAsyncModbus(
-            addr=device_info.cfg.slave_id,
+        conn = serial_bus.WBAsyncExtendedModbus(
+            sn=int(device_info.sn, 0),
             port=device_info.port.path,
             baudrate=device_info.cfg.baud_rate,
             parity=device_info.cfg.parity,
@@ -289,14 +290,13 @@ class DeviceManager():
                     )
 
                     try:
-                        device_info.title = await self._get_mb_connection(device_info).read_string(
-                            first_addr=200, regs_length=6
+                        device_signature = await self._get_mb_connection(device_info).read_string(
+                            first_addr=200, regs_length=20
                             )
+                        device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
+                        device_info.title = device_signature.strip("\x02")  # TODO: store somewhere human-readable titles
                         device_info.fw_signature = await self._get_mb_connection(device_info).read_string(
                             first_addr=290, regs_length=12
-                            )
-                        device_info.device_signature = await self._get_mb_connection(device_info).read_string(
-                            first_addr=200, regs_length=6
                             )
                         await self._fill_fw_info(device_info)
                     except minimalmodbus.ModbusException as e:
