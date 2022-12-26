@@ -8,7 +8,7 @@ from wb_modbus import minimalmodbus
 from . import logger, mqtt_rpc
 
 
-class WBExtendedModbusScanner:
+class WBExtendedModbusWrapper:
     ADDR = 0xfd
     MODE = 0x60
 
@@ -18,24 +18,25 @@ class WBExtendedModbusScanner:
             ("scan_init", 0x01),
             ("single_scan", 0x02),
             ("single_reply", 0x03),
-            ("scan_end", 0x04)
+            ("scan_end", 0x04),
+            ("standart_send", 0x08),
+            ("standart_reply", 0x09),
         ]
     )
 
-    def __init__(self, port, rpc_client):
-        self.instrument = mqtt_rpc.AsyncModbusInstrument(port, self.ADDR, rpc_client)
-        self.port = port
-
-    def _build_request(self, cmd_code):
+    def build_request(self, cmd_code, payloaddata=""):
+        """
+        payloaddata could be scan* cmd or standart modbus pdu
+        """
         payload = minimalmodbus._embed_payload(
             slaveaddress=self.ADDR,
             mode=minimalmodbus.MODE_RTU,
             functioncode=self.MODE,
-            payloaddata=minimalmodbus._num_to_onebyte_string(cmd_code)
+            payloaddata=minimalmodbus._num_to_onebyte_string(cmd_code) + payloaddata
         )
         return payload
 
-    def _parse_response(self, response_bytestr):
+    def parse_response(self, response_bytestr):
         payloaddata = minimalmodbus._extract_payload(
             response=response_bytestr,
             slaveaddress=self.ADDR,
@@ -43,6 +44,13 @@ class WBExtendedModbusScanner:
             functioncode=self.MODE
         )
         return payloaddata
+
+
+class WBExtendedModbusScanner:
+    def __init__(self, port, rpc_client):
+        self.extended_modbus_wrapper = WBExtendedModbusWrapper()
+        self.instrument = mqtt_rpc.AsyncModbusInstrument(port, self.extended_modbus_wrapper.ADDR, rpc_client)
+        self.port = port
 
     def _parse_device_data(self, device_data_bytestr):
         sn, slaveid = device_data_bytestr[:4], device_data_bytestr[4:]
@@ -60,7 +68,7 @@ class WBExtendedModbusScanner:
         Typical plain_response_str looks like: ffffffff<response>00000000
         """
         mat = re.match(
-            "^.*(FF)*(?P<header>%X%X)(?P<cmd>[0-9A-F][0-9A-F]).+" % (self.ADDR, self.MODE),
+            "^.*(FF)*(?P<header>%X%X)(?P<cmd>[0-9A-F][0-9A-F]).+" % (self.extended_modbus_wrapper.ADDR, self.extended_modbus_wrapper.MODE),
             plain_response_str
             )
         if mat:
@@ -68,7 +76,7 @@ class WBExtendedModbusScanner:
             response_beginning = mat.span("header")[0]
             payload_beginning = mat.span("cmd")[-1]
             sn_slaveid_len, crc_len = 5, 2
-            payload_bytelen = sn_slaveid_len + crc_len if fcode == self.CMDS.single_reply else crc_len
+            payload_bytelen = sn_slaveid_len + crc_len if fcode == self.extended_modbus_wrapper.CMDS.single_reply else crc_len
             return plain_response_str[response_beginning : payload_beginning + payload_bytelen * 2]
         else:
             raise minimalmodbus.InvalidResponseError(
@@ -99,22 +107,22 @@ class WBExtendedModbusScanner:
         return minimalmodbus._hexdecode(ret)
 
     async def get_next_device_data(self, cmd_code, uart_params):
-        request = self._build_request(cmd_code)
+        request = self.extended_modbus_wrapper.build_request(cmd_code)
         ret = await self._communicate(request=request, uart_params=uart_params)
-        response = self._parse_response(response_bytestr=ret)
+        response = self.extended_modbus_wrapper.parse_response(response_bytestr=ret)
         fcode = ord(response[0])
         hex_response = minimalmodbus._hexencode(response)
 
-        if fcode == self.CMDS.single_reply:
+        if fcode == self.extended_modbus_wrapper.CMDS.single_reply:
             logger.debug("Scanned: %s", str(hex_response))
             return response[1:]
-        elif fcode == self.CMDS.scan_end:
+        elif fcode == self.extended_modbus_wrapper.CMDS.scan_end:
             logger.debug("Scan finished: %s", str(hex_response))
             return None
         else:
             raise minimalmodbus.InvalidResponseError(
                 "Parsed payload {!r} is incorrect: should begin with one of {}".format(
-                    hex_response, [self.CMDS.single_reply, self.CMDS.scan_end]
+                    hex_response, [self.extended_modbus_wrapper.CMDS.single_reply, self.extended_modbus_wrapper.CMDS.scan_end]
                 )
             )
 
@@ -129,12 +137,12 @@ class WBExtendedModbusScanner:
         self.instrument.serial.timeout = response_timeout
         logger.debug("Scanning %s %s response timeout: %.2f", self.port, str(uart_params), response_timeout)
 
-        sn_slaveid = await self.get_next_device_data(cmd_code=self.CMDS.scan_init, uart_params=uart_params)
+        sn_slaveid = await self.get_next_device_data(cmd_code=self.extended_modbus_wrapper.CMDS.scan_init, uart_params=uart_params)
         while sn_slaveid is not None:
             slaveid, sn = self._parse_device_data(sn_slaveid)
             logger.debug("Got device: %d %d", slaveid, sn)
             yield slaveid, sn
-            sn_slaveid = await self.get_next_device_data(cmd_code=self.CMDS.single_scan, uart_params=uart_params)
+            sn_slaveid = await self.get_next_device_data(cmd_code=self.extended_modbus_wrapper.CMDS.single_scan, uart_params=uart_params)
 
 
 class WBAsyncModbus:
@@ -164,6 +172,13 @@ class WBAsyncModbus:
             payloaddata=payload
             )
         return request
+
+    def _predict_response_length(self, funcode, payload):
+        return minimalmodbus._predict_response_size(
+            mode=minimalmodbus.MODE_RTU,
+            functioncode=funcode,
+            payload_to_slave=payload
+            )
 
     def _parse_response(self, funcode, reg, number_of_regs, response_bytestr, payloadformat):
         payloaddata = minimalmodbus._extract_payload(
@@ -202,10 +217,9 @@ class WBAsyncModbus:
             number_of_regs=regs_length
             )
 
-        number_of_bytes_to_read = minimalmodbus._predict_response_size(
-            mode=minimalmodbus.MODE_RTU,
-            functioncode=funcode,
-            payload_to_slave=self._make_payload(first_addr, regs_length)
+        number_of_bytes_to_read = self._predict_response_length(
+            funcode=funcode,
+            payload=self._make_payload(first_addr, regs_length)
             )
 
         response = await self.device._communicate(request, number_of_bytes_to_read)
@@ -218,3 +232,83 @@ class WBAsyncModbus:
             payloadformat=payloadformat
             )
         return self._str_to_wb(ret)
+
+
+class WBAsyncExtendedModbus(WBAsyncModbus):
+    """
+    Standart modbus frame is wrapped into wb-extension
+    Look at https://github.com/wirenboard/libwbmcu-modbus/blob/master/wbm_ext.md for more info
+    """
+    def __init__(self, sn, port, baudrate, parity, stopbits, rpc_client):
+        dummy_slaveid = 0  # for compatibility with minimalmodbus checks
+        super().__init__(dummy_slaveid, port, baudrate, parity, stopbits, rpc_client)
+        self.serial_number = sn
+        self.extended_modbus_wrapper = WBExtendedModbusWrapper()
+
+    def _build_request(self, funcode, reg, number_of_regs=1):
+        """
+        Wrapping standart modbus frame into a wb modbus extension
+        """
+        standart_frame = minimalmodbus._hexencode(super()._build_request(funcode, reg, number_of_regs))
+        standart_pdu = minimalmodbus._hexdecode(standart_frame[2:-4])
+
+        sn = minimalmodbus._long_to_bytestring(
+            value=self.serial_number,
+            byteorder=minimalmodbus.BYTEORDER_BIG,
+            number_of_registers=2,
+            signed=False
+        )
+
+        return self.extended_modbus_wrapper.build_request(
+            cmd_code=self.extended_modbus_wrapper.CMDS.standart_send,
+            payloaddata=sn + standart_pdu
+        )
+
+    def _predict_response_length(self, funcode, payload):
+        """
+        WB-extended modbus frame is always fixed-bytes longer, than a standart modbus frame
+
+        Byte-sizes:
+        broadcast_addr, extended_modbus_cmd, standart_modbus_emulation_cmd, serial_number, standart_modbus_slaveid
+        """
+        wb_extension_additional_bytes = 1 + 1 + 1 + 4 - 1  # (4-byte sn is like slaveid (1-byte) => 4-1)
+        return super()._predict_response_length(funcode, payload) + wb_extension_additional_bytes
+
+    def _parse_response(self, funcode, reg, number_of_regs, response_bytestr, payloadformat):
+        """
+        Extracting standart modbus payload from extended-modbus frame
+        """
+        extended_modbus_pdu = self.extended_modbus_wrapper.parse_response(response_bytestr)
+        sn, pdu = extended_modbus_pdu[1:5], extended_modbus_pdu[5:]
+        fcode, payload = pdu[:1], pdu[1:]  # standart modbus
+
+        sn = minimalmodbus._bytestring_to_long(
+            bytestring=sn,
+            byteorder=minimalmodbus.BYTEORDER_BIG,
+            number_of_registers=2,
+            signed=False
+        )
+
+        if self.serial_number != sn:
+            raise minimalmodbus.InvalidResponseError(
+                "Parsed sn (%d) != assumed (%d). Plain response: %s" % (
+                    sn, self.serial_number, minimalmodbus._hexencode(response_bytestr)
+                    )
+                )
+
+        minimalmodbus._check_response_slaveerrorcode(
+            minimalmodbus._num_to_onebyte_string(0) + pdu
+        )
+
+        return minimalmodbus._parse_payload(
+            payload=payload,
+            functioncode=funcode,
+            registeraddress=reg,
+            value=None,
+            number_of_decimals=None,
+            number_of_registers=number_of_regs,
+            number_of_bits=number_of_regs,
+            signed=None,
+            byteorder=None,
+            payloadformat=payloadformat
+            )
