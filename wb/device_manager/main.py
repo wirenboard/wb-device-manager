@@ -168,7 +168,8 @@ class DeviceManager():
             try:
                 if isinstance(event, DeviceInfo):
                     state.devices.append(event)
-                    neighbors = devices_by_connection_params[str((event.cfg, event.port))]
+                    # wb-mqtt-serial treats devices with equal slaveid-port as same (even with different serial_params)
+                    neighbors = devices_by_connection_params[str((event.cfg.slave_id, event.port))]
                     neighbors.append(event)
                     if len(neighbors) > 1:
                         for entry in neighbors:
