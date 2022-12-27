@@ -11,7 +11,7 @@ from mqttrpc import client as rpcclient
 from mqttrpc.manager import AMQTTRPCResponseManager
 from mqttrpc.protocol import MQTTRPC10Response
 from jsonrpc.exceptions import JSONRPCServerError, JSONRPCDispatchException
-from wb_modbus import minimalmodbus, instruments
+from wb_modbus import minimalmodbus, instruments, ALLOWED_BAUDRATES
 from . import logger, TOPIC_HEADER
 
 
@@ -72,6 +72,7 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
         super().__init__(port, slaveaddress, **kwargs)
         self.rpc_client = rpc_client
         self.serial.timeout = kwargs.get("response_timeout", self._calculate_default_response_timeout())
+        self.modbus_frame_timeouts = {bd: minimalmodbus._calculate_minimum_silent_period(bd) for bd in ALLOWED_BAUDRATES}
 
     def _calculate_default_response_timeout(self):
         """
@@ -93,17 +94,19 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
         """
         rpc_call_timeout = 10
 
+        bd = self.serial.SERIAL_SETTINGS["baudrate"]
         rpc_request = {
             "response_size": number_of_bytes_to_read,
             "format": "HEX",
             "msg": minimalmodbus._hexencode(request),
-            "response_timeout": round(self.serial.timeout * 1000),
+            "response_timeout": round(self.serial.timeout * 1000),  # ms
+            "frame_timeout": round(self.modbus_frame_timeouts[bd] * 1000),  # ms
             "path": self.serial.port,  # TODO: support modbus tcp in minimalmodbus
-            "baud_rate" : self.serial.SERIAL_SETTINGS["baudrate"],
+            "baud_rate" : bd,
             "parity" : self.serial.SERIAL_SETTINGS["parity"],
             "stop_bits" : self.serial.SERIAL_SETTINGS["stopbits"],
             "data_bits" : 8,
-            "total_timeout": round(rpc_call_timeout * 1000),
+            "total_timeout": round(rpc_call_timeout * 1000),  # ms
         }
 
         try:
