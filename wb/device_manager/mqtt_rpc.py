@@ -29,11 +29,12 @@ class RPCResultFuture(asyncio.Future):
     """
 
     def set_result(self, result):
-        if result is not None:
+        if result is not None and not self.cancelled():
             self._loop.call_soon_threadsafe(partial(super().set_result, result))
 
     def set_exception(self, exception):
-        self._loop.call_soon_threadsafe(partial(super().set_exception, exception))
+        if not self.cancelled():
+            self._loop.call_soon_threadsafe(partial(super().set_exception, exception))
 
 
 class SRPCClient(rpcclient.TMQTTRPCClient):

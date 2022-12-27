@@ -233,7 +233,7 @@ class DeviceManager():
 
     async def scan_serial_bus(self):
         self._is_scanning = True
-        tasks = []
+        scan_port_tasks = []
         await self.produce_state_update(
                 {
                     "devices" : [],  # TODO: unit test?
@@ -245,20 +245,22 @@ class DeviceManager():
         try:
             ports = await self._get_ports()
             for port in ports:
-                tasks.append(self.scan_serial_port(port))
-            await asyncio.gather(*tasks)
+                scan_port_tasks.append(asyncio.create_task(self.scan_serial_port(port)))
+            await asyncio.gather(*scan_port_tasks)
             await self.produce_state_update(
                 {
                     "scanning" : False,
                     "progress" : 100
                 }
             )
-        except Exception as e:
+        except Exception as unhandled_scan_error:
+            for t in scan_port_tasks:
+                t.cancel()
             err_to_webui = GenericStateError()
-            logger.exception("Pass error to overall state topic and stop scanning")
-            if isinstance(e, mqtt_rpc.MQTTRPCInternalServerError):
+            logger.exception("Pass error to overall state topic and cancel all scanning tasks")
+            if isinstance(unhandled_scan_error, mqtt_rpc.MQTTRPCInternalServerError):
                 err_to_webui = RPCCallTimeoutStateError()
-            elif isinstance(e, minimalmodbus.ModbusException):
+            elif isinstance(unhandled_scan_error, minimalmodbus.ModbusException):
                 err_to_webui = ModbusCommunicationStateError()
             await self.produce_state_update({"error" : err_to_webui})
         finally:
