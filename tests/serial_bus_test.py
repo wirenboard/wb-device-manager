@@ -8,14 +8,6 @@ from wb.device_manager import serial_bus
 from wb_modbus import minimalmodbus
 
 
-class DummyScanner(serial_bus.WBExtendedModbusScanner):
-
-    def __init__(self, *args, **kwargs):
-        self.instrument = AsyncMock()
-        self.port = kwargs.get("port", "/dev/dummyport")
-        self.extended_modbus_wrapper = serial_bus.WBExtendedModbusWrapper()
-
-
 class DummyWBAsyncModbus(serial_bus.WBAsyncModbus):
 
     def __init__(self, *args, **kwargs):
@@ -38,7 +30,7 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.scanner = DummyScanner(port="/dev/dummyport")
+        cls.scanner = serial_bus.WBExtendedModbusScanner(port="/dev/ttyDUMMY", rpc_client=AsyncMock())
         cls.uart_params = {
             "baudrate" : 9600,
             "parity" : "N",
@@ -51,18 +43,10 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
         cls.scanner.instrument._communicate = AsyncMock(return_value=ret)  # we have no actual serial devices
 
     def test_arbitration_timeout_calculation(self):
-        timeouts = {  # TODO: get rid of minimalmodbus
-            1200 : minimalmodbus._calculate_minimum_silent_period(1200),
-            2400 : minimalmodbus._calculate_minimum_silent_period(2400),
-            4800 : minimalmodbus._calculate_minimum_silent_period(4800),
-            9600 : minimalmodbus._calculate_minimum_silent_period(9600),
-            19200 : minimalmodbus._calculate_minimum_silent_period(19200),
-            38400 : minimalmodbus._calculate_minimum_silent_period(38400),
-            57600 : minimalmodbus._calculate_minimum_silent_period(57600),
-            115200 : minimalmodbus._calculate_minimum_silent_period(115200),
-        }
+        bds = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
+        timeouts_ms = {bd: minimalmodbus._calculate_minimum_silent_period(bd) for bd in bds}
 
-        for bd, assumed_timeout in timeouts.items():
+        for bd, assumed_timeout in timeouts_ms.items():
             self.assertEqual(self.scanner._get_arbitration_timeout(bd), assumed_timeout)
 
     async def test_correct_response(self):

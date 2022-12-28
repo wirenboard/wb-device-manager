@@ -84,7 +84,7 @@ class WBExtendedModbusScanner:
                 )
 
     def _get_arbitration_timeout(self, bd):
-        return minimalmodbus._calculate_minimum_silent_period(bd)
+        return self.instrument.calculate_minimum_silent_period_s(bd)
 
     async def _communicate(
         self,
