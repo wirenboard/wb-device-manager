@@ -44,9 +44,9 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
 
     def test_arbitration_timeout_calculation(self):
         bds = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
-        timeouts_ms = {bd: minimalmodbus._calculate_minimum_silent_period(bd) for bd in bds}
+        timeouts = {bd: minimalmodbus._calculate_minimum_silent_period(bd) for bd in bds}
 
-        for bd, assumed_timeout in timeouts_ms.items():
+        for bd, assumed_timeout in timeouts.items():
             self.assertEqual(self.scanner._get_arbitration_timeout(bd), assumed_timeout)
 
     async def test_correct_response(self):
