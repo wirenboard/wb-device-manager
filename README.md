@@ -51,7 +51,7 @@
             "bootloader_mode": true,
 
             // последняя ошибка при работе с конкретным устройством
-            "error": {
+            "error": { // пока не используется
                 // принятый внутри команды идентификатор сообщения (формат строго определён!)
                 "id": "com.wb.device_manager.modbus_error",
                 // fallback человекочитаемое сообщение
@@ -96,9 +96,9 @@
                     "progress": 50,
 
                     // последняя ошибка обновления прошивки конкретного устройства
-                    "error": {
+                    "error": { // пока не используется; обновление fw не реализовано
                         // принятый внутри команды идентификатор сообщения (формат строго определён!)
-                        "id": "com.wb.device_manager.fw_update_error",  // обновление fw пока не реализовано
+                        "id": "com.wb.device_manager.fw_update_error",
                         // fallback человекочитаемое сообщение
                         "message": "FW update failed. Check logs for more info"
                     },
@@ -116,12 +116,13 @@
 
 ### Работа с ошибками
 * поле ```error.id``` имеет строго определённый формат: ```com.wb.название_пакета.тип_ошибки```
+* ```error.metadata``` содержит дополнительную информацию, в зависимости от типа ошибки
 * подробные ошибки из питона (со stack trace) доступны в логах (```journalctl -u wb-device-manager -f```)
 
 #### Ошибки, выдаваемые наружу:
-| Id | Условия возникновения |
-| :- | :-------------------- |
-| **com.wb.device_manager.generic_error** | Неотловленная ошибка внутри сервиса |
+| Id | Условия возникновения | поле ```"metadata"``` |
+| :- | :-------------------- | :-------------- |
+| **com.wb.device_manager.generic_error** | Неотловленная ошибка внутри сервиса | ```null``` |
 | Наследники: |
-| **com.wb.device_manager.rpc_call_timeout_error** | Таймаут rpc-запроса к wb-mqtt-serial (wb-device-manager - клиент) |
-| **com.wb.device_manager.modbus_error** | Ошибка modbus-коммуникации с устройством (rpc-запрос к wb-mqtt-serial был удачным)
+| **com.wb.device_manager.rpc_call_timeout_error** | Таймаут rpc-запроса к wb-mqtt-serial (wb-device-manager - клиент) на этапе получения портов для сканирования | ```null``` |
+| **com.wb.device_manager.failed_to_scan_error** | Неотловленная ошибка при сканировании порта | ```"failed_ports" : [failed_port1, failed_port2, ...]``` |
