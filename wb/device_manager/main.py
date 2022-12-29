@@ -191,7 +191,7 @@ class DeviceManager():
                     if (progress == 0) or (progress > state.progress):
                         state.progress = progress
                     state.update(event)
-                    if not event.get("scanning", True):
+                    if "devices" in event and not event["devices"]:
                         devices_by_connection_params.clear()
                 else:
                     e = RuntimeError("Got incorrect state-update event: %s", repr(event))

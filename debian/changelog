@@ -1,8 +1,20 @@
 wb-device-manager (1.1.0) stable; urgency=medium
 
-  * rework port-scanning errors handling
+  * Rework port-scanning errors handling
 
  -- Vladimir Romanov <v.romanov@wirenboard.ru>  Thu, 29 Dec 2022 01:34:12 +0300
+
+wb-device-manager (1.0.2) stable; urgency=medium
+
+  * Fix all "duplicating" slaveids after rpc-call to non-existent port
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Wed, 28 Dec 2022 21:21:52 +0300
+
+wb-device-manager (1.0.1) stable; urgency=medium
+
+  * Rpc-call to wb-mqtt-serial: reduce frame_timeout to 3.5 modbus chars
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Wed, 28 Dec 2022 00:16:38 +0300
 
 wb-device-manager (1.0.0) stable; urgency=medium
 
