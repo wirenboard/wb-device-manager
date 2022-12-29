@@ -5,7 +5,7 @@ import atexit
 import signal
 import asyncio
 from pathlib import PurePosixPath
-from functools import partial
+from functools import partial, cache
 import paho.mqtt.client as mosquitto
 from mqttrpc import client as rpcclient
 from mqttrpc.manager import AMQTTRPCResponseManager
@@ -73,6 +73,11 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
         self.rpc_client = rpc_client
         self.serial.timeout = kwargs.get("response_timeout", self._calculate_default_response_timeout())
 
+    @staticmethod
+    @cache
+    def calculate_minimum_silent_period_s(bd):
+        return minimalmodbus._calculate_minimum_silent_period(bd)  # 3.5 modbus chars
+
     def _calculate_default_response_timeout(self):
         """
         response_timeout (on mb_master side): roundtrip + device_processing + uart_processing
@@ -93,17 +98,19 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
         """
         rpc_call_timeout = 10
 
+        bd = self.serial.SERIAL_SETTINGS["baudrate"]
         rpc_request = {
             "response_size": number_of_bytes_to_read,
             "format": "HEX",
             "msg": minimalmodbus._hexencode(request),
-            "response_timeout": round(self.serial.timeout * 1000),
+            "response_timeout": round(self.serial.timeout * 1000),  # ms
+            "frame_timeout": round(self.calculate_minimum_silent_period_s(bd) * 1000),  # ms
             "path": self.serial.port,  # TODO: support modbus tcp in minimalmodbus
-            "baud_rate" : self.serial.SERIAL_SETTINGS["baudrate"],
+            "baud_rate" : bd,
             "parity" : self.serial.SERIAL_SETTINGS["parity"],
             "stop_bits" : self.serial.SERIAL_SETTINGS["stopbits"],
             "data_bits" : 8,
-            "total_timeout": round(rpc_call_timeout * 1000),
+            "total_timeout": round(rpc_call_timeout * 1000),  # ms
         }
 
         try:
