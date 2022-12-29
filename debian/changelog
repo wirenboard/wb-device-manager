@@ -1,8 +1,14 @@
-wb-device-manager (1.0.1) stable; urgency=medium
+wb-device-manager (1.0.2) stable; urgency=medium
 
-  * fix all "duplicating" slaveids after rpc-call to non-existent port
+  * Fix all "duplicating" slaveids after rpc-call to non-existent port
 
  -- Vladimir Romanov <v.romanov@wirenboard.ru>  Wed, 28 Dec 2022 21:21:52 +0300
+
+wb-device-manager (1.0.1) stable; urgency=medium
+
+  * Rpc-call to wb-mqtt-serial: reduce frame_timeout to 3.5 modbus chars
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Wed, 28 Dec 2022 00:16:38 +0300
 
 wb-device-manager (1.0.0) stable; urgency=medium
 
