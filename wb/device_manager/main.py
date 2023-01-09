@@ -25,6 +25,7 @@ EXIT_FAILURE = 1
 class StateError:
     id: str = None
     message: str = None
+    metadata: dict = None
 
 @dataclass
 class Port:
@@ -94,6 +95,12 @@ class SetEncoder(json.JSONEncoder):
         super().default(o)
 
 
+class PortScanningError(Exception):
+    def __init__(self, *args, **kwargs):
+        self.port = kwargs.pop("port")
+        super().__init__(*args, **kwargs)
+
+
 """
 Errors, shown in json-state
 """
@@ -110,9 +117,13 @@ class RPCCallTimeoutStateError(GenericStateError):
     MESSAGE = "RPC call to wb-mqtt-serial timed out. Check, wb-mqtt-serial is running"
 
 
-class ModbusCommunicationStateError(GenericStateError):
-    ID = "com.wb.device_manager.modbus_error"
-    MESSAGE = "Modbus communication error. Check logs for more info"
+class FailedScanStateError(GenericStateError):
+    ID = "com.wb.device_manager.failed_to_scan_error"
+    MESSAGE = "Some ports failed to scan. Check logs for more info"
+
+    def __init__(self, failed_ports):
+        super().__init__()
+        self.metadata = {"failed_ports" : failed_ports}
 
 
 class DeviceManager():
@@ -233,7 +244,6 @@ class DeviceManager():
 
     async def scan_serial_bus(self):
         self._is_scanning = True
-        tasks = []
         await self.produce_state_update(
                 {
                     "devices" : [],  # TODO: unit test?
@@ -242,30 +252,35 @@ class DeviceManager():
                     "error" : None
                 }
             )
+        state_error = None
         try:
             ports = await self._get_ports()
-            for port in ports:
-                tasks.append(self.scan_serial_port(port))
-            await asyncio.gather(*tasks)
+        except mqtt_rpc.MQTTRPCInternalServerError:
+            logger.exception("No answer from wb-mqtt-serial")
+            state_error = RPCCallTimeoutStateError()
+            ports = []
+        try:
+            tasks = [self.scan_serial_port(port) for port in ports]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
             await self.produce_state_update(
                 {
                     "scanning" : False,
                     "progress" : 100
                 }
             )
+            failed_ports = [x.port for x in results if isinstance(x, PortScanningError)]
+            if failed_ports:
+                logger.warning("Unsuccessful scan: %s", str(failed_ports))
+                state_error = FailedScanStateError(failed_ports=failed_ports)
         except Exception as e:
-            err_to_webui = GenericStateError()
-            logger.exception("Pass error to overall state topic and stop scanning")
-            if isinstance(e, mqtt_rpc.MQTTRPCInternalServerError):
-                err_to_webui = RPCCallTimeoutStateError()
-            elif isinstance(e, minimalmodbus.ModbusException):
-                err_to_webui = ModbusCommunicationStateError()
-            await self.produce_state_update({"error" : err_to_webui})
+            state_error = GenericStateError()
+            logger.exception("Unhandled exception during overall scan")
         finally:
             await self.produce_state_update(
                 {
                     "scanning" : False,
-                    "progress" : 0
+                    "progress" : 0,
+                    "error" : state_error
                 }
             )
             self._is_scanning = False
@@ -319,6 +334,9 @@ class DeviceManager():
 
             except minimalmodbus.NoResponseError:
                 logger.debug("No extended-modbus devices on %s", debug_str)
+            except Exception as e:
+                logger.exception("Unhandled exception during scan %s" % port)
+                raise PortScanningError(port=port) from e
             await self.produce_state_update({"progress" : progress_precent})
             #TODO: check all slaveids via ordinary modbus
 
