@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import asyncio
 import atexit
 import signal
-import asyncio
+from functools import cache, partial
 from pathlib import PurePosixPath
-from functools import partial, cache
+
 import paho.mqtt.client as mosquitto
+from jsonrpc.exceptions import JSONRPCDispatchException, JSONRPCServerError
 from mqttrpc import client as rpcclient
 from mqttrpc.manager import AMQTTRPCResponseManager
 from mqttrpc.protocol import MQTTRPC10Response
-from jsonrpc.exceptions import JSONRPCServerError, JSONRPCDispatchException
-from wb_modbus import minimalmodbus, instruments
-from . import logger, TOPIC_HEADER
+from wb_modbus import instruments, minimalmodbus
+
+from . import TOPIC_HEADER, logger
 
 
 def get_topic_path(*args):
@@ -40,26 +42,19 @@ class SRPCClient(rpcclient.TMQTTRPCClient):
     """
     Stores internal future-like objs (with rpc-call result), filled from outer on_mqtt_message callback
     """
+
     async def make_rpc_call(self, driver, service, method, params, timeout):
         logger.debug("RPC Client -> %s (rpc timeout: %.2fs)", params, timeout)
-        response_f = self.call_async(
-            driver,
-            service,
-            method,
-            params,
-            result_future=RPCResultFuture
-            )
+        response_f = self.call_async(driver, service, method, params, result_future=RPCResultFuture)
         try:
             response = await asyncio.wait_for(response_f, timeout)
             logger.debug("RPC Client <- %s", response)
             return response
         except asyncio.exceptions.TimeoutError as e:
             raise MQTTRPCInternalServerError(
-                message="rpc call to %s/%s/%s -> %.2fs: no answer" % (
-                    driver, service, method, timeout
-                ),
-                data="rpc call params: %s" % str(params)
-                )
+                message="rpc call to %s/%s/%s -> %.2fs: no answer" % (driver, service, method, timeout),
+                data="rpc call params: %s" % str(params),
+            )
 
 
 class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
@@ -82,9 +77,9 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
         """
         response_timeout (on mb_master side): roundtrip + device_processing + uart_processing
         """
-        wb_devices_response_time_s = 8E-3  # devices with old fws
-        onebyte_on_1200bd_s = 10E-3
-        linux_uart_processing_s = 50E-3  # with huge upper reserve
+        wb_devices_response_time_s = 8e-3  # devices with old fws
+        onebyte_on_1200bd_s = 10e-3
+        linux_uart_processing_s = 50e-3  # with huge upper reserve
         return wb_devices_response_time_s + onebyte_on_1200bd_s + linux_uart_processing_s
 
     async def _communicate(self, request, number_of_bytes_to_read):
@@ -106,10 +101,10 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
             "response_timeout": round(self.serial.timeout * 1000),  # ms
             "frame_timeout": round(self.calculate_minimum_silent_period_s(bd) * 1000),  # ms
             "path": self.serial.port,  # TODO: support modbus tcp in minimalmodbus
-            "baud_rate" : bd,
-            "parity" : self.serial.SERIAL_SETTINGS["parity"],
-            "stop_bits" : self.serial.SERIAL_SETTINGS["stopbits"],
-            "data_bits" : 8,
+            "baud_rate": bd,
+            "parity": self.serial.SERIAL_SETTINGS["parity"],
+            "stop_bits": self.serial.SERIAL_SETTINGS["stopbits"],
+            "data_bits": 8,
             "total_timeout": round(rpc_call_timeout * 1000),  # ms
         }
 
@@ -119,15 +114,18 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
                 service="port",
                 method="Load",
                 params=rpc_request,
-                timeout=rpc_call_timeout
-                )
+                timeout=rpc_call_timeout,
+            )
 
         except rpcclient.MQTTRPCError as e:
-            reraise_err = minimalmodbus.NoResponseError(
-                "RPC: no response with %.2fs timeout: server returned code %d; rpc call: %s" % (
-                    rpc_call_timeout, e.code, str(rpc_request)
-                    )
-                ) if "request timed out" in e.data else e  # TODO: fix rpc errcodes in wb-mqtt-serial
+            reraise_err = (
+                minimalmodbus.NoResponseError(
+                    "RPC: no response with %.2fs timeout: server returned code %d; rpc call: %s"
+                    % (rpc_call_timeout, e.code, str(rpc_request))
+                )
+                if "request timed out" in e.data
+                else e
+            )  # TODO: fix rpc errcodes in wb-mqtt-serial
             raise reraise_err from e
 
         else:
@@ -150,6 +148,7 @@ class MQTTRPCAlreadyProcessingException(JSONRPCDispatchException):
     """
     Compatible with mqttrpc.TMQTTRPCResponseManager
     """
+
     CODE = -33100
 
     def __init__(self, code=None, message=None, data=None, *args, **kwargs):
@@ -161,8 +160,15 @@ class AsyncMQTTServer:
     _NOW_PROCESSING = []
     _EXITCODE = 0
 
-    def __init__(self, methods_dispatcher, mqtt_connection, rpc_client, additional_topics_to_clear=[],
-            asyncio_loop=asyncio.get_event_loop(), mqtt_hostport_str="127.0.0.1:1883"):
+    def __init__(
+        self,
+        methods_dispatcher,
+        mqtt_connection,
+        rpc_client,
+        additional_topics_to_clear=[],
+        asyncio_loop=asyncio.get_event_loop(),
+        mqtt_hostport_str="127.0.0.1:1883",
+    ):
         self.methods_dispatcher = methods_dispatcher
         self.mqtt_connection = mqtt_connection
         self.rpc_client = rpc_client
@@ -246,7 +252,9 @@ class AsyncMQTTServer:
         logger.debug("Clear rpc_client subscribes")
 
     def _on_mqtt_message(self, _client, _userdata, message):
-        if mosquitto.topic_matches_sub('/rpc/v1/+/+/+/%s/reply' % self.rpc_client.rpc_client_id, message.topic):
+        if mosquitto.topic_matches_sub(
+            "/rpc/v1/+/+/+/%s/reply" % self.rpc_client.rpc_client_id, message.topic
+        ):
             self.rpc_client.on_mqtt_message(None, None, message)  # reply from mqtt client; filling payload
 
         else:  # requests to a server
@@ -268,11 +276,8 @@ class AsyncMQTTServer:
 
         try:
             ret = await AMQTTRPCResponseManager.handle(  # wraps any exception into json-rpc
-                message.payload,
-                service_id,
-                method_id,
-                self.methods_dispatcher
-                )
+                message.payload, service_id, method_id, self.methods_dispatcher
+            )
 
             self.reply(message, ret.json)
         finally:
