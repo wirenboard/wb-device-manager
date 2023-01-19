@@ -1,3 +1,9 @@
+wb-device-manager (1.1.2) stable; urgency=medium
+
+  * Fix response parsing on some corner serial_number cases
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Wed, 18 Jan 2023 23:58:45 +0300
+
 wb-device-manager (1.1.1) stable; urgency=medium
 
   * Code formatting

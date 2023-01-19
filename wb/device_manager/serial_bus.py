@@ -67,7 +67,7 @@ class WBExtendedModbusScanner:
         Typical plain_response_str looks like: ffffffff<response>00000000
         """
         mat = re.match(
-            "^.*(FF)*(?P<header>%X%X)(?P<cmd>[0-9A-F][0-9A-F]).+"
+            "^.*?(?P<header>%X%X)(?P<cmd>[0-9A-F][0-9A-F]).+"
             % (self.extended_modbus_wrapper.ADDR, self.extended_modbus_wrapper.MODE),
             plain_response_str,
         )
