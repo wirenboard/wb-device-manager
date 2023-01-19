@@ -41,10 +41,7 @@ class TestRPCClient(unittest.IsolatedAsyncioTestCase):
                 "path": "/dev/ttyRS485-2",
                 "stop_bits": 2,
             },
-            {
-                "address": "192.168.0.7",
-                "port": 23
-            },
+            {"address": "192.168.0.7", "port": 23},
         ]
         assumed_response = ["/dev/ttyRS485-1", "/dev/ttyRS485-2"]
         self.mock_response(response)
