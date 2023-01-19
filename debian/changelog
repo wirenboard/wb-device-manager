@@ -1,6 +1,7 @@
-wb-device-manager (1.1.3) stable; urgency=medium
+wb-device-manager (1.2.0) stable; urgency=medium
 
   * Support connection to Mosquitto through unix socket
+  * Support brute force scanning
 
  -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 19 Jan 2023 15:12:00 +0400
 

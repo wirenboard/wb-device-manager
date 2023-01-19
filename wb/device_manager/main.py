@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 import paho_socket
 from mqttrpc import Dispatcher
 from paho.mqtt import client as mqttclient
-from wb_modbus import ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS
+from wb_modbus import ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, bindings
 from wb_modbus import logger as mb_logger
 from wb_modbus import minimalmodbus
 
@@ -159,6 +159,7 @@ class DeviceManager:
         self._asyncio_loop = asyncio.get_event_loop()
         self.asyncio_loop.create_task(self.consume_state_update(), name="Build & publish overall state")
         self._is_scanning = False
+        self._is_ext_scan = True
 
     @property
     def mqtt_connection(self):
@@ -227,19 +228,31 @@ class DeviceManager:
                 self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
     def _get_mb_connection(self, device_info):
-        conn = serial_bus.WBAsyncExtendedModbus(
-            sn=int(device_info.sn, 0),
-            port=device_info.port.path,
-            baudrate=device_info.cfg.baud_rate,
-            parity=device_info.cfg.parity,
-            stopbits=device_info.cfg.stop_bits,
-            rpc_client=self.rpc_client,
-        )
+        if self._is_ext_scan:
+            conn = serial_bus.WBAsyncExtendedModbus(
+                sn=int(device_info.sn),
+                port=device_info.port.path,
+                baudrate=device_info.cfg.baud_rate,
+                parity=device_info.cfg.parity,
+                stopbits=device_info.cfg.stop_bits,
+                rpc_client=self.rpc_client,
+            )
+        else:
+            conn = serial_bus.WBAsyncModbus(
+                addr=device_info.cfg.slave_id,
+                port=device_info.port.path,
+                baudrate=device_info.cfg.baud_rate,
+                parity=device_info.cfg.parity,
+                stopbits=device_info.cfg.stop_bits,
+                rpc_client=self.rpc_client,
+            )
         return conn
 
     async def _fill_fw_info(self, device_info):
         mb_conn = self._get_mb_connection(device_info)
-        device_info.fw.version = await mb_conn.read_string(first_addr=250, regs_length=16)
+        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"]
+        len = bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH
+        device_info.fw.version = await mb_conn.read_string(first_addr=reg, regs_length=len)
         # TODO: fill available version from fw-releases
 
     def _get_all_uart_params(
@@ -260,10 +273,13 @@ class DeviceManager:
         )
         return [port["path"] for port in response]
 
-    async def launch_scan(self):
+    async def launch_scan(self, *args, **kwargs):
         if self._is_scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         else:
+            ext = kwargs.get("ext")
+            if isinstance(ext, bool):
+                self._is_ext_scan = ext
             self.asyncio_loop.create_task(self.scan_serial_bus(), name="Scan serial bus (long running)")
             return "Ok"
 
@@ -298,7 +314,10 @@ class DeviceManager:
         def make_uuid(sn):
             return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
 
-        extended_modbus_scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
+        if self._is_ext_scan:
+            modbus_scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
+        else:
+            modbus_scanner = serial_bus.WBModbusScanner(port, self.rpc_client)
 
         for bd, parity, stopbits, progress_precent in self._get_all_uart_params(
             stopbits=[
@@ -306,9 +325,11 @@ class DeviceManager:
             ]
         ):
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
-            logger.info("Scanning (via extended modbus) %s", debug_str)
+            logger.info(
+                "Scanning (via %s modbus) %s", "extended" if self._is_ext_scan else "ordinary", debug_str
+            )
             try:
-                async for slaveid, sn in extended_modbus_scanner.scan_bus(
+                async for slaveid, sn in modbus_scanner.scan_bus(
                     baudrate=bd, parity=parity, stopbits=stopbits
                 ):
                     device_info = DeviceInfo(
@@ -322,15 +343,19 @@ class DeviceManager:
                     )
 
                     try:
+                        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"]
+                        len = bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH  # why 20?
                         device_signature = await self._get_mb_connection(device_info).read_string(
-                            first_addr=200, regs_length=20
+                            first_addr=reg, regs_length=len
                         )
                         device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
                         device_info.title = device_signature.strip(
                             "\x02"
                         )  # TODO: store somewhere human-readable titles
+                        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"]
+                        len = bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH
                         device_info.fw_signature = await self._get_mb_connection(device_info).read_string(
-                            first_addr=290, regs_length=12
+                            first_addr=reg, regs_length=len
                         )
                         await self._fill_fw_info(device_info)
                     except minimalmodbus.ModbusException as e:
@@ -340,12 +365,13 @@ class DeviceManager:
                         await self.produce_state_update(device_info)
 
             except minimalmodbus.NoResponseError:
-                logger.debug("No extended-modbus devices on %s", debug_str)
+                logger.debug(
+                    "No %s-modbus devices on %s", "extended" if self._is_ext_scan else "ordinary", debug_str
+                )
             except Exception as e:
                 logger.exception("Unhandled exception during scan %s" % port)
                 raise PortScanningError(port=port) from e
             await self.produce_state_update({"progress": progress_precent})
-            # TODO: check all slaveids via ordinary modbus
 
 
 class RetcodeArgParser(ArgumentParser):
