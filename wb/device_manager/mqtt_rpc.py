@@ -6,6 +6,7 @@ import atexit
 import signal
 from functools import cache, partial
 from pathlib import PurePosixPath
+from urllib.parse import urlparse
 
 import paho.mqtt.client as mosquitto
 from jsonrpc.exceptions import JSONRPCDispatchException, JSONRPCServerError
@@ -164,26 +165,21 @@ class AsyncMQTTServer:
         self,
         methods_dispatcher,
         mqtt_connection,
+        mqtt_url_str,
         rpc_client,
         additional_topics_to_clear=[],
         asyncio_loop=asyncio.get_event_loop(),
-        mqtt_hostport_str="127.0.0.1:1883",
     ):
         self.methods_dispatcher = methods_dispatcher
         self.mqtt_connection = mqtt_connection
         self.rpc_client = rpc_client
         self.asyncio_loop = asyncio_loop
-        self.mqtt_hostport_str = mqtt_hostport_str
+        self.mqtt_url_str = mqtt_url_str
         self.additional_topics_to_clear = additional_topics_to_clear
 
     @property
     def now_processing(self):
         return type(self)._NOW_PROCESSING
-
-    def _parse_mqtt_addr(self):
-        default_host, default_port = "127.0.0.1", "1883"
-        host, port = self.mqtt_hostport_str.split(":", 1)
-        return host or default_host, int(port or default_port, 0)
 
     def _delete_retained(self):
         to_clear = [get_topic_path(service, method) for service, method in self.methods_dispatcher.keys()]
@@ -197,7 +193,7 @@ class AsyncMQTTServer:
         self._delete_retained()
         self.mqtt_connection.disconnect()
         self.mqtt_connection.loop_stop()
-        logger.info("Mqtt: close %s", self.mqtt_hostport_str)
+        logger.info("Mqtt: close %s", self.mqtt_url_str)
 
     def _setup_event_loop(self):
         signals = [signal.SIGINT, signal.SIGTERM]
@@ -207,16 +203,21 @@ class AsyncMQTTServer:
         self.asyncio_loop.set_debug(True)
 
     def _setup_mqtt_connection(self):
-        host, port = self._parse_mqtt_addr()
         self.mqtt_connection.on_connect = self._on_mqtt_connect
         self.mqtt_connection.on_disconnect = self._on_mqtt_disconnect
         self.mqtt_connection.on_message = self._on_mqtt_message
 
         try:
-            self.mqtt_connection.connect(host, port)
+            url = urlparse(self.mqtt_url_str)
+            if url.scheme == "mqtt-tcp":
+                if url.username:
+                    self.mqtt_connection.username_pw_set(url.username, url.password)
+                self.mqtt_connection.connect(url.hostname, url.port)
+            elif url.scheme == "unix":
+                self.mqtt_connection.sock_connect(url.path)
             self.mqtt_connection.loop_start()
         finally:
-            logger.info("Registered to atexit hook: close %s", self.mqtt_hostport_str)
+            logger.info("Registered to atexit hook: close %s", self.mqtt_url_str)
             atexit.register(lambda: self._close_mqtt_connection())
 
     def add_to_processing(self, mqtt_message):
@@ -238,7 +239,7 @@ class AsyncMQTTServer:
             logger.debug("Subscribed: %s", topic_str)
 
     def _on_mqtt_connect(self, client, userdata, flags, rc):
-        logger.info("Mqtt: reconnect to %s -> %d", self.mqtt_hostport_str, rc)
+        logger.info("Mqtt: reconnect to %s -> %d", self.mqtt_url_str, rc)
         if rc == 0:
             self._subscribe()
         else:
@@ -247,7 +248,7 @@ class AsyncMQTTServer:
             self.asyncio_loop.stop()
 
     def _on_mqtt_disconnect(self, client, userdata, rc):
-        logger.warning("Mqtt: disconnect from %s -> %d", self.mqtt_hostport_str, rc)
+        logger.warning("Mqtt: disconnect from %s -> %d", self.mqtt_url_str, rc)
         self.rpc_client.subscribes = set()  # rpc_client re-subscribes if not subscribed
         logger.debug("Clear rpc_client subscribes")
 

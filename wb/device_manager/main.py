@@ -4,6 +4,7 @@
 import asyncio
 import json
 import logging
+import os
 import time
 import uuid
 from argparse import ArgumentParser
@@ -11,9 +12,11 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field, is_dataclass
 from itertools import chain, product
 from sys import argv, stderr, stdout
+from urllib.parse import urlparse
 
-import paho.mqtt.client as mosquitto
+import paho_socket
 from mqttrpc import Dispatcher
+from paho.mqtt import client as mqttclient
 from wb_modbus import ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS
 from wb_modbus import logger as mb_logger
 from wb_modbus import minimalmodbus
@@ -141,8 +144,16 @@ class DeviceManager:
     MQTT_CLIENT_NAME = "wb-device-manager"
     STATE_PUBLISH_TOPIC = "/wb-device-manager/state"
 
-    def __init__(self):
-        self._mqtt_connection = mosquitto.Client(self.MQTT_CLIENT_NAME)
+    def __init__(self, broker_url: str):
+        url = urlparse(broker_url)
+        client_id = "%s-%d" % (self.MQTT_CLIENT_NAME, os.getpid())
+        if url.scheme == "mqtt-tcp":
+            self._mqtt_connection = mqttclient.Client(client_id)
+        elif url.scheme == "unix":
+            self._mqtt_connection = paho_socket.Client(client_id)
+        else:
+            raise Exception("Unkown mqtt url scheme")
+
         self._rpc_client = mqtt_rpc.SRPCClient(self.mqtt_connection)
         self._state_update_queue = asyncio.Queue()
         self._asyncio_loop = asyncio.get_event_loop()
@@ -355,6 +366,14 @@ def main(args=argv):
         const=logging.DEBUG,
         help="Set log_level to debug",
     )
+    parser.add_argument(
+        "-b",
+        "--broker_url",
+        dest="broker_url",
+        type=str,
+        help="MQTT url",
+        default="unix:///var/run/mosquitto/mosquitto.sock",
+    )
     args = parser.parse_args(argv[1:])
 
     # setup systemd logger
@@ -365,13 +384,14 @@ def main(args=argv):
     for lgr in (logger, mb_logger):
         lgr.addHandler(handler)
 
-    device_manager = DeviceManager()
+    device_manager = DeviceManager(args.broker_url)
 
     async_callables_mapping = {("bus-scan", "Scan"): device_manager.launch_scan}
 
     server = mqtt_rpc.AsyncMQTTServer(
         methods_dispatcher=Dispatcher(async_callables_mapping),
         mqtt_connection=device_manager.mqtt_connection,
+        mqtt_url_str=args.broker_url,
         rpc_client=device_manager.rpc_client,
         additional_topics_to_clear=[
             device_manager.state_publish_topic,
