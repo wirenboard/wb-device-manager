@@ -247,7 +247,8 @@ class DeviceManager:
             params={},
             timeout=1.0,  # s; rpc call goes around scheduler queue => relatively small
         )
-        return [port["path"] for port in response]
+        ports = [port.get("path") for port in response]
+        return filter(None, ports)
 
     async def launch_scan(self):
         if self._is_scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
