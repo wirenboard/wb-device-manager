@@ -273,13 +273,11 @@ class DeviceManager:
         )
         return [port["path"] for port in response]
 
-    async def launch_scan(self, *args, **kwargs):
+    async def launch_scan(self, ext=True):
         if self._is_scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         else:
-            ext = kwargs.get("ext")
-            if isinstance(ext, bool):
-                self._is_ext_scan = ext
+            self._is_ext_scan = ext
             self.asyncio_loop.create_task(self.scan_serial_bus(), name="Scan serial bus (long running)")
             return "Ok"
 
