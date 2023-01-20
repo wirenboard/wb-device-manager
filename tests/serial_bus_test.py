@@ -48,6 +48,7 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
             ("fffffffffffffffffd6003fe34359603f6a80000000000000000", "FE34359603"),
             ("fffffffffffffffffd600300019424c7f4610000000000000000", "00019424C7"),
             ("fffffffffffffffffd6003fed2efd601501a0000000000000000", "FED2EFD601"),
+            ("fffffffffffffffffd60033938169d38f7000000000000000000", "3938169D38"),  # crc ends with zeroes
         ]
         for (mock, assumed_response) in mocks:
             self.mock_response(mock)
