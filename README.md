@@ -1,6 +1,19 @@
 # wb-device-manager
 
-Структура данных в топике списка устройств:
+### Запуск сканирования
+Для запуска сканирования необходимо выполнив MQTT RPC запрос `wb-device-manager/bus-scan/Scan/client_id` со следующими параметрами:
+
+#### Параметры
+
+|Параметр |Тип          |Значение по умолчанию |Описание |
+|---------|-------------|----------------------|---------|
+|ext      |опциональный |true                  |быстрое сканирование через extended modbus
+
+В качестве ответа в топике `wb-device-manager/bus-scan/Scan/client_id/reply` будет опубликовано сообщение c результатом `Ok` при успешном запуске сканирования.
+
+### Результат сканирования
+
+Структура данных в топике списка устройств (`/wb-device-manager/state`):
 
 ```jsonc
 {
@@ -113,16 +126,15 @@
 }
 ```
 
-
 ### Работа с ошибками
 * поле ```error.id``` имеет строго определённый формат: ```com.wb.название_пакета.тип_ошибки```
 * ```error.metadata``` содержит дополнительную информацию, в зависимости от типа ошибки
 * подробные ошибки из питона (со stack trace) доступны в логах (```journalctl -u wb-device-manager -f```)
 
 #### Ошибки, выдаваемые наружу:
-| Id | Условия возникновения | поле ```"metadata"``` |
+| Id | Условия возникновения | поле `"metadata"` |
 | :- | :-------------------- | :-------------- |
-| **com.wb.device_manager.generic_error** | Неотловленная ошибка внутри сервиса | ```null``` |
+| **com.wb.device_manager.generic_error** | Неотловленная ошибка внутри сервиса | `null` |
 | Наследники: |
-| **com.wb.device_manager.rpc_call_timeout_error** | Таймаут rpc-запроса к wb-mqtt-serial (wb-device-manager - клиент) на этапе получения портов для сканирования | ```null``` |
-| **com.wb.device_manager.failed_to_scan_error** | Неотловленная ошибка при сканировании порта | ```"failed_ports" : [failed_port1, failed_port2, ...]``` |
+| **com.wb.device_manager.rpc_call_timeout_error** | Таймаут rpc-запроса к wb-mqtt-serial (wb-device-manager - клиент) на этапе получения портов для сканирования | `null` |
+| **com.wb.device_manager.failed_to_scan_error** | Неотловленная ошибка при сканировании порта | `"failed_ports" : [failed_port1, failed_port2, ...]` |
