@@ -52,6 +52,7 @@ class WBModbusScanner:
         for slaveid in random.sample(range(1, 247), 246):
             try:
                 sn = await self.get_serial_number(slaveid, uart_params)
+                logger.info("Got device: %d %d", slaveid, sn)
                 yield slaveid, sn
             except minimalmodbus.ModbusException as e:
                 logger.debug("Modbus error: %s", e)
@@ -186,7 +187,7 @@ class WBExtendedModbusScanner(WBModbusScanner):
         )
         while sn_slaveid is not None:
             slaveid, sn = self._parse_device_data(sn_slaveid)
-            logger.debug("Got device: %d %d", slaveid, sn)
+            logger.info("Got device: %d %d", slaveid, sn)
             yield slaveid, sn
             sn_slaveid = await self.get_next_device_data(
                 cmd_code=self.extended_modbus_wrapper.CMDS.single_scan, uart_params=uart_params
