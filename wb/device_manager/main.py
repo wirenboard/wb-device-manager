@@ -251,8 +251,8 @@ class DeviceManager:
     async def _fill_fw_info(self, device_info):
         mb_conn = self._get_mb_connection(device_info)
         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"]
-        len = bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH
-        device_info.fw.version = await mb_conn.read_string(first_addr=reg, regs_length=len)
+        number_of_regs = bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH
+        device_info.fw.version = await mb_conn.read_string(first_addr=reg, regs_length=number_of_regs)
         # TODO: fill available version from fw-releases
 
     def _get_all_uart_params(
@@ -342,18 +342,18 @@ class DeviceManager:
 
                     try:
                         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"]
-                        len = bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH  # why 20?
+                        number_of_regs = bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH  # why 20?
                         device_signature = await self._get_mb_connection(device_info).read_string(
-                            first_addr=reg, regs_length=len
+                            first_addr=reg, regs_length=number_of_regs
                         )
                         device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
                         device_info.title = device_signature.strip(
                             "\x02"
                         )  # TODO: store somewhere human-readable titles
                         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"]
-                        len = bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH
+                        number_of_regs = bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH
                         device_info.fw_signature = await self._get_mb_connection(device_info).read_string(
-                            first_addr=reg, regs_length=len
+                            first_addr=reg, regs_length=number_of_regs
                         )
                         await self._fill_fw_info(device_info)
                     except minimalmodbus.ModbusException as e:
