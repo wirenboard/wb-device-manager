@@ -22,7 +22,9 @@ class WBModbusScanner:
 
         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["serial_number"]
         number_of_regs = 2
-        payload = minimalmodbus._num_to_twobyte_string(reg) + minimalmodbus._num_to_twobyte_string(number_of_regs)
+        payload = minimalmodbus._num_to_twobyte_string(reg) + minimalmodbus._num_to_twobyte_string(
+            number_of_regs
+        )
         request = minimalmodbus._embed_payload(
             slaveaddress=slaveid, mode=minimalmodbus.MODE_RTU, functioncode=3, payloaddata=payload
         )
