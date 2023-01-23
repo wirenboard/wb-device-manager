@@ -343,7 +343,7 @@ class DeviceManager:
 
                     try:
                         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"]
-                        number_of_regs = bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH  # why 20?
+                        number_of_regs = 20  # bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH
                         device_signature = await self._get_mb_connection(device_info).read_string(
                             first_addr=reg, regs_length=number_of_regs
                         )
