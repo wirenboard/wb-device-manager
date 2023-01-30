@@ -247,7 +247,26 @@ class DeviceManager:
             )
         return conn
 
-    async def _fill_fw_info(self, device_info, is_ext_scan):
+    async def _fill_device_signature(self, device_info, is_ext_scan) -> None:
+        mb_conn = self._get_mb_connection(device_info, is_ext_scan)
+        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"]
+        number_of_regs = 20
+        try:
+            device_signature = await mb_conn.read_string(first_addr=reg, regs_length=number_of_regs)
+        except minimalmodbus.ModbusException:
+            number_of_regs = bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH
+            device_signature = await mb_conn.read_string(first_addr=reg, regs_length=number_of_regs)
+        finally:
+            device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
+            device_info.title = device_signature.strip("\x02")  # TODO: store somewhere human-readable titles
+
+    async def _fill_fw_signature(self, device_info, is_ext_scan) -> None:
+        mb_conn = self._get_mb_connection(device_info, is_ext_scan)
+        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"]
+        number_of_regs = bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH
+        device_info.fw_signature = await mb_conn.read_string(first_addr=reg, regs_length=number_of_regs)
+
+    async def _fill_fw_info(self, device_info, is_ext_scan) -> None:
         mb_conn = self._get_mb_connection(device_info, is_ext_scan)
         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"]
         number_of_regs = bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH
@@ -331,6 +350,7 @@ class DeviceManager:
                 ):
                     device_info = DeviceInfo(
                         uuid=make_uuid(sn),
+                        title="Unknown",
                         sn=str(sn),
                         last_seen=int(time.time()),
                         online=True,
@@ -340,20 +360,8 @@ class DeviceManager:
                     )
 
                     try:
-                        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"]
-                        number_of_regs = 20  # bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH
-                        device_signature = await self._get_mb_connection(
-                            device_info, is_ext_scan
-                        ).read_string(first_addr=reg, regs_length=number_of_regs)
-                        device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
-                        device_info.title = device_signature.strip(
-                            "\x02"
-                        )  # TODO: store somewhere human-readable titles
-                        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"]
-                        number_of_regs = bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH
-                        device_info.fw_signature = await self._get_mb_connection(
-                            device_info, is_ext_scan
-                        ).read_string(first_addr=reg, regs_length=number_of_regs)
+                        await self._fill_device_signature(device_info, is_ext_scan)
+                        await self._fill_fw_signature(device_info, is_ext_scan)
                         await self._fill_fw_info(device_info, is_ext_scan)
                     except minimalmodbus.ModbusException as e:
                         logger.exception("Treating device %s as offline", str(device_info))
