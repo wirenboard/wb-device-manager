@@ -81,7 +81,7 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
         wb_devices_response_time_s = 8e-3  # devices with old fws
         onebyte_on_1200bd_s = 10e-3
         linux_uart_processing_s = 50e-3  # with huge upper reserve
-        return wb_devices_response_time_s + onebyte_on_1200bd_s + linux_uart_processing_s
+        return wb_devices_response_time_s
 
     async def _communicate(self, request, number_of_bytes_to_read):
         minimalmodbus._check_string(request, minlength=1, description="request")
