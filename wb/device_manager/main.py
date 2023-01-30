@@ -277,7 +277,9 @@ class DeviceManager:
         if self._is_scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         else:
-            self.asyncio_loop.create_task(self.scan_serial_bus(is_ext_scan), name="Scan serial bus (long running)")
+            self.asyncio_loop.create_task(
+                self.scan_serial_bus(is_ext_scan), name="Scan serial bus (long running)"
+            )
             return "Ok"
 
     async def scan_serial_bus(self, is_ext_scan):
@@ -322,9 +324,7 @@ class DeviceManager:
             ]
         ):
             debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
-            logger.info(
-                "Scanning (via %s modbus) %s", "extended" if is_ext_scan else "ordinary", debug_str
-            )
+            logger.info("Scanning (via %s modbus) %s", "extended" if is_ext_scan else "ordinary", debug_str)
             try:
                 async for slaveid, sn in modbus_scanner.scan_bus(
                     baudrate=bd, parity=parity, stopbits=stopbits
@@ -342,18 +342,18 @@ class DeviceManager:
                     try:
                         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"]
                         number_of_regs = 20  # bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH
-                        device_signature = await self._get_mb_connection(device_info, is_ext_scan).read_string(
-                            first_addr=reg, regs_length=number_of_regs
-                        )
+                        device_signature = await self._get_mb_connection(
+                            device_info, is_ext_scan
+                        ).read_string(first_addr=reg, regs_length=number_of_regs)
                         device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
                         device_info.title = device_signature.strip(
                             "\x02"
                         )  # TODO: store somewhere human-readable titles
                         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"]
                         number_of_regs = bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH
-                        device_info.fw_signature = await self._get_mb_connection(device_info, is_ext_scan).read_string(
-                            first_addr=reg, regs_length=number_of_regs
-                        )
+                        device_info.fw_signature = await self._get_mb_connection(
+                            device_info, is_ext_scan
+                        ).read_string(first_addr=reg, regs_length=number_of_regs)
                         await self._fill_fw_info(device_info, is_ext_scan)
                     except minimalmodbus.ModbusException as e:
                         logger.exception("Treating device %s as offline", str(device_info))
