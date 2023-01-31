@@ -58,6 +58,7 @@ class FWUpdate:
 @dataclass
 class Firmware:
     version: str = None
+    ext_support: bool = False
     update: FWUpdate = field(default_factory=FWUpdate)
 
 
@@ -337,7 +338,7 @@ class DeviceManager:
         else:
             modbus_scanner = serial_bus.WBModbusScanner(port, self.rpc_client)
 
-        for bd, parity, stopbits, progress_precent in self._get_all_uart_params(
+        for bd, parity, stopbits, progress_percent in self._get_all_uart_params(
             stopbits=[
                 1,
             ]
@@ -358,6 +359,7 @@ class DeviceManager:
                         port=Port(path=port),
                         cfg=SerialParams(slave_id=slaveid, baud_rate=bd, parity=parity, stop_bits=stopbits),
                     )
+                    device_info.fw.ext_support = is_ext_scan
 
                     try:
                         await self._fill_device_signature(device_info, is_ext_scan)
@@ -376,7 +378,7 @@ class DeviceManager:
             except Exception as e:
                 logger.exception("Unhandled exception during scan %s" % port)
                 raise PortScanningError(port=port) from e
-            await self.produce_state_update({"progress": progress_precent})
+            await self.produce_state_update({"progress": progress_percent})
 
 
 class RetcodeArgParser(ArgumentParser):
