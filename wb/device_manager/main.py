@@ -16,7 +16,7 @@ import paho.mqtt.client as mosquitto
 from mqttrpc import Dispatcher
 from wb_modbus import ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS
 from wb_modbus import logger as mb_logger
-from wb_modbus import minimalmodbus
+from wb_modbus import minimalmodbus, bindings
 
 from . import logger, mqtt_rpc, serial_bus
 
@@ -137,6 +137,21 @@ class FailedScanStateError(GenericStateError):
         self.metadata = {"failed_ports": failed_ports}
 
 
+class ReadFWVersionError(GenericStateError):
+    ID = "com.wb.device_manager.read_fw_version_error"
+    MESSAGE = "Failed to read FW version. Check logs for more info"
+
+
+class ReadFWSignatureError(GenericStateError):
+    ID = "com.wb.device_manager.read_fw_signature_error"
+    MESSAGE = "Failed to read FW signature. Check logs for more info"
+
+
+class ReadDeviceSignatureError(GenericStateError):
+    ID = "com.wb.device_manager.read_device_signature_error"
+    MESSAGE = "Failed to read device signature. Check logs for more info"
+
+
 class DeviceManager:
     MQTT_CLIENT_NAME = "wb-device-manager"
     STATE_PUBLISH_TOPIC = "/wb-device-manager/state"
@@ -226,10 +241,44 @@ class DeviceManager:
         )
         return conn
 
-    async def _fill_fw_info(self, device_info):
+    async def fill_fw_info(self, device_info): # TODO: fill available version from fw-releases
         mb_conn = self._get_mb_connection(device_info)
-        device_info.fw.version = await mb_conn.read_string(first_addr=250, regs_length=16)
-        # TODO: fill available version from fw-releases
+        try:
+            device_info.fw.version = await mb_conn.read_string(
+                first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"],
+                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH
+            )
+        except minimalmodbus.ModbusException:
+            logger.exception("Failed to read fw_version")
+            device_info.error = ReadFWVersionError()
+
+    async def fill_device_info(self, device_info):
+        mb_conn = self._get_mb_connection(device_info)
+
+        err_ctx = None
+        for reg_len in [20, bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH]:
+            try:
+                device_signature = await mb_conn.read_string(
+                    first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"],
+                    regs_length=reg_len
+                )
+                device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
+                device_info.title = device_signature.strip("\x02")  # TODO: store somewhere human-readable titles
+                break
+            except minimalmodbus.ModbusException as e:
+                err_ctx = e
+        else:
+            logger.error("Failed to read device signature", exc_info=err_ctx)
+            device_info.error = ReadDeviceSignatureError()
+
+        try:
+            device_info.fw_signature = await mb_conn.read_string(
+                first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"],
+                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH
+            )
+        except minimalmodbus.ModbusException:
+            logger.exception("Failed to read fw_signature")
+            device_info.error = ReadFWSignatureError()
 
     def _get_all_uart_params(
         self, bds=ALLOWED_BAUDRATES, parities=ALLOWED_PARITIES.keys(), stopbits=ALLOWED_STOPBITS
@@ -311,23 +360,9 @@ class DeviceManager:
                         cfg=SerialParams(slave_id=slaveid, baud_rate=bd, parity=parity, stop_bits=stopbits),
                     )
 
-                    try:
-                        device_signature = await self._get_mb_connection(device_info).read_string(
-                            first_addr=200, regs_length=20
-                        )
-                        device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
-                        device_info.title = device_signature.strip(
-                            "\x02"
-                        )  # TODO: store somewhere human-readable titles
-                        device_info.fw_signature = await self._get_mb_connection(device_info).read_string(
-                            first_addr=290, regs_length=12
-                        )
-                        await self._fill_fw_info(device_info)
-                    except minimalmodbus.ModbusException as e:
-                        logger.exception("Treating device %s as offline", str(device_info))
-                        device_info.online = False
-                    finally:
-                        await self.produce_state_update(device_info)
+                    await self.fill_device_info(device_info)
+                    await self.fill_fw_info(device_info)
+                    await self.produce_state_update(device_info)
 
             except minimalmodbus.NoResponseError:
                 logger.debug("No extended-modbus devices on %s", debug_str)
