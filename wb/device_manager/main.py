@@ -90,6 +90,7 @@ class DeviceInfo:
 class BusScanState:
     progress: int = 0
     scanning: bool = False
+    scanning_port: str = None
     error: StateError = None
     devices: list[DeviceInfo] = field(default_factory=list)
 
@@ -343,8 +344,9 @@ class DeviceManager:
                 1,
             ]
         ):
-            debug_str = "%s: %d-%s-%d" % (port, bd, parity, stopbits)
+            debug_str = "%s %d %d%s%d" % (port, bd, 8, parity, stopbits)
             logger.info("Scanning (via %s modbus) %s", "extended" if is_ext_scan else "ordinary", debug_str)
+            await self.produce_state_update({"scanning_port": debug_str})
             try:
                 async for slaveid, sn in modbus_scanner.scan_bus(
                     baudrate=bd, parity=parity, stopbits=stopbits
