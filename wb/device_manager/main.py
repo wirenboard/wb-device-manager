@@ -308,6 +308,7 @@ class DeviceManager:
                 if not task.cancelled():
                     logger.debug("Cancelling task %s", task.get_name())
                     task.cancel()
+            self._bus_scanning_tasks.clear()
         else:
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
 
@@ -350,7 +351,8 @@ class DeviceManager:
             await self.produce_state_update({"progress": 0})
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            await self.produce_state_update({"scanning": False, "progress": 100})
+            if self._bus_scanning_tasks:
+                await self.produce_state_update({"scanning": False, "progress": 100})
             failed_ports = [x.port for x in results_ext + results if isinstance(x, PortScanningError)]
             if failed_ports:
                 logger.warning("Unsuccessful scan: %s", str(failed_ports))
