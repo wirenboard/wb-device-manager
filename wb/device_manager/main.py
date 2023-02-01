@@ -306,7 +306,7 @@ class DeviceManager:
         if self._is_scanning:
             for task in self._bus_scanning_tasks:
                 if not task.cancelled():
-                    logger.debug("Cancelling task %s", task.name)
+                    logger.debug("Cancelling task %s", task.get_name())
                     task.cancel()
         else:
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
@@ -327,7 +327,7 @@ class DeviceManager:
             ports = []
 
         try:
-            # fast wb-extended modbus scanning
+            # fast wb-extended modbus scanning (prepare)
             tasks_ext = [
                 asyncio.create_task(
                     self.scan_serial_port(port, is_ext_scan=True), name="Extended scan %s" % port
@@ -335,10 +335,8 @@ class DeviceManager:
                 for port in ports
             ]
             self._bus_scanning_tasks.extend(tasks_ext)
-            results_ext = await asyncio.gather(*tasks_ext, return_exceptions=True)
 
-            # fallback ordinary modbus scanning
-            await self.produce_state_update({"progress": 0})
+            # fallback ordinary modbus scanning (prepare)
             tasks = [
                 asyncio.create_task(
                     self.scan_serial_port(port, is_ext_scan=False), name="Ordinary scan %s" % port
@@ -346,6 +344,10 @@ class DeviceManager:
                 for port in ports
             ]
             self._bus_scanning_tasks.extend(tasks)
+
+            # launch extended_scan => ordinary_scan
+            results_ext = await asyncio.gather(*tasks_ext, return_exceptions=True)
+            await self.produce_state_update({"progress": 0})
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             await self.produce_state_update({"scanning": False, "progress": 100})

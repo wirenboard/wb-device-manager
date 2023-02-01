@@ -31,12 +31,24 @@ class RPCResultFuture(asyncio.Future):
         - compatible with mqttrpc api
     """
 
+    def _set_result(self, result):
+        try:
+            super().set_result(result)
+        except asyncio.exceptions.InvalidStateError as e:
+            logger.debug("Trying to set result to cancelled task", exc_info=e)
+
+    def _set_exception(self, exception):
+        try:
+            super().set_exception(exception)
+        except asyncio.exceptions.InvalidStateError as e:
+            logger.debug("Trying to set exception to cancelled task", exc_info=e)
+
     def set_result(self, result):
         if result is not None:
-            self._loop.call_soon_threadsafe(partial(super().set_result, result))
+            self._loop.call_soon_threadsafe(partial(self._set_result, result))
 
     def set_exception(self, exception):
-        self._loop.call_soon_threadsafe(partial(super().set_exception, exception))
+        self._loop.call_soon_threadsafe(partial(self._set_exception, exception))
 
 
 class SRPCClient(rpcclient.TMQTTRPCClient):
