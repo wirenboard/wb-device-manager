@@ -1,3 +1,9 @@
+wb-device-manager (1.2.1) stable; urgency=medium
+
+  * Add rpc endpoint "bus-scan/Stop" to stop scanning
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Wed, 01 Feb 2023 13:41:48 +0300
+
 wb-device-manager (1.2.0) stable; urgency=medium
 
   * Support connection to Mosquitto through unix socket
