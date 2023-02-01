@@ -2,12 +2,63 @@
 # -*- coding: utf-8 -*-
 
 import enum
+import random
 import re
 from binascii import unhexlify
 
-from wb_modbus import minimalmodbus
+from wb_modbus import bindings, minimalmodbus
 
 from . import logger, mqtt_rpc
+
+
+class WBModbusScanner:
+    def __init__(self, port, rpc_client):
+        self.port = port
+        self.rpc_client = rpc_client
+
+    async def get_serial_number(self, slaveid, uart_params) -> str:
+        instrument = mqtt_rpc.AsyncModbusInstrument(self.port, slaveid, self.rpc_client)
+        instrument.serial.apply_settings(uart_params)
+
+        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["serial_number"]
+        number_of_regs = 2
+        payload = minimalmodbus._num_to_twobyte_string(reg) + minimalmodbus._num_to_twobyte_string(
+            number_of_regs
+        )
+        request = minimalmodbus._embed_payload(
+            slaveaddress=slaveid, mode=minimalmodbus.MODE_RTU, functioncode=3, payloaddata=payload
+        )
+        number_of_bytes_to_read = minimalmodbus._predict_response_size(
+            mode=minimalmodbus.MODE_RTU, functioncode=3, payload_to_slave=payload
+        )
+        response = await instrument._communicate(
+            request=request, number_of_bytes_to_read=number_of_bytes_to_read
+        )
+        payloaddata = minimalmodbus._extract_payload(
+            response=response,
+            slaveaddress=slaveid,
+            mode=minimalmodbus.MODE_RTU,
+            functioncode=3,
+        )
+        sn = minimalmodbus._bytestring_to_long(
+            bytestring=payloaddata[1:],
+            signed=False,
+            number_of_registers=2,
+            byteorder=minimalmodbus.BYTEORDER_BIG,
+        )
+        return sn
+
+    async def scan_bus(self, baudrate=9600, parity="N", stopbits=2):
+        uart_params = {"baudrate": baudrate, "parity": parity, "stopbits": stopbits}
+        logger.debug("Scanning %s %s", self.port, str(uart_params))
+
+        for slaveid in random.sample(range(1, 247), 246):
+            try:
+                sn = await self.get_serial_number(slaveid, uart_params)
+                logger.info("Got device: %d %d", slaveid, sn)
+                yield slaveid, sn
+            except minimalmodbus.ModbusException as e:
+                logger.debug("Modbus error: %s", e)
 
 
 class WBExtendedModbusWrapper:
@@ -48,11 +99,13 @@ class WBExtendedModbusWrapper:
         return payloaddata
 
 
-class WBExtendedModbusScanner:
+class WBExtendedModbusScanner(WBModbusScanner):
     def __init__(self, port, rpc_client):
+        super().__init__(port, rpc_client)
         self.extended_modbus_wrapper = WBExtendedModbusWrapper()
-        self.instrument = mqtt_rpc.AsyncModbusInstrument(port, self.extended_modbus_wrapper.ADDR, rpc_client)
-        self.port = port
+        self.instrument = mqtt_rpc.AsyncModbusInstrument(
+            self.port, self.extended_modbus_wrapper.ADDR, self.rpc_client
+        )
 
     def _parse_device_data(self, device_data_bytestr):
         sn, slaveid = device_data_bytestr[:4], device_data_bytestr[4:]
@@ -137,7 +190,7 @@ class WBExtendedModbusScanner:
         )
         while sn_slaveid is not None:
             slaveid, sn = self._parse_device_data(sn_slaveid)
-            logger.debug("Got device: %d %d", slaveid, sn)
+            logger.info("Got device: %d %d", slaveid, sn)
             yield slaveid, sn
             sn_slaveid = await self.get_next_device_data(
                 cmd_code=self.extended_modbus_wrapper.CMDS.single_scan, uart_params=uart_params
@@ -145,7 +198,7 @@ class WBExtendedModbusScanner:
 
 
 class WBAsyncModbus:
-    def __init__(self, addr, port, baudrate, parity, stopbits, rpc_client, **kwargs):
+    def __init__(self, addr, port, baudrate, parity, stopbits, rpc_client):
         self.device = mqtt_rpc.AsyncModbusInstrument(port, addr, rpc_client)
         self.addr = addr
         self.port = port
