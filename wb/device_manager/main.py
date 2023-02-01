@@ -305,7 +305,7 @@ class DeviceManager:
     async def stop_bus_scan(self):
         if self._is_scanning:
             for task in self._bus_scanning_tasks:
-                if not task.cancelled():
+                if not task.done():
                     logger.debug("Cancelling task %s", task.get_name())
                     task.cancel()
             self._bus_scanning_tasks.clear()
@@ -462,7 +462,7 @@ def main(args=argv):
     device_manager = DeviceManager(args.broker_url)
 
     async_callables_mapping = {
-        ("bus-scan", "Scan"): device_manager.launch_bus_scan,
+        ("bus-scan", "Start"): device_manager.launch_bus_scan,
         ("bus-scan", "Stop"): device_manager.stop_bus_scan,
     }
 

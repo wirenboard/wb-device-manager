@@ -1,9 +1,9 @@
 # wb-device-manager
 
 ### Запуск сканирования
-Для запуска сканирования необходимо выполнить MQTT RPC запрос `wb-device-manager/bus-scan/Scan/client_id`.
+Для запуска сканирования необходимо выполнить MQTT RPC запрос `wb-device-manager/bus-scan/Start/client_id`.
 
-В качестве ответа в топике `wb-device-manager/bus-scan/Scan/client_id/reply` будет опубликовано сообщение c результатом `Ok` при успешном запуске сканирования. Пока сканирование выполняется, следующие запросы к `wb-device-manager/bus-scan/Scan/client_id` будут возвращать mqtt-rpc ошибку с кодом -33100.
+В качестве ответа в топике `wb-device-manager/bus-scan/Start/client_id/reply` будет опубликовано сообщение c результатом `Ok` при успешном запуске сканирования. Пока сканирование выполняется, следующие запросы к `wb-device-manager/bus-scan/Start/client_id` будут возвращать mqtt-rpc ошибку с кодом -33100.
 
 ### Остановка сканирования
 Для остановки сканирования необходимо выполнить MQTT RPC запрос `wb-device-manager/bus-scan/Stop/client_id`.
