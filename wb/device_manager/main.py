@@ -161,6 +161,7 @@ class DeviceManager:
         self._asyncio_loop = asyncio.get_event_loop()
         self.asyncio_loop.create_task(self.consume_state_update(), name="Build & publish overall state")
         self._is_scanning = False
+        self._found_devices = []
 
     @property
     def mqtt_connection(self):
@@ -283,7 +284,7 @@ class DeviceManager:
         for pos, (bd, parity, stopbit) in enumerate(iterable, start=1):
             yield bd, parity, stopbit, int(pos / len_iterable * 100)
 
-    async def _get_ports(self):
+    async def _get_ports(self) -> list[str]:
         response = await self.rpc_client.make_rpc_call(
             driver="wb-mqtt-serial",
             service="ports",
@@ -291,20 +292,20 @@ class DeviceManager:
             params={},
             timeout=1.0,  # s; rpc call goes around scheduler queue => relatively small
         )
-        ports = [port.get("path") for port in response]
-        return filter(None, ports)
+        return [port.get("path") for port in response]
 
-    async def launch_scan(self, is_ext_scan=True):
+    async def launch_scan(self):
         if self._is_scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         else:
             self.asyncio_loop.create_task(
-                self.scan_serial_bus(is_ext_scan), name="Scan serial bus (long running)"
+                self.scan_serial_bus(), name="Scan serial bus (long running)"
             )
             return "Ok"
 
-    async def scan_serial_bus(self, is_ext_scan):
+    async def scan_serial_bus(self):
         self._is_scanning = True
+        self._found_devices = []
         await self.produce_state_update(
             {"devices": [], "scanning": True, "progress": 0, "error": None}  # TODO: unit test?
         )
@@ -315,11 +316,15 @@ class DeviceManager:
             logger.exception("No answer from wb-mqtt-serial")
             state_error = RPCCallTimeoutStateError()
             ports = []
+
         try:
-            tasks = [self.scan_serial_port(port, is_ext_scan) for port in ports]
+            tasks_ext = [self.scan_serial_port(port) for port in ports]
+            results_ext = await asyncio.gather(*tasks_ext, return_exceptions=True)
+            await self.produce_state_update({"progress": 0})
+            tasks = [self.scan_serial_port(port, False) for port in ports]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             await self.produce_state_update({"scanning": False, "progress": 100})
-            failed_ports = [x.port for x in results if isinstance(x, PortScanningError)]
+            failed_ports = [x.port for x in results_ext + results if isinstance(x, PortScanningError)]
             if failed_ports:
                 logger.warning("Unsuccessful scan: %s", str(failed_ports))
                 state_error = FailedScanStateError(failed_ports=failed_ports)
@@ -330,7 +335,7 @@ class DeviceManager:
             await self.produce_state_update({"scanning": False, "progress": 0, "error": state_error})
             self._is_scanning = False
 
-    async def scan_serial_port(self, port, is_ext_scan):
+    async def scan_serial_port(self, port, is_ext_scan=True):
         def make_uuid(sn):
             return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
 
@@ -351,6 +356,10 @@ class DeviceManager:
                 async for slaveid, sn in modbus_scanner.scan_bus(
                     baudrate=bd, parity=parity, stopbits=stopbits
                 ):
+                    if sn in self._found_devices:
+                        logger.info("Skipping device %s", str(sn))
+                        continue
+
                     device_info = DeviceInfo(
                         uuid=make_uuid(sn),
                         title="Unknown",
@@ -371,6 +380,7 @@ class DeviceManager:
                         logger.exception("Treating device %s as offline", str(device_info))
                         device_info.online = False
                     finally:
+                        self._found_devices.append(sn)
                         await self.produce_state_update(device_info)
 
             except minimalmodbus.NoResponseError:
