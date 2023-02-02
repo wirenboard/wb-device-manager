@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-from unittest.mock import AsyncMock
 import uuid
+from unittest.mock import AsyncMock
 
 from wb_modbus import minimalmodbus
+
 from wb.device_manager import main
 
 
@@ -58,13 +59,9 @@ class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
 
         cls.device_info = main.DeviceInfo(
             uuid=uuid.uuid3(namespace=uuid.NAMESPACE_OID, name="dummy_device"),
-            port=main.Port(
-                path="/dev/ttyDUMMY"
-            ),
+            port=main.Port(path="/dev/ttyDUMMY"),
             sn=12345,
-            cfg=main.SerialParams(
-                slave_id=1
-            )
+            cfg=main.SerialParams(slave_id=1),
         )
 
         cls.mb_conn = cls.device_manager._get_mb_connection(cls.device_info, True)
@@ -81,13 +78,11 @@ class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
         ]
         ret = await self.device_manager.fill_device_info(self.device_info, self.mb_conn)
         self.assertListEqual(ret, assumed_errors)
-        self.assertIsInstance(, cls)
 
     async def test_erroneous_fill_fw_info(self):
         self.mock_error()
         assumed_errors = [
-            main.ReadDeviceSignatureDeviceError(),
-            main.ReadFWSignatureDeviceError(),
+            main.ReadFWVersionDeviceError(),
         ]
-        ret = await self.device_manager.fill_device_info(self.device_info, self.mb_conn)
+        ret = await self.device_manager.fill_fw_info(self.device_info, self.mb_conn)
         self.assertListEqual(ret, assumed_errors)

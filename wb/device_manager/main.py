@@ -19,7 +19,7 @@ from mqttrpc import Dispatcher
 from paho.mqtt import client as mqttclient
 from wb_modbus import ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, bindings
 from wb_modbus import logger as mb_logger
-from wb_modbus import minimalmodbus, bindings
+from wb_modbus import minimalmodbus
 
 from . import logger, mqtt_rpc, serial_bus
 
