@@ -1,9 +1,15 @@
-wb-device-manager (1.2.1) stable; urgency=medium
+wb-device-manager (1.2.1-exp1) stable; urgency=medium
 
   * Add rpc endpoint "bus-scan/Stop" to stop scanning
   * Rename rpc endpoint "bus-scan/Scan" to "bus-scan/Start"
 
  -- Vladimir Romanov <v.romanov@wirenboard.ru>  Wed, 01 Feb 2023 13:41:48 +0300
+
+wb-device-manager (1.2.1) stable; urgency=medium
+
+  * Add new error-types around modbus communications with device
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Tue, 31 Jan 2023 17:17:27 +0300
 
 wb-device-manager (1.2.0) stable; urgency=medium
 
