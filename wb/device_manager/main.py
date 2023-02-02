@@ -274,12 +274,12 @@ class DeviceManager:
             )
         return conn
 
-    async def fill_fw_info(self, device_info, mb_conn): # TODO: fill available version from fw-releases
+    async def fill_fw_info(self, device_info, mb_conn):  # TODO: fill available version from fw-releases
         errors = []
         try:
             device_info.fw.version = await mb_conn.read_string(
                 first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"],
-                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH
+                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH,
             )
         except minimalmodbus.ModbusException:
             logger.exception("Failed to read fw_version")
@@ -294,10 +294,12 @@ class DeviceManager:
             try:
                 device_signature = await mb_conn.read_string(
                     first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"],
-                    regs_length=reg_len
+                    regs_length=reg_len,
                 )
                 device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
-                device_info.title = device_signature.strip("\x02")  # TODO: store somewhere human-readable titles
+                device_info.title = device_signature.strip(
+                    "\x02"
+                )  # TODO: store somewhere human-readable titles
                 break
             except minimalmodbus.ModbusException as e:
                 err_ctx = e
@@ -308,7 +310,7 @@ class DeviceManager:
         try:
             device_info.fw_signature = await mb_conn.read_string(
                 first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"],
-                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH
+                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH,
             )
         except minimalmodbus.ModbusException:
             logger.exception("Failed to read fw_signature")
