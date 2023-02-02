@@ -274,9 +274,8 @@ class DeviceManager:
             )
         return conn
 
-    async def fill_fw_info(self, device_info): # TODO: fill available version from fw-releases
+    async def fill_fw_info(self, device_info, mb_conn): # TODO: fill available version from fw-releases
         errors = []
-        mb_conn = self._get_mb_connection(device_info)
         try:
             device_info.fw.version = await mb_conn.read_string(
                 first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"],
@@ -287,9 +286,8 @@ class DeviceManager:
             errors.append(ReadFWVersionDeviceError())
         return errors
 
-    async def fill_device_info(self, device_info):
+    async def fill_device_info(self, device_info, mb_conn):
         errors = []
-        mb_conn = self._get_mb_connection(device_info)
 
         err_ctx = None
         for reg_len in [20, bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH]:
@@ -413,9 +411,11 @@ class DeviceManager:
                     )
                     device_info.fw.ext_support = is_ext_scan
 
+                    mb_conn = self._get_mb_connection(device_info, is_ext_scan)
+
                     errors = []
-                    errors.extend(await self.fill_device_info(device_info))
-                    errors.extend(await self.fill_fw_info(device_info))
+                    errors.extend(await self.fill_device_info(device_info, mb_conn))
+                    errors.extend(await self.fill_fw_info(device_info, mb_conn))
                     if errors:
                         logger.error("Got errors: %s for device: %s", str(errors), str(device_info))
                         if len(errors) > 1:
