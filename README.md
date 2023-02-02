@@ -138,6 +138,7 @@
 | Наследники: |
 | **com.wb.device_manager.rpc_call_timeout_error** | Таймаут rpc-запроса к wb-mqtt-serial (wb-device-manager - клиент) на этапе получения портов для сканирования | ```null``` |
 | **com.wb.device_manager.failed_to_scan_error** | Неотловленная ошибка при сканировании порта | ```"failed_ports" : [failed_port1, failed_port2, ...]``` |
-| **com.wb.device_manager.read_fw_version_error** | Ошибка modbus-коммуникации с устройством (чтение fw_version) | ```null``` |
-| **com.wb.device_manager.read_fw_signature_error** | Ошибка modbus-коммуникации с устройством (чтение fw_signature) | ```null``` |
-| **com.wb.device_manager.read_device_signature_error** | Ошибка modbus-коммуникации с устройством (чтение device_signature) | ```null``` |
+| **com.wb.device_manager.device.read_fw_version_error** | Ошибка modbus-коммуникации с устройством (чтение fw_version) | ```null``` |
+| **com.wb.device_manager.device.read_fw_signature_error** | Ошибка modbus-коммуникации с устройством (чтение fw_signature) | ```null``` |
+| **com.wb.device_manager.device.read_device_signature_error** | Ошибка modbus-коммуникации с устройством (чтение device_signature) | ```null``` |
+| **com.wb.device_manager.device.composite_error** | Многочисленные ошибки взаимодействия с устройством | ```"error_ids" : ["com.wb.device_manager.error1", "com.wb.device_manager.error2"]``` |

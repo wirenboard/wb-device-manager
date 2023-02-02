@@ -142,19 +142,28 @@ class FailedScanStateError(GenericStateError):
         self.metadata = {"failed_ports": failed_ports}
 
 
-class ReadFWVersionError(GenericStateError):
-    ID = "com.wb.device_manager.read_fw_version_error"
-    MESSAGE = "Failed to read FW version. Check logs for more info"
+class ReadFWVersionDeviceError(GenericStateError):
+    ID = "com.wb.device_manager.device.read_fw_version_error"
+    MESSAGE = "Failed to read FW version."
 
 
-class ReadFWSignatureError(GenericStateError):
-    ID = "com.wb.device_manager.read_fw_signature_error"
-    MESSAGE = "Failed to read FW signature. Check logs for more info"
+class ReadFWSignatureDeviceError(GenericStateError):
+    ID = "com.wb.device_manager.device.read_fw_signature_error"
+    MESSAGE = "Failed to read FW signature."
 
 
-class ReadDeviceSignatureError(GenericStateError):
-    ID = "com.wb.device_manager.read_device_signature_error"
-    MESSAGE = "Failed to read device signature. Check logs for more info"
+class ReadDeviceSignatureDeviceError(GenericStateError):
+    ID = "com.wb.device_manager.device.read_device_signature_error"
+    MESSAGE = "Failed to read device signature."
+
+
+class CompositeDeviceError(GenericStateError):
+    ID = "com.wb.device_manager.device.composite_error"
+    MESSAGE = "Multiple errors occured."
+
+    def __init__(self, error_ids):
+        super().__init__()
+        self.metadata = {"error_ids": error_ids}
 
 
 class DeviceManager:
@@ -266,6 +275,7 @@ class DeviceManager:
         return conn
 
     async def fill_fw_info(self, device_info): # TODO: fill available version from fw-releases
+        errors = []
         mb_conn = self._get_mb_connection(device_info)
         try:
             device_info.fw.version = await mb_conn.read_string(
@@ -274,9 +284,11 @@ class DeviceManager:
             )
         except minimalmodbus.ModbusException:
             logger.exception("Failed to read fw_version")
-            device_info.error = ReadFWVersionError()
+            errors.append(ReadFWVersionDeviceError())
+        return errors
 
     async def fill_device_info(self, device_info):
+        errors = []
         mb_conn = self._get_mb_connection(device_info)
 
         err_ctx = None
@@ -293,7 +305,7 @@ class DeviceManager:
                 err_ctx = e
         else:
             logger.error("Failed to read device signature", exc_info=err_ctx)
-            device_info.error = ReadDeviceSignatureError()
+            errors.append(ReadDeviceSignatureDeviceError())
 
         try:
             device_info.fw_signature = await mb_conn.read_string(
@@ -302,7 +314,9 @@ class DeviceManager:
             )
         except minimalmodbus.ModbusException:
             logger.exception("Failed to read fw_signature")
-            device_info.error = ReadFWSignatureError()
+            errors.append(ReadFWSignatureDeviceError())
+
+        return errors
 
     def _get_all_uart_params(
         self, bds=ALLOWED_BAUDRATES, parities=ALLOWED_PARITIES.keys(), stopbits=ALLOWED_STOPBITS
@@ -399,8 +413,16 @@ class DeviceManager:
                     )
                     device_info.fw.ext_support = is_ext_scan
 
-                    await self.fill_device_info(device_info)
-                    await self.fill_fw_info(device_info)
+                    errors = []
+                    errors.extend(await self.fill_device_info(device_info))
+                    errors.extend(await self.fill_fw_info(device_info))
+                    if errors:
+                        logger.error("Got errors: %s for device: %s", str(errors), str(device_info))
+                        if len(errors) > 1:
+                            device_info.error = CompositeDeviceError(error_ids=[err.id for err in errors])
+                        else:
+                            device_info.error = errors[0]
+
                     await self.produce_state_update(device_info)
 
             except minimalmodbus.NoResponseError:
