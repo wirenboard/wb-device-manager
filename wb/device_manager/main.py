@@ -299,16 +299,19 @@ class DeviceManager:
         if self._is_scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         else:
+            logger.info("Start bus scanning")
             self.asyncio_loop.create_task(self.scan_serial_bus(), name="Scan serial bus (long running)")
             return "Ok"
 
     async def stop_bus_scan(self):
         if self._is_scanning:
+            logger.info("Stop bus scanning")
             for task in self._bus_scanning_tasks:
                 if not task.done():
                     logger.debug("Cancelling task %s", task.get_name())
                     task.cancel()
             self._bus_scanning_tasks.clear()
+            return "Ok"
         else:
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
 
