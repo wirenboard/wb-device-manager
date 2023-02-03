@@ -32,16 +32,12 @@ class RPCResultFuture(asyncio.Future):
     """
 
     def _set_result(self, result):
-        try:
+        if not self.done():
             super().set_result(result)
-        except asyncio.exceptions.InvalidStateError as e:
-            logger.debug("Trying to set result to cancelled task", exc_info=e)
 
     def _set_exception(self, exception):
-        try:
+        if not self.done():
             super().set_exception(exception)
-        except asyncio.exceptions.InvalidStateError as e:
-            logger.debug("Trying to set exception to cancelled task", exc_info=e)
 
     def set_result(self, result):
         if result is not None:
