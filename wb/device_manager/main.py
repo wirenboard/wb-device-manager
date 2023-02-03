@@ -254,7 +254,7 @@ class DeviceManager:
         mb_conn = self._get_mb_connection(device_info, is_ext_scan)
         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"]
         number_of_regs = 20
-        device_signature = ''
+        device_signature = ""
         try:
             device_signature = await mb_conn.read_string(first_addr=reg, regs_length=number_of_regs)
         except minimalmodbus.ModbusException:
