@@ -254,6 +254,7 @@ class DeviceManager:
         mb_conn = self._get_mb_connection(device_info, is_ext_scan)
         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"]
         number_of_regs = 20
+        device_signature = ''
         try:
             device_signature = await mb_conn.read_string(first_addr=reg, regs_length=number_of_regs)
         except minimalmodbus.ModbusException:
@@ -304,6 +305,10 @@ class DeviceManager:
             return "Ok"
 
     async def stop_bus_scan(self):
+        """
+        TODO: check, tasks are actually cancelled before returning "Ok" via rpc
+        Check https://docs.python.org/dev/library/asyncio-task.html#asyncio.Task.cancel for more info
+        """
         if self._is_scanning:
             logger.info("Stop bus scanning")
             for task in self._bus_scanning_tasks:
