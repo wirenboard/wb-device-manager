@@ -91,6 +91,8 @@ class BusScanState:
     progress: int = 0
     scanning: bool = False
     scanning_port: str = None
+    ports_to_scan: list[str] = field(default_factory=list)
+    is_ext_scan: bool = False
     error: StateError = None
     devices: list[DeviceInfo] = field(default_factory=list)
 
@@ -318,11 +320,15 @@ class DeviceManager:
 
         try:
             tasks_ext = [self.scan_serial_port(port) for port in ports]
+            self.ports_to_scan = set(ports)
             results_ext = await asyncio.gather(*tasks_ext, return_exceptions=True)
             await self.produce_state_update({"progress": 0})
             tasks = [self.scan_serial_port(port, False) for port in ports]
+            self.ports_to_scan = set(ports)
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            await self.produce_state_update({"scanning": False, "progress": 100})
+            await self.produce_state_update(
+                {"scanning": False, "progress": 100, "ports_to_scan": self.ports_to_scan}
+            )
             failed_ports = [x.port for x in results_ext + results if isinstance(x, PortScanningError)]
             if failed_ports:
                 logger.warning("Unsuccessful scan: %s", str(failed_ports))
@@ -338,10 +344,16 @@ class DeviceManager:
         def make_uuid(sn):
             return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
 
+        self.ports_to_scan.add(port)
+
         if is_ext_scan:
             modbus_scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
         else:
             modbus_scanner = serial_bus.WBModbusScanner(port, self.rpc_client)
+
+        await self.produce_state_update(
+            {"ports_to_scan": list(self.ports_to_scan), "is_ext_scan": is_ext_scan}
+        )
 
         for bd, parity, stopbits, progress_percent in self._get_all_uart_params(
             stopbits=[
@@ -390,6 +402,7 @@ class DeviceManager:
                 logger.exception("Unhandled exception during scan %s" % port)
                 raise PortScanningError(port=port) from e
             await self.produce_state_update({"progress": progress_percent})
+        self.ports_to_scan.remove(port)
 
 
 class RetcodeArgParser(ArgumentParser):
