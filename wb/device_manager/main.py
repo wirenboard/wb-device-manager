@@ -337,27 +337,36 @@ class DeviceManager:
 
         try:
             # fast wb-extended modbus scanning (prepare)
-            tasks_ext = [
-                asyncio.create_task(
-                    self.scan_serial_port(port, is_ext_scan=True), name="Extended scan %s" % port
-                )
-                for port in ports
-            ]
-            self._bus_scanning_tasks.extend(tasks_ext)
+            self._bus_scanning_tasks.extend(
+                [
+                    asyncio.create_task(
+                        self.scan_serial_port(port, is_ext_scan=True), name="Extended scan %s" % port
+                    )
+                    for port in ports
+                ]
+            )
 
             # fallback ordinary modbus scanning (prepare)
-            tasks = [
-                asyncio.create_task(
-                    self.scan_serial_port(port, is_ext_scan=False), name="Ordinary scan %s" % port
-                )
-                for port in ports
-            ]
-            self._bus_scanning_tasks.extend(tasks)
+            self._bus_scanning_tasks.extend(
+                [
+                    asyncio.create_task(
+                        self.scan_serial_port(port, is_ext_scan=False), name="Ordinary scan %s" % port
+                    )
+                    for port in ports
+                ]
+            )
+
+            _half = lambda i: int(len(i) / 2)
 
             # launch extended_scan => ordinary_scan
-            results_ext = await asyncio.gather(*tasks_ext, return_exceptions=True)
+            # multiple gather() could re-launch cancelled tasks => clearing tasks-list from outside
+            results_ext = await asyncio.gather(
+                *self._bus_scanning_tasks[: _half(self._bus_scanning_tasks)], return_exceptions=True
+            )
             await self.produce_state_update({"progress": 0})
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(
+                *self._bus_scanning_tasks[_half(self._bus_scanning_tasks) :], return_exceptions=True
+            )
 
             if self._bus_scanning_tasks:
                 await self.produce_state_update({"scanning": False, "progress": 100})
