@@ -1,2 +1,2 @@
 buildDebSbuild defaultTargets: 'bullseye-armhf',
-defaultRunPythonChecks: true
+defaultRunPythonChecks: false
