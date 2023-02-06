@@ -194,7 +194,7 @@ class AsyncMQTTServer:
         to_clear.extend(self.additional_topics_to_clear)
         for topic in to_clear:
             logger.debug("Delete retained from: %s", topic)
-            m_info = self.mqtt_connection.publish(topic, payload=None, retain=True)
+            m_info = self.mqtt_connection.publish(topic, payload=None, retain=True, qos=1)
             m_info.wait_for_publish()
 
     def _close_mqtt_connection(self):
@@ -241,7 +241,7 @@ class AsyncMQTTServer:
         logger.debug("Subscribing to: %s", str(self.methods_dispatcher.keys()))
         for service, method in self.methods_dispatcher.keys():
             topic_str = get_topic_path(service, method)
-            self.mqtt_connection.publish(topic_str, "1", retain=True)
+            self.mqtt_connection.publish(topic_str, "1", retain=True, qos=1)
             topic_str += "/+"
             self.mqtt_connection.subscribe(topic_str)
             logger.debug("Subscribed: %s", topic_str)
@@ -277,7 +277,7 @@ class AsyncMQTTServer:
 
     def reply(self, message, payload):
         topic = message.topic + "/reply"
-        self.mqtt_connection.publish(topic, payload, False)
+        self.mqtt_connection.publish(topic, payload, qos=2, retain=False)
 
     async def run_async(self, message):
         parts = message.topic.split("/")  # TODO: re?
