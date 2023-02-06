@@ -316,6 +316,7 @@ class DeviceManager:
                     logger.debug("Cancelling task %s", task.get_name())
                     task.cancel()
             self._bus_scanning_tasks.clear()
+            self._is_scanning = False
             return "Ok"
         else:
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
@@ -337,36 +338,29 @@ class DeviceManager:
 
         try:
             # fast wb-extended modbus scanning (prepare)
-            self._bus_scanning_tasks.extend(
-                [
-                    asyncio.create_task(
-                        self.scan_serial_port(port, is_ext_scan=True), name="Extended scan %s" % port
-                    )
-                    for port in ports
-                ]
-            )
+            tasks_ext = [
+                asyncio.create_task(
+                    self.scan_serial_port(port, is_ext_scan=True), name="Extended scan %s" % port
+                )
+                for port in ports
+            ]
+            self._bus_scanning_tasks.extend(tasks_ext)
 
             # fallback ordinary modbus scanning (prepare)
-            self._bus_scanning_tasks.extend(
-                [
-                    asyncio.create_task(
-                        self.scan_serial_port(port, is_ext_scan=False), name="Ordinary scan %s" % port
-                    )
-                    for port in ports
-                ]
-            )
-
-            _half = lambda i: int(len(i) / 2)
+            tasks = [
+                asyncio.create_task(
+                    self.scan_serial_port(port, is_ext_scan=False), name="Ordinary scan %s" % port
+                )
+                for port in ports
+            ]
+            self._bus_scanning_tasks.extend(tasks)
 
             # launch extended_scan => ordinary_scan
-            # multiple gather() could re-launch cancelled tasks => clearing tasks-list from outside
-            results_ext = await asyncio.gather(
-                *self._bus_scanning_tasks[: _half(self._bus_scanning_tasks)], return_exceptions=True
-            )
+            results_ext = await asyncio.gather(*tasks_ext, return_exceptions=True)
             await self.produce_state_update({"progress": 0})
-            results = await asyncio.gather(
-                *self._bus_scanning_tasks[_half(self._bus_scanning_tasks) :], return_exceptions=True
-            )
+            results = []
+            if self._is_scanning:  # multiple gather() could re-launch cancelled tasks
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
             if self._bus_scanning_tasks:
                 await self.produce_state_update({"scanning": False, "progress": 100})
