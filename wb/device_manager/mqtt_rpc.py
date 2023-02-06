@@ -31,12 +31,20 @@ class RPCResultFuture(asyncio.Future):
         - compatible with mqttrpc api
     """
 
+    def _set_result(self, result):
+        if not self.done():
+            super().set_result(result)
+
+    def _set_exception(self, exception):
+        if not self.done():
+            super().set_exception(exception)
+
     def set_result(self, result):
         if result is not None:
-            self._loop.call_soon_threadsafe(partial(super().set_result, result))
+            self._loop.call_soon_threadsafe(partial(self._set_result, result))
 
     def set_exception(self, exception):
-        self._loop.call_soon_threadsafe(partial(super().set_exception, exception))
+        self._loop.call_soon_threadsafe(partial(self._set_exception, exception))
 
 
 class SRPCClient(rpcclient.TMQTTRPCClient):
