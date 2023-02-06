@@ -316,6 +316,7 @@ class DeviceManager:
                     logger.debug("Cancelling task %s", task.get_name())
                     task.cancel()
             self._bus_scanning_tasks.clear()
+            self._is_scanning = False
             return "Ok"
         else:
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
@@ -364,9 +365,9 @@ class DeviceManager:
                 *self._bus_scanning_tasks[: _half(self._bus_scanning_tasks)], return_exceptions=True
             )
             await self.produce_state_update({"progress": 0})
-            results = await asyncio.gather(
-                *self._bus_scanning_tasks[_half(self._bus_scanning_tasks) :], return_exceptions=True
-            )
+            results = []
+            if self._is_scanning:  # multiple gather() could re-launch cancelled tasks
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
             if self._bus_scanning_tasks:
                 await self.produce_state_update({"scanning": False, "progress": 100})
