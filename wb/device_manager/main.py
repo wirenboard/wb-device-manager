@@ -317,10 +317,12 @@ class DeviceManager:
         """
         if self._is_scanning:
             logger.info("Stop bus scanning")
+            logger.warning("Stop scan called at: %s", str(time.time()))
             for task in self._bus_scanning_tasks:
                 if not task.done():
                     logger.debug("Cancelling task %s", task.get_name())
                     task.cancel()
+            logger.warning("All tasks cancelling CB triggered at: %s", str(time.time()))
             self._bus_scanning_tasks.clear()
             self._is_scanning = False
             return "Ok"
@@ -377,6 +379,7 @@ class DeviceManager:
             state_error = GenericStateError()
             logger.exception("Unhandled exception during overall scan")
         finally:
+            logger.warning("All ports stopped to scan at: %s", str(time.time()))
             await self.produce_state_update({"scanning": False, "progress": 0, "error": state_error})
             self._is_scanning = False
             self._bus_scanning_tasks.clear()
