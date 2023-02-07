@@ -90,7 +90,8 @@ class DeviceInfo:
 class BusScanState:
     progress: int = 0
     scanning: bool = False
-    scanning_port: str = None
+    scanning_ports: list[str] = field(default_factory=list)
+    is_ext_scan: bool = False
     error: StateError = None
     devices: list[DeviceInfo] = field(default_factory=list)
 
@@ -274,8 +275,11 @@ class DeviceManager:
             )
         return conn
 
-    async def fill_fw_info(self, device_info, mb_conn):  # TODO: fill available version from fw-releases
-        errors = []
+    async def _fill_device_signature(self, device_info, is_ext_scan) -> None:
+        mb_conn = self._get_mb_connection(device_info, is_ext_scan)
+        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"]
+        number_of_regs = 20
+        device_signature = ""
         try:
             device_info.fw.version = await mb_conn.read_string(
                 first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"],
@@ -319,7 +323,12 @@ class DeviceManager:
         return errors
 
     def _get_all_uart_params(
-        self, bds=ALLOWED_BAUDRATES, parities=ALLOWED_PARITIES.keys(), stopbits=ALLOWED_STOPBITS
+        self,
+        bds=ALLOWED_BAUDRATES,
+        parities=ALLOWED_PARITIES.keys(),
+        stopbits=[
+            1,
+        ],
     ):
         iterable = product(bds, parities, stopbits)
         len_iterable = len(bds) * len(parities) * len(stopbits)
@@ -337,16 +346,48 @@ class DeviceManager:
         ports = [port.get("path") for port in response]
         return list(filter(None, ports))
 
-    async def launch_scan(self):
+    async def launch_bus_scan(self):
         if self._is_scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         else:
+            logger.info("Start bus scanning")
             self.asyncio_loop.create_task(self.scan_serial_bus(), name="Scan serial bus (long running)")
             return "Ok"
+
+    async def stop_bus_scan(self):
+        """
+        TODO: check, tasks are actually cancelled before returning "Ok" via rpc
+        Check https://docs.python.org/dev/library/asyncio-task.html#asyncio.Task.cancel for more info
+        """
+        if self._is_scanning:
+            logger.info("Stop bus scanning")
+            for task in self._bus_scanning_tasks:
+                if not task.done():
+                    logger.debug("Cancelling task %s", task.get_name())
+                    task.cancel()
+            self._bus_scanning_tasks.clear()
+            self._is_scanning = False
+            return "Ok"
+        else:
+            raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
+
+    def _create_scan_tasks(self, ports, is_extended=False):
+        tasks = []
+        name_tmpl = "Extended scan %s" if is_extended else "Ordinary scan %s"
+        for port in ports:
+            tasks.append(
+                asyncio.create_task(
+                    self.scan_serial_port(port, is_ext_scan=is_extended), name=name_tmpl % port
+                )
+            )
+        return tasks
 
     async def scan_serial_bus(self):
         self._is_scanning = True
         self._found_devices = []
+        self._bus_scanning_tasks = []
+        self._ports_now_scanning = set()
+
         await self.produce_state_update(
             {"devices": [], "scanning": True, "progress": 0, "error": None}  # TODO: unit test?
         )
@@ -358,14 +399,21 @@ class DeviceManager:
             state_error = RPCCallTimeoutStateError()
             ports = []
 
+        results = []
+
         try:
-            tasks_ext = [self.scan_serial_port(port) for port in ports]
-            results_ext = await asyncio.gather(*tasks_ext, return_exceptions=True)
+            self._bus_scanning_tasks = self._create_scan_tasks(ports, is_extended=True)
+            results.extend(await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True))
             await self.produce_state_update({"progress": 0})
-            tasks = [self.scan_serial_port(port, False) for port in ports]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            await self.produce_state_update({"scanning": False, "progress": 100})
-            failed_ports = [x.port for x in results_ext + results if isinstance(x, PortScanningError)]
+            if self._is_scanning:  # multiple gather() could re-launch cancelled tasks
+                self._bus_scanning_tasks = self._create_scan_tasks(ports, is_extended=False)
+                results.extend(await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True))
+
+            if self._bus_scanning_tasks:
+                await self.produce_state_update(
+                    {"scanning": False, "progress": 100, "scanning_ports": self._ports_now_scanning}
+                )
+            failed_ports = [x.port for x in results if isinstance(x, PortScanningError)]
             if failed_ports:
                 logger.warning("Unsuccessful scan: %s", str(failed_ports))
                 state_error = FailedScanStateError(failed_ports=failed_ports)
@@ -375,6 +423,7 @@ class DeviceManager:
         finally:
             await self.produce_state_update({"scanning": False, "progress": 0, "error": state_error})
             self._is_scanning = False
+            self._bus_scanning_tasks.clear()
 
     async def scan_serial_port(self, port, is_ext_scan=True):
         def make_uuid(sn):
@@ -385,14 +434,13 @@ class DeviceManager:
         else:
             modbus_scanner = serial_bus.WBModbusScanner(port, self.rpc_client)
 
-        for bd, parity, stopbits, progress_percent in self._get_all_uart_params(
-            stopbits=[
-                1,
-            ]
-        ):
+        for bd, parity, stopbits, progress_percent in self._get_all_uart_params():
             debug_str = "%s %d %d%s%d" % (port, bd, 8, parity, stopbits)
+            self._ports_now_scanning.add(debug_str)
             logger.info("Scanning (via %s modbus) %s", "extended" if is_ext_scan else "ordinary", debug_str)
-            await self.produce_state_update({"scanning_port": debug_str})
+            await self.produce_state_update(
+                {"scanning_ports": self._ports_now_scanning, "is_ext_scan": is_ext_scan}
+            )
             try:
                 async for slaveid, sn in modbus_scanner.scan_bus(
                     baudrate=bd, parity=parity, stopbits=stopbits
@@ -434,6 +482,8 @@ class DeviceManager:
             except Exception as e:
                 logger.exception("Unhandled exception during scan %s" % port)
                 raise PortScanningError(port=port) from e
+            finally:
+                self._ports_now_scanning.remove(debug_str)
             await self.produce_state_update({"progress": progress_percent})
 
 
@@ -475,7 +525,10 @@ def main(args=argv):
 
     device_manager = DeviceManager(args.broker_url)
 
-    async_callables_mapping = {("bus-scan", "Scan"): device_manager.launch_scan}
+    async_callables_mapping = {
+        ("bus-scan", "Start"): device_manager.launch_bus_scan,
+        ("bus-scan", "Stop"): device_manager.stop_bus_scan,
+    }
 
     server = mqtt_rpc.AsyncMQTTServer(
         methods_dispatcher=Dispatcher(async_callables_mapping),
