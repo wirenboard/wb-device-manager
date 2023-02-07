@@ -74,7 +74,7 @@ class DeviceInfo:
     poll: bool = False
     last_seen: int = None
     bootloader_mode: bool = False
-    error: StateError = None
+    errors: list[StateError] = field(default_factory=list)
     slave_id_collision: bool = False
     cfg: SerialParams = field(default_factory=SerialParams)
     fw: Firmware = field(default_factory=Firmware)
@@ -156,15 +156,6 @@ class ReadFWSignatureDeviceError(GenericStateError):
 class ReadDeviceSignatureDeviceError(GenericStateError):
     ID = "com.wb.device_manager.device.read_device_signature_error"
     MESSAGE = "Failed to read device signature."
-
-
-class CompositeDeviceError(GenericStateError):
-    ID = "com.wb.device_manager.device.composite_error"
-    MESSAGE = "Multiple errors occured."
-
-    def __init__(self, error_ids):
-        super().__init__()
-        self.metadata = {"error_ids": error_ids}
 
 
 class DeviceManager:
@@ -275,21 +266,6 @@ class DeviceManager:
             )
         return conn
 
-    async def _fill_device_signature(self, device_info, is_ext_scan) -> None:
-        mb_conn = self._get_mb_connection(device_info, is_ext_scan)
-        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"]
-        number_of_regs = 20
-        device_signature = ""
-        try:
-            device_info.fw.version = await mb_conn.read_string(
-                first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"],
-                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH,
-            )
-        except minimalmodbus.ModbusException:
-            logger.exception("Failed to read fw_version")
-            errors.append(ReadFWVersionDeviceError())
-        return errors
-
     async def fill_device_info(self, device_info, mb_conn):
         errors = []
 
@@ -307,7 +283,7 @@ class DeviceManager:
                 break
             except minimalmodbus.ModbusException as e:
                 err_ctx = e
-        else:
+        if err_ctx:
             logger.error("Failed to read device signature", exc_info=err_ctx)
             errors.append(ReadDeviceSignatureDeviceError())
 
@@ -319,6 +295,15 @@ class DeviceManager:
         except minimalmodbus.ModbusException:
             logger.exception("Failed to read fw_signature")
             errors.append(ReadFWSignatureDeviceError())
+
+        try:
+            device_info.fw.version = await mb_conn.read_string(
+                first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"],
+                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH,
+            )
+        except minimalmodbus.ModbusException:
+            logger.exception("Failed to read fw_version")
+            errors.append(ReadFWVersionDeviceError())
 
         return errors
 
@@ -465,14 +450,9 @@ class DeviceManager:
 
                     errors = []
                     errors.extend(await self.fill_device_info(device_info, mb_conn))
-                    errors.extend(await self.fill_fw_info(device_info, mb_conn))
-                    if errors:
-                        logger.error("Got errors: %s for device: %s", str(errors), str(device_info))
-                        if len(errors) > 1:
-                            device_info.error = CompositeDeviceError(error_ids=[err.id for err in errors])
-                        else:
-                            device_info.error = errors[0]
+                    device_info.errors = errors
 
+                    self._found_devices.append(sn)
                     await self.produce_state_update(device_info)
 
             except minimalmodbus.NoResponseError:

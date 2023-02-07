@@ -1,6 +1,7 @@
 wb-device-manager (1.5.0) stable; urgency=medium
 
   * Add new error-types around modbus communications with device
+  * JSON: "error" -> "errors" (all errors for each device)
 
  -- Vladimir Romanov <v.romanov@wirenboard.ru>  Tue, 07 Feb 2023 18:21:39 +0300
 

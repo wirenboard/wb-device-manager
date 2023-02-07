@@ -75,14 +75,7 @@ class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
         assumed_errors = [
             main.ReadDeviceSignatureDeviceError(),
             main.ReadFWSignatureDeviceError(),
-        ]
-        ret = await self.device_manager.fill_device_info(self.device_info, self.mb_conn)
-        self.assertListEqual(ret, assumed_errors)
-
-    async def test_erroneous_fill_fw_info(self):
-        self.mock_error()
-        assumed_errors = [
             main.ReadFWVersionDeviceError(),
         ]
-        ret = await self.device_manager.fill_fw_info(self.device_info, self.mb_conn)
+        ret = await self.device_manager.fill_device_info(self.device_info, self.mb_conn)
         self.assertListEqual(ret, assumed_errors)

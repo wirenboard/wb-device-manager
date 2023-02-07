@@ -70,13 +70,17 @@
             // устройство в режиме загрузчика
             "bootloader_mode": true,
 
-            // последняя ошибка при работе с конкретным устройством
-            "error": { // пока не используется
-                // принятый внутри команды идентификатор сообщения (формат строго определён!)
-                "id": "com.wb.device_manager.modbus_error",
-                // fallback человекочитаемое сообщение
-                "message": "Modbus communication error. Check logs for more info"
-            },
+            // список ошибок работы с конкретным устройством
+            "errors": [
+                {
+                    "id": "com.wb.device_manager.device.read_device_signature_error",
+                    "message": "Failed to read device signature."
+                },
+                {
+                    "id": "com.wb.device_manager.device.read_fw_signature_error",
+                    "message": "Failed to read FW signature."
+                }
+            ],
 
             // slave_id одинаковый с кем-то еще (флаг выставляется у всех устройств с таким же slave_id)
             "slave_id_collision": true,
@@ -151,4 +155,3 @@
 | **com.wb.device_manager.device.read_fw_version_error** | Ошибка modbus-коммуникации с устройством (чтение fw_version) | ```null``` |
 | **com.wb.device_manager.device.read_fw_signature_error** | Ошибка modbus-коммуникации с устройством (чтение fw_signature) | ```null``` |
 | **com.wb.device_manager.device.read_device_signature_error** | Ошибка modbus-коммуникации с устройством (чтение device_signature) | ```null``` |
-| **com.wb.device_manager.device.composite_error** | Многочисленные ошибки взаимодействия с устройством | ```"error_ids" : ["com.wb.device_manager.error1", "com.wb.device_manager.error2"]``` |
