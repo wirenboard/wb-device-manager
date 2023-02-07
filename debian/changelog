@@ -1,6 +1,6 @@
 wb-device-manager (1.4.0) stable; urgency=medium
 
-  * Add fields "ports_to_scan" and "is_ext_scan" to json-contract
+  * Add "scanning_ports" and "is_ext_scan" fields to json contract
 
  -- Vladimir Romanov <v.romanov@wirenboard.ru>  Mon, 06 Feb 2023 00:21:12 +0300
 
