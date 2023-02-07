@@ -1,3 +1,9 @@
+wb-device-manager (1.4.0) stable; urgency=medium
+
+  * Add "scanning_ports" and "is_ext_scan" fields to json contract
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Mon, 06 Feb 2023 00:21:12 +0300
+
 wb-device-manager (1.3.0) stable; urgency=medium
 
   * Add rpc endpoint "bus-scan/Stop" to stop scanning
