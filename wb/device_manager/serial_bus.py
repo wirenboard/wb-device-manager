@@ -202,7 +202,7 @@ class WBAsyncModbus:
         self.device = mqtt_rpc.AsyncModbusInstrument(port, addr, rpc_client)
         self.addr = addr
         self.port = port
-        self.device.serial.apply_settings({"baudrate": baudrate, "parity": parity, "stopbits": stopbits})
+        self.uart_params = {"baudrate": baudrate, "parity": parity, "stopbits": stopbits}
 
     def _make_payload(self, reg, number_of_regs):
         return minimalmodbus._num_to_twobyte_string(reg) + minimalmodbus._num_to_twobyte_string(
@@ -258,6 +258,7 @@ class WBAsyncModbus:
             funcode=funcode, payload=self._make_payload(first_addr, regs_length)
         )
 
+        self.device.serial.apply_settings(self.uart_params)
         response = await self.device._communicate(request, number_of_bytes_to_read)
 
         ret = self._parse_response(
