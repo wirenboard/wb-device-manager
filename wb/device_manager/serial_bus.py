@@ -18,7 +18,7 @@ class WBModbusScanner:
 
     async def get_serial_number(self, slaveid, uart_params) -> str:
         instrument = mqtt_rpc.AsyncModbusInstrument(self.port, slaveid, self.rpc_client)
-        instrument.serial.apply_settings(uart_params)
+        instrument.serial.apply_settings(uart_params) # must(!) be in the same coro as _communicate
 
         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["serial_number"]
         number_of_regs = 2
@@ -144,7 +144,7 @@ class WBExtendedModbusScanner(WBModbusScanner):
         return self.instrument.calculate_minimum_silent_period_s(bd)
 
     async def _communicate(self, request, uart_params={"baudrate": 9600, "parity": "N", "stopbits": 1}):
-        self.instrument.serial.apply_settings(uart_params)
+        self.instrument.serial.apply_settings(uart_params) # must(!) be in the same coro as _communicate
         number_of_bytes_to_read = 1000  # we need relatively huge one
         ret = await self.instrument._communicate(
             request=request, number_of_bytes_to_read=number_of_bytes_to_read
@@ -258,7 +258,7 @@ class WBAsyncModbus:
             funcode=funcode, payload=self._make_payload(first_addr, regs_length)
         )
 
-        self.device.serial.apply_settings(self.uart_params)
+        self.device.serial.apply_settings(self.uart_params)  # must(!) be in the same coro as _communicate
         response = await self.device._communicate(request, number_of_bytes_to_read)
 
         ret = self._parse_response(
