@@ -90,8 +90,7 @@ class DeviceInfo:
 class BusScanState:
     progress: int = 0
     scanning: bool = False
-    scanning_port: str = None
-    ports_to_scan: list[str] = field(default_factory=list)
+    scanning_ports: list[str] = field(default_factory=list)
     is_ext_scan: bool = False
     error: StateError = None
     devices: list[DeviceInfo] = field(default_factory=list)
@@ -285,7 +284,7 @@ class DeviceManager:
         parities=ALLOWED_PARITIES.keys(),
         stopbits=[
             1,
-        ]
+        ],
     ):
         iterable = product(bds, parities, stopbits)
         len_iterable = len(bds) * len(parities) * len(stopbits)
@@ -329,7 +328,7 @@ class DeviceManager:
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
 
     def _create_scan_tasks(self, ports, is_extended=False):
-        tasks, debug_port_records = [], []
+        tasks = []
         name_tmpl = "Extended scan %s" if is_extended else "Ordinary scan %s"
         for port in ports:
             tasks.append(
@@ -337,19 +336,13 @@ class DeviceManager:
                     self.scan_serial_port(port, is_ext_scan=is_extended), name=name_tmpl % port
                 )
             )
-            debug_port_records.extend(
-                [
-                    "%s %d %d%s%d" % (port, bd, 8, parity, sb)
-                    for bd, parity, sb, _ in self._get_all_uart_params()
-                ]
-            )
-        return tasks, set(debug_port_records)
+        return tasks
 
     async def scan_serial_bus(self):
         self._is_scanning = True
         self._found_devices = []
         self._bus_scanning_tasks = []
-        self.ports_dbg_strs = set()
+        self._ports_now_scanning = set()
 
         await self.produce_state_update(
             {"devices": [], "scanning": True, "progress": 0, "error": None}  # TODO: unit test?
@@ -365,18 +358,16 @@ class DeviceManager:
         results = []
 
         try:
-            self._bus_scanning_tasks, self.ports_dbg_strs = self._create_scan_tasks(ports, is_extended=True)
+            self._bus_scanning_tasks = self._create_scan_tasks(ports, is_extended=True)
             results.extend(await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True))
             await self.produce_state_update({"progress": 0})
             if self._is_scanning:  # multiple gather() could re-launch cancelled tasks
-                self._bus_scanning_tasks, self.ports_dbg_strs = self._create_scan_tasks(
-                    ports, is_extended=False
-                )
+                self._bus_scanning_tasks = self._create_scan_tasks(ports, is_extended=False)
                 results.extend(await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True))
 
             if self._bus_scanning_tasks:
                 await self.produce_state_update(
-                    {"scanning": False, "progress": 100, "ports_to_scan": self.ports_dbg_strs}
+                    {"scanning": False, "progress": 100, "scanning_ports": self._ports_now_scanning}
                 )
             failed_ports = [x.port for x in results if isinstance(x, PortScanningError)]
             if failed_ports:
@@ -401,10 +392,10 @@ class DeviceManager:
 
         for bd, parity, stopbits, progress_percent in self._get_all_uart_params():
             debug_str = "%s %d %d%s%d" % (port, bd, 8, parity, stopbits)
-            self.ports_dbg_strs.add(debug_str)
+            self._ports_now_scanning.add(debug_str)
             logger.info("Scanning (via %s modbus) %s", "extended" if is_ext_scan else "ordinary", debug_str)
             await self.produce_state_update(
-                {"scanning_port": debug_str, "ports_to_scan": self.ports_dbg_strs, "is_ext_scan": is_ext_scan}
+                {"scanning_ports": self._ports_now_scanning, "is_ext_scan": is_ext_scan}
             )
             try:
                 async for slaveid, sn in modbus_scanner.scan_bus(
@@ -445,7 +436,7 @@ class DeviceManager:
                 logger.exception("Unhandled exception during scan %s" % port)
                 raise PortScanningError(port=port) from e
             finally:
-                self.ports_dbg_strs.remove(debug_str)
+                self._ports_now_scanning.remove(debug_str)
             await self.produce_state_update({"progress": progress_percent})
 
 
