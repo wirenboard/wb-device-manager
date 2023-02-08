@@ -1,6 +1,7 @@
 wb-device-manager (1.5.2) stable; urgency=medium
 
   * Fix corner-case, when "Stop" button not always stops all port-scan tasks
+  * Add qos (like in libwbmqtt1) to to some mqtt-rpc publish calls
 
  -- Vladimir Romanov <v.romanov@wirenboard.ru>  Wed, 08 Feb 2023 12:58:48 +0300
 
