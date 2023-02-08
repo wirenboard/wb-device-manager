@@ -357,13 +357,18 @@ class DeviceManager:
 
         results = []
 
+        # bus scanning tasks: [extended_scanning : ordinary_scanning]
+        self._bus_scanning_tasks.extend(self._create_scan_tasks(ports, is_extended=True))
+        self._bus_scanning_tasks.extend(self._create_scan_tasks(ports, is_extended=False))
+        _border = int(len(self._bus_scanning_tasks) / 2)
+
         try:
-            self._bus_scanning_tasks = self._create_scan_tasks(ports, is_extended=True)
-            results.extend(await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True))
+            results.extend(await asyncio.gather(*self._bus_scanning_tasks[: _border], return_exceptions=True))
             await self.produce_state_update({"progress": 0})
             if self._is_scanning:  # multiple gather() could re-launch cancelled tasks
-                self._bus_scanning_tasks = self._create_scan_tasks(ports, is_extended=False)
-                results.extend(await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True))
+                results.extend(
+                    await asyncio.gather(*self._bus_scanning_tasks[_border :], return_exceptions=True)
+                )
 
             if self._bus_scanning_tasks:
                 await self.produce_state_update(
@@ -436,7 +441,7 @@ class DeviceManager:
                 logger.exception("Unhandled exception during scan %s" % port)
                 raise PortScanningError(port=port) from e
             finally:
-                self._ports_now_scanning.remove(debug_str)
+                self._ports_now_scanning.discard(debug_str)
             await self.produce_state_update({"progress": progress_percent})
 
 

@@ -1,3 +1,9 @@
+wb-device-manager (1.4.1) stable; urgency=medium
+
+  * Fix corner-case, when "Stop" button not always stops all port-scan tasks
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Wed, 08 Feb 2023 12:58:48 +0300
+
 wb-device-manager (1.4.0) stable; urgency=medium
 
   * Add "scanning_ports" and "is_ext_scan" fields to json contract
