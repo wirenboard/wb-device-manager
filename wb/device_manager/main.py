@@ -110,12 +110,6 @@ class SetEncoder(json.JSONEncoder):
         super().default(o)
 
 
-class PortScanningError(Exception):
-    def __init__(self, *args, **kwargs):
-        self.port = kwargs.pop("port")
-        super().__init__(*args, **kwargs)
-
-
 """
 Errors, shown in json-state
 """
@@ -373,6 +367,7 @@ class DeviceManager:
         self._found_devices = []
         self._bus_scanning_tasks = []
         self._ports_now_scanning = set()
+        self._ports_errored = set()
 
         await self.produce_state_update(
             {"devices": [], "scanning": True, "progress": 0, "error": None}  # TODO: unit test?
@@ -385,24 +380,21 @@ class DeviceManager:
             state_error = RPCCallTimeoutStateError()
             ports = []
 
-        results = []
-
         try:
             self._bus_scanning_tasks = self._create_scan_tasks(ports, is_extended=True)
-            results.extend(await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True))
+            await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True)
             await self.produce_state_update({"progress": 0})
             if self._is_scanning:  # multiple gather() could re-launch cancelled tasks
                 self._bus_scanning_tasks = self._create_scan_tasks(ports, is_extended=False)
-                results.extend(await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True))
+                await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True)
 
             if self._bus_scanning_tasks:
                 await self.produce_state_update(
                     {"scanning": False, "progress": 100, "scanning_ports": self._ports_now_scanning}
                 )
-            failed_ports = [x.port for x in results if isinstance(x, PortScanningError)]
-            if failed_ports:
-                logger.warning("Unsuccessful scan: %s", str(failed_ports))
-                state_error = FailedScanStateError(failed_ports=failed_ports)
+            if self._ports_errored:
+                logger.warning("Unsuccessful scan: %s", str(self._ports_errored))
+                state_error = FailedScanStateError(failed_ports=self._ports_errored)
         except Exception as e:
             state_error = GenericStateError()
             logger.exception("Unhandled exception during overall scan")
@@ -462,7 +454,11 @@ class DeviceManager:
                 )
             except Exception as e:
                 logger.exception("Unhandled exception during scan %s" % port)
-                raise PortScanningError(port=port) from e
+                self._ports_errored.add(port)
+                await self.produce_state_update(
+                    {"error": FailedScanStateError(failed_ports=self._ports_errored)}
+                )
+                raise
             finally:
                 self._ports_now_scanning.remove(debug_str)
             await self.produce_state_update({"progress": progress_percent})
