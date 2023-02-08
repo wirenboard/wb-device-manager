@@ -14,6 +14,7 @@ class DummyWBAsyncModbus(serial_bus.WBAsyncModbus):
         self.device = AsyncMock()
         self.addr = kwargs.get("addr", 1)
         self.port = kwargs.get("port", "/dev/dummyport")
+        self.uart_params = {"baudrate": 9600, "parity": "N", "stopbits": 2}
 
 
 class DummyWBAsyncExtendedModbus(serial_bus.WBAsyncExtendedModbus):
@@ -23,6 +24,7 @@ class DummyWBAsyncExtendedModbus(serial_bus.WBAsyncExtendedModbus):
         self.serial_number = kwargs.get("sn", 4267654341)
         self.extended_modbus_wrapper = serial_bus.WBExtendedModbusWrapper()
         self.addr = 0
+        self.uart_params = {"baudrate": 9600, "parity": "N", "stopbits": 2}
 
 
 class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):

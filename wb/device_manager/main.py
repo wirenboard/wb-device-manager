@@ -74,7 +74,7 @@ class DeviceInfo:
     poll: bool = False
     last_seen: int = None
     bootloader_mode: bool = False
-    error: StateError = None
+    errors: list[StateError] = field(default_factory=list)
     slave_id_collision: bool = False
     cfg: SerialParams = field(default_factory=SerialParams)
     fw: Firmware = field(default_factory=Firmware)
@@ -135,6 +135,21 @@ class FailedScanStateError(GenericStateError):
     def __init__(self, failed_ports):
         super().__init__()
         self.metadata = {"failed_ports": failed_ports}
+
+
+class ReadFWVersionDeviceError(GenericStateError):
+    ID = "com.wb.device_manager.device.read_fw_version_error"
+    MESSAGE = "Failed to read FW version."
+
+
+class ReadFWSignatureDeviceError(GenericStateError):
+    ID = "com.wb.device_manager.device.read_fw_signature_error"
+    MESSAGE = "Failed to read FW signature."
+
+
+class ReadDeviceSignatureDeviceError(GenericStateError):
+    ID = "com.wb.device_manager.device.read_device_signature_error"
+    MESSAGE = "Failed to read device signature."
 
 
 class DeviceManager:
@@ -245,32 +260,47 @@ class DeviceManager:
             )
         return conn
 
-    async def _fill_device_signature(self, device_info, is_ext_scan) -> None:
-        mb_conn = self._get_mb_connection(device_info, is_ext_scan)
-        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"]
-        number_of_regs = 20
-        device_signature = ""
+    async def fill_device_info(self, device_info, mb_conn):
+        errors = []
+
+        err_ctx = None
+        for reg_len in [20, bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH]:
+            try:
+                device_signature = await mb_conn.read_string(
+                    first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"],
+                    regs_length=reg_len,
+                )
+                device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
+                device_info.title = device_signature.strip(
+                    "\x02"
+                )  # TODO: store somewhere human-readable titles
+                err_ctx = None
+                break
+            except minimalmodbus.ModbusException as e:
+                err_ctx = e
+        if err_ctx:
+            logger.error("Failed to read device signature", exc_info=err_ctx)
+            errors.append(ReadDeviceSignatureDeviceError())
+
         try:
-            device_signature = await mb_conn.read_string(first_addr=reg, regs_length=number_of_regs)
+            device_info.fw_signature = await mb_conn.read_string(
+                first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"],
+                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH,
+            )
         except minimalmodbus.ModbusException:
-            number_of_regs = bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH
-            device_signature = await mb_conn.read_string(first_addr=reg, regs_length=number_of_regs)
-        finally:
-            device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
-            device_info.title = device_signature.strip("\x02")  # TODO: store somewhere human-readable titles
+            logger.exception("Failed to read fw_signature")
+            errors.append(ReadFWSignatureDeviceError())
 
-    async def _fill_fw_signature(self, device_info, is_ext_scan) -> None:
-        mb_conn = self._get_mb_connection(device_info, is_ext_scan)
-        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"]
-        number_of_regs = bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH
-        device_info.fw_signature = await mb_conn.read_string(first_addr=reg, regs_length=number_of_regs)
+        try:
+            device_info.fw.version = await mb_conn.read_string(
+                first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"],
+                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH,
+            )
+        except minimalmodbus.ModbusException:
+            logger.exception("Failed to read fw_version")
+            errors.append(ReadFWVersionDeviceError())
 
-    async def _fill_fw_info(self, device_info, is_ext_scan) -> None:
-        mb_conn = self._get_mb_connection(device_info, is_ext_scan)
-        reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"]
-        number_of_regs = bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH
-        device_info.fw.version = await mb_conn.read_string(first_addr=reg, regs_length=number_of_regs)
-        # TODO: fill available version from fw-releases
+        return errors
 
     def _get_all_uart_params(
         self,
@@ -409,16 +439,14 @@ class DeviceManager:
                     )
                     device_info.fw.ext_support = is_ext_scan
 
-                    try:
-                        await self._fill_device_signature(device_info, is_ext_scan)
-                        await self._fill_fw_signature(device_info, is_ext_scan)
-                        await self._fill_fw_info(device_info, is_ext_scan)
-                    except minimalmodbus.ModbusException as e:
-                        logger.exception("Treating device %s as offline", str(device_info))
-                        device_info.online = False
-                    finally:
-                        self._found_devices.append(sn)
-                        await self.produce_state_update(device_info)
+                    mb_conn = self._get_mb_connection(device_info, is_ext_scan)
+
+                    errors = []
+                    errors.extend(await self.fill_device_info(device_info, mb_conn))
+                    device_info.errors = errors
+
+                    self._found_devices.append(sn)
+                    await self.produce_state_update(device_info)
 
             except minimalmodbus.NoResponseError:
                 logger.debug(
