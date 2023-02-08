@@ -170,8 +170,6 @@ class DeviceManager:
         self._state_update_queue = asyncio.Queue()
         self._asyncio_loop = asyncio.get_event_loop()
         self.asyncio_loop.create_task(self.consume_state_update(), name="Build & publish overall state")
-        self._is_scanning = False
-        self._found_devices = []
         self._bus_scanning_task = None
 
     @property
@@ -328,7 +326,7 @@ class DeviceManager:
         return list(filter(None, ports))
 
     async def launch_bus_scan(self):
-        if self._is_scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
+        if self._bus_scanning_task and not self._bus_scanning_task.done():
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         else:
             logger.info("Start bus scanning")
@@ -361,7 +359,7 @@ class DeviceManager:
         return tasks
 
     async def scan_serial_bus(self):
-        self._is_scanning = True
+        # TODO: introduce state-accumulator to communicate with worker-coros and get rid of these global vars
         self._found_devices = []
         self._ports_now_scanning = set()
         self._ports_errored = set()
@@ -395,7 +393,6 @@ class DeviceManager:
             logger.exception("Unhandled exception during overall scan")
         finally:
             await self.produce_state_update({"scanning": False, "progress": 0, "error": state_error})
-            self._is_scanning = False
 
     async def scan_serial_port(self, port, is_ext_scan=True):
         def make_uuid(sn):
