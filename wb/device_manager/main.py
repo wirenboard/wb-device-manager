@@ -375,13 +375,9 @@ class DeviceManager:
             state_error = RPCCallTimeoutStateError()
             ports = []
         try:
-            await asyncio.gather(
-                *self._create_scan_tasks(ports, is_extended=True), return_exceptions=True
-            )
+            await asyncio.gather(*self._create_scan_tasks(ports, is_extended=True), return_exceptions=True)
             await self.produce_state_update({"progress": 0})
-            await asyncio.gather(
-                *self._create_scan_tasks(ports, is_extended=False), return_exceptions=True
-            )
+            await asyncio.gather(*self._create_scan_tasks(ports, is_extended=False), return_exceptions=True)
             await self.produce_state_update(
                 {"scanning": False, "progress": 100, "scanning_ports": self._ports_now_scanning}
             )
