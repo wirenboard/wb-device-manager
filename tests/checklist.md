@@ -27,7 +27,7 @@
         * не блокирует другие rpc-вызовы к wb-device-manager
         * остановив wb-mqtt-serial перед сканированием, получаем ошибку "com.wb.device_manager.rpc_call_timeout_error" в поле "error" state-топика
         * остановив wb-mqtt-serial и получив ошибку (предыдущий пункт), перезапускаем wb-mqtt-serial -> жмём "scan" -> ошибка должна пропасть
-        * добавив в wb-mqtt-serial несуществующие порты и запустив сканирование, получаем ошибку "com.wb.device_manager.failed_to_scan_error" в поле "error" state-топика и список несуществующих портов в "error.metadata.failed_ports"
+        * добавив в wb-mqtt-serial несуществующие порты и запустив сканирование, сразу получаем ошибку "com.wb.device_manager.failed_to_scan_error" в поле "error" state-топика и список несуществующих портов в "error.metadata.failed_ports"
         * убрав из конфига wb-mqtt-serial все несуществующие порты, снова запустить сканирование. Ошибок быть не должно; обратить внимание на правильность коллизий slaveid
         * в json-e state'a - адекватная информация (настройки связи; is_ext_scan, ...)
         * убедиться, что при завершении сканирования порта, он пропадает из "scanning_ports" json-a
