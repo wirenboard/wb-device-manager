@@ -146,9 +146,9 @@
 * подробные ошибки из питона (со stack trace) доступны в логах (```journalctl -u wb-device-manager -f```)
 
 #### Ошибки, выдаваемые наружу:
-| Id | Условия возникновения | поле `"metadata"` |
+| Id | Условия возникновения | поле ```"metadata"``` |
 | :- | :-------------------- | :-------------- |
-| **com.wb.device_manager.generic_error** | Неотловленная ошибка внутри сервиса | `null` |
+| **com.wb.device_manager.generic_error** | Неотловленная ошибка внутри сервиса | ```null``` |
 | Наследники: |
 | **com.wb.device_manager.rpc_call_timeout_error** | Таймаут rpc-запроса к wb-mqtt-serial (wb-device-manager - клиент) на этапе получения портов для сканирования | ```null``` |
 | **com.wb.device_manager.failed_to_scan_error** | Неотловленная ошибка при сканировании порта | ```"failed_ports" : [failed_port1, failed_port2, ...]``` |

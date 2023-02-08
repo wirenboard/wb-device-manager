@@ -280,6 +280,7 @@ class DeviceManager:
                 device_info.title = device_signature.strip(
                     "\x02"
                 )  # TODO: store somewhere human-readable titles
+                err_ctx = None
                 break
             except minimalmodbus.ModbusException as e:
                 err_ctx = e
