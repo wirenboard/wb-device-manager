@@ -10,14 +10,13 @@ import uuid
 from argparse import ArgumentParser
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, is_dataclass
-from itertools import chain, product
 from sys import argv, stderr, stdout
 from urllib.parse import urlparse
 
 import paho_socket
 from mqttrpc import Dispatcher
 from paho.mqtt import client as mqttclient
-from wb_modbus import ALLOWED_BAUDRATES, ALLOWED_PARITIES, ALLOWED_STOPBITS, bindings
+from wb_modbus import bindings
 from wb_modbus import logger as mb_logger
 from wb_modbus import minimalmodbus
 
@@ -303,16 +302,21 @@ class DeviceManager:
 
     def _get_all_uart_params(
         self,
-        bds=ALLOWED_BAUDRATES,
-        parities=ALLOWED_PARITIES.keys(),
-        stopbits=[
-            1,
-        ],
+        bds=[115200, 9600, 57600, 1200, 2400, 4800, 19200, 38400],
+        parities=["N", "O", "E"],
+        stopbits=[2, 1],
     ):
-        iterable = product(bds, parities, stopbits)
         len_iterable = len(bds) * len(parities) * len(stopbits)
-        for pos, (bd, parity, stopbit) in enumerate(iterable, start=1):
-            yield bd, parity, stopbit, int(pos / len_iterable * 100)
+        pos = 0
+        for parity in parities:
+            for stopbit in stopbits:
+                for bd in bds[:3]:
+                    pos += 1
+                    yield bd, parity, stopbit, int(pos / len_iterable * 100)
+            for stopbit in stopbits:
+                for bd in bds[3:]:
+                    pos += 1
+                    yield bd, parity, stopbit, int(pos / len_iterable * 100)
 
     async def _get_ports(self) -> list[str]:
         response = await self.rpc_client.make_rpc_call(
@@ -399,7 +403,10 @@ class DeviceManager:
         else:
             modbus_scanner = serial_bus.WBModbusScanner(port, self.rpc_client)
 
-        for bd, parity, stopbits, progress_percent in self._get_all_uart_params():
+        # new firmwares can work with any stopbits, but old ones can't
+        allowed_stopbits = stopbits=[2,] if is_ext_scan else [2, 1]
+
+        for bd, parity, stopbits, progress_percent in self._get_all_uart_params(stopbits=allowed_stopbits):
             debug_str = "%s %d %d%s%d" % (port, bd, 8, parity, stopbits)
             self._ports_now_scanning.add(debug_str)
             logger.info("Scanning (via %s modbus) %s", "extended" if is_ext_scan else "ordinary", debug_str)

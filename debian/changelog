@@ -1,3 +1,9 @@
+wb-device-manager (1.5.3) stable; urgency=medium
+
+  * Fix scanning devices with old firmware using 2 stopbits
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 09 Feb 2023 16:17:00 +0400
+
 wb-device-manager (1.5.2) stable; urgency=medium
 
   * Fix corner-case, when "Stop" button not always stops all port-scan tasks
