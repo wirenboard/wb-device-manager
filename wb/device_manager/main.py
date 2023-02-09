@@ -303,7 +303,7 @@ class DeviceManager:
     def _get_all_uart_params(
         self,
         bds=[115200, 9600, 57600, 1200, 2400, 4800, 19200, 38400],
-        parities=["N", "O", "E"],
+        parities=["N", "E", "O"],
         stopbits=[2, 1],
     ):
         len_iterable = len(bds) * len(parities) * len(stopbits)
