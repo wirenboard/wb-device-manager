@@ -308,13 +308,14 @@ class DeviceManager:
     ):
         len_iterable = len(bds) * len(parities) * len(stopbits)
         pos = 0
+        most_frequent_bds, less_frequent_bds = bds[:3], bds[3:]
         for parity in parities:
             for stopbit in stopbits:
-                for bd in bds[:3]:
+                for bd in most_frequent_bds:
                     pos += 1
                     yield bd, parity, stopbit, int(pos / len_iterable * 100)
             for stopbit in stopbits:
-                for bd in bds[3:]:
+                for bd in less_frequent_bds:
                     pos += 1
                     yield bd, parity, stopbit, int(pos / len_iterable * 100)
 
