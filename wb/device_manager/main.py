@@ -404,7 +404,13 @@ class DeviceManager:
             modbus_scanner = serial_bus.WBModbusScanner(port, self.rpc_client)
 
         # new firmwares can work with any stopbits, but old ones can't
-        allowed_stopbits = stopbits=[2,] if is_ext_scan else [2, 1]
+        allowed_stopbits = stopbits = (
+            [
+                2,
+            ]
+            if is_ext_scan
+            else [2, 1]
+        )
 
         for bd, parity, stopbits, progress_percent in self._get_all_uart_params(stopbits=allowed_stopbits):
             debug_str = "%s %d %d%s%d" % (port, bd, 8, parity, stopbits)
