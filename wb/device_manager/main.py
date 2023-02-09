@@ -170,8 +170,7 @@ class DeviceManager:
         self._state_update_queue = asyncio.Queue()
         self._asyncio_loop = asyncio.get_event_loop()
         self.asyncio_loop.create_task(self.consume_state_update(), name="Build & publish overall state")
-        self._is_scanning = False
-        self._found_devices = []
+        self._bus_scanning_task = None
 
     @property
     def mqtt_connection(self):
@@ -327,11 +326,13 @@ class DeviceManager:
         return list(filter(None, ports))
 
     async def launch_bus_scan(self):
-        if self._is_scanning:  # TODO: store mqtt topics and binded launched tasks (instead of launcher-cb)
+        if self._bus_scanning_task and not self._bus_scanning_task.done():
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         else:
             logger.info("Start bus scanning")
-            self.asyncio_loop.create_task(self.scan_serial_bus(), name="Scan serial bus (long running)")
+            self._bus_scanning_task = self.asyncio_loop.create_task(
+                self.scan_serial_bus(), name="Scan serial bus (long running)"
+            )
             return "Ok"
 
     async def stop_bus_scan(self):
@@ -339,14 +340,9 @@ class DeviceManager:
         TODO: check, tasks are actually cancelled before returning "Ok" via rpc
         Check https://docs.python.org/dev/library/asyncio-task.html#asyncio.Task.cancel for more info
         """
-        if self._is_scanning:
+        if self._bus_scanning_task and not self._bus_scanning_task.done():
             logger.info("Stop bus scanning")
-            for task in self._bus_scanning_tasks:
-                if not task.done():
-                    logger.debug("Cancelling task %s", task.get_name())
-                    task.cancel()
-            self._bus_scanning_tasks.clear()
-            self._is_scanning = False
+            self._bus_scanning_task.cancel()
             return "Ok"
         else:
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
@@ -363,9 +359,8 @@ class DeviceManager:
         return tasks
 
     async def scan_serial_bus(self):
-        self._is_scanning = True
+        # TODO: introduce state-accumulator to communicate with worker-coros and get rid of these global vars
         self._found_devices = []
-        self._bus_scanning_tasks = []
         self._ports_now_scanning = set()
         self._ports_errored = set()
 
@@ -379,19 +374,13 @@ class DeviceManager:
             logger.exception("No answer from wb-mqtt-serial")
             state_error = RPCCallTimeoutStateError()
             ports = []
-
         try:
-            self._bus_scanning_tasks = self._create_scan_tasks(ports, is_extended=True)
-            await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True)
+            await asyncio.gather(*self._create_scan_tasks(ports, is_extended=True), return_exceptions=True)
             await self.produce_state_update({"progress": 0})
-            if self._is_scanning:  # multiple gather() could re-launch cancelled tasks
-                self._bus_scanning_tasks = self._create_scan_tasks(ports, is_extended=False)
-                await asyncio.gather(*self._bus_scanning_tasks, return_exceptions=True)
-
-            if self._bus_scanning_tasks:
-                await self.produce_state_update(
-                    {"scanning": False, "progress": 100, "scanning_ports": self._ports_now_scanning}
-                )
+            await asyncio.gather(*self._create_scan_tasks(ports, is_extended=False), return_exceptions=True)
+            await self.produce_state_update(
+                {"scanning": False, "progress": 100, "scanning_ports": self._ports_now_scanning}
+            )
             if self._ports_errored:
                 logger.warning("Unsuccessful scan: %s", str(self._ports_errored))
                 state_error = FailedScanStateError(failed_ports=self._ports_errored)
@@ -400,8 +389,6 @@ class DeviceManager:
             logger.exception("Unhandled exception during overall scan")
         finally:
             await self.produce_state_update({"scanning": False, "progress": 0, "error": state_error})
-            self._is_scanning = False
-            self._bus_scanning_tasks.clear()
 
     async def scan_serial_port(self, port, is_ext_scan=True):
         def make_uuid(sn):
@@ -460,7 +447,7 @@ class DeviceManager:
                 )
                 raise
             finally:
-                self._ports_now_scanning.remove(debug_str)
+                self._ports_now_scanning.discard(debug_str)
             await self.produce_state_update({"progress": progress_percent})
 
 
