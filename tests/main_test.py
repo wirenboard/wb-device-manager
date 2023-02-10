@@ -134,7 +134,7 @@ class TestDeviceManager(unittest.TestCase):
             "2400-O1",
             "4800-O1",
             "19200-O1",
-            "38400-O1"
+            "38400-O1",
         ]
         for bd, parity, stopbits, progress_percent in self.device_manager._get_all_uart_params():
             self.assertEqual(f"{bd}-{parity}{stopbits}", assumed_order.pop(0))
