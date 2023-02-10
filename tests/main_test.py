@@ -49,7 +49,7 @@ class TestRPCClient(unittest.IsolatedAsyncioTestCase):
         assumed_response = ["/dev/ttyRS485-1", "/dev/ttyRS485-2"]
         self.mock_response(response)
         ret = await self.device_manager._get_ports()
-        self.assertListEqual(list(ret), assumed_response)
+        self.assertListEqual(ret, assumed_response)
 
 
 class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):

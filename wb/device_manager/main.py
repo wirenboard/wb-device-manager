@@ -306,6 +306,11 @@ class DeviceManager:
         parities=["N", "E", "O"],
         stopbits=[2, 1],
     ):
+        """There are the following assumptions:
+        1. Most frequently used baudrates are 115200, 9600, 57600
+        2. Most frequently used parity is "N"
+        So, yield them first, then yield less frequently used baudrates and parities
+        """
         len_iterable = len(bds) * len(parities) * len(stopbits)
         pos = 0
         most_frequent_bds, less_frequent_bds = bds[:3], bds[3:]
