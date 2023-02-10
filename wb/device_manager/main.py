@@ -409,8 +409,9 @@ class DeviceManager:
         else:
             modbus_scanner = serial_bus.WBModbusScanner(port, self.rpc_client)
 
-        # new firmwares can work with any stopbits, but old ones can't
-        allowed_stopbits = stopbits = (
+        # New firmwares can work with any stopbits, but old ones can't
+        # Since it doesn't matter what to use, let's use 2
+        allowed_stopbits = (
             [
                 2,
             ]
