@@ -6,9 +6,8 @@ import atexit
 import signal
 from functools import cache, partial
 from pathlib import PurePosixPath
-from urllib.parse import urlparse
 
-import paho.mqtt.client as mosquitto
+import paho.mqtt.client as mqtt
 from jsonrpc.exceptions import JSONRPCDispatchException, JSONRPCServerError
 from mqttrpc import client as rpcclient
 from mqttrpc.manager import AMQTTRPCResponseManager
@@ -200,7 +199,6 @@ class AsyncMQTTServer:
     def _close_mqtt_connection(self):
         self._delete_retained()
         self.mqtt_connection.disconnect()
-        self.mqtt_connection.loop_stop()
         logger.info("Mqtt: close %s", self.mqtt_url_str)
 
     def _setup_event_loop(self):
@@ -216,14 +214,7 @@ class AsyncMQTTServer:
         self.mqtt_connection.on_message = self._on_mqtt_message
 
         try:
-            url = urlparse(self.mqtt_url_str)
-            if url.scheme == "mqtt-tcp":
-                if url.username:
-                    self.mqtt_connection.username_pw_set(url.username, url.password)
-                self.mqtt_connection.connect(url.hostname, url.port)
-            elif url.scheme == "unix":
-                self.mqtt_connection.sock_connect(url.path)
-            self.mqtt_connection.loop_start()
+            self.mqtt_connection.connect()
         finally:
             logger.info("Registered to atexit hook: close %s", self.mqtt_url_str)
             atexit.register(lambda: self._close_mqtt_connection())
@@ -261,9 +252,7 @@ class AsyncMQTTServer:
         logger.debug("Clear rpc_client subscribes")
 
     def _on_mqtt_message(self, _client, _userdata, message):
-        if mosquitto.topic_matches_sub(
-            "/rpc/v1/+/+/+/%s/reply" % self.rpc_client.rpc_client_id, message.topic
-        ):
+        if mqtt.topic_matches_sub("/rpc/v1/+/+/+/%s/reply" % self.rpc_client.rpc_client_id, message.topic):
             self.rpc_client.on_mqtt_message(None, None, message)  # reply from mqtt client; filling payload
 
         else:  # requests to a server
