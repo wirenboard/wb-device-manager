@@ -198,7 +198,7 @@ class AsyncMQTTServer:
 
     def _close_mqtt_connection(self):
         self._delete_retained()
-        self.mqtt_connection.disconnect()
+        self.mqtt_connection.stop()
         logger.info("Mqtt: close %s", self.mqtt_url_str)
 
     def _setup_event_loop(self):
@@ -214,7 +214,7 @@ class AsyncMQTTServer:
         self.mqtt_connection.on_message = self._on_mqtt_message
 
         try:
-            self.mqtt_connection.connect()
+            self.mqtt_connection.start()
         finally:
             logger.info("Registered to atexit hook: close %s", self.mqtt_url_str)
             atexit.register(lambda: self._close_mqtt_connection())
