@@ -481,6 +481,7 @@ def main(args=argv):
     parser.add_argument(
         "-b",
         "--broker",
+        "--broker_url",
         dest="broker_url",
         type=str,
         help="MQTT broker url",
