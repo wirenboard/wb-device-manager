@@ -4,18 +4,15 @@
 import asyncio
 import json
 import logging
-import os
 import time
 import uuid
 from argparse import ArgumentParser
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, is_dataclass
 from sys import argv, stderr, stdout
-from urllib.parse import urlparse
 
-import paho_socket
 from mqttrpc import Dispatcher
-from paho.mqtt import client as mqttclient
+from wb_common.mqtt_client import DEFAULT_BROKER_URL, MQTTClient
 from wb_modbus import bindings
 from wb_modbus import logger as mb_logger
 from wb_modbus import minimalmodbus
@@ -156,15 +153,7 @@ class DeviceManager:
     STATE_PUBLISH_TOPIC = "/wb-device-manager/state"
 
     def __init__(self, broker_url: str):
-        url = urlparse(broker_url)
-        client_id = "%s-%d" % (self.MQTT_CLIENT_NAME, os.getpid())
-        if url.scheme == "mqtt-tcp":
-            self._mqtt_connection = mqttclient.Client(client_id)
-        elif url.scheme == "unix":
-            self._mqtt_connection = paho_socket.Client(client_id)
-        else:
-            raise Exception("Unkown mqtt url scheme")
-
+        self._mqtt_connection = MQTTClient(self.MQTT_CLIENT_NAME, broker_url)
         self._rpc_client = mqtt_rpc.SRPCClient(self.mqtt_connection)
         self._state_update_queue = asyncio.Queue()
         self._asyncio_loop = asyncio.get_event_loop()
@@ -491,11 +480,12 @@ def main(args=argv):
     )
     parser.add_argument(
         "-b",
+        "--broker",
         "--broker_url",
         dest="broker_url",
         type=str,
-        help="MQTT url",
-        default="unix:///var/run/mosquitto/mosquitto.sock",
+        help="MQTT broker url",
+        default=DEFAULT_BROKER_URL,
     )
     args = parser.parse_args(argv[1:])
 
