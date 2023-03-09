@@ -291,12 +291,12 @@ class DeviceManager:
 
     def _get_all_uart_params(
         self,
-        bds=[115200, 9600, 57600, 1200, 2400, 4800, 19200, 38400],
+        bds=[9600, 115200, 57600, 1200, 2400, 4800, 19200, 38400],
         parities=["N", "E", "O"],
         stopbits=[2, 1],
     ):
         """There are the following assumptions:
-        1. Most frequently used baudrates are 115200, 9600, 57600
+        1. Most frequently used baudrates are 9600, 115200, 57600
         2. Most frequently used parity is "N"
         So, yield them first, then yield less frequently used baudrates and parities
         """
