@@ -226,7 +226,7 @@ class DeviceManager:
             finally:
                 self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
-    def _get_mb_connection(self, device_info, is_ext_scan):
+    def _get_mb_connection(self, device_info, is_ext_scan, instrument=mqtt_rpc.AsyncModbusInstrument):
         if is_ext_scan:
             conn = serial_bus.WBAsyncExtendedModbus(
                 sn=int(device_info.sn),
@@ -235,6 +235,7 @@ class DeviceManager:
                 parity=device_info.cfg.parity,
                 stopbits=device_info.cfg.stop_bits,
                 rpc_client=self.rpc_client,
+                instrument=instrument,
             )
         else:
             conn = serial_bus.WBAsyncModbus(
@@ -244,6 +245,7 @@ class DeviceManager:
                 parity=device_info.cfg.parity,
                 stopbits=device_info.cfg.stop_bits,
                 rpc_client=self.rpc_client,
+                instrument=instrument,
             )
         return conn
 
@@ -328,10 +330,7 @@ class DeviceManager:
                 serial_ports.append(port_info["path"])
             elif "address" in port_info and "port" in port_info:
                 tcp_ports.append(f"{port_info['address']}:{port_info['port']}")
-        return {
-            "serial" : serial_ports,
-            "tcp" : tcp_ports
-        }
+        return {"serial": serial_ports, "tcp": tcp_ports}
 
     async def launch_bus_scan(self):
         if self._bus_scanning_task and not self._bus_scanning_task.done():
@@ -403,9 +402,11 @@ class DeviceManager:
             return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
 
         if is_ext_scan:
-            modbus_scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
+            modbus_scanner = serial_bus.WBExtendedModbusScanner(
+                port, self.rpc_client, mqtt_rpc.AsyncModbusInstrument
+            )
         else:
-            modbus_scanner = serial_bus.WBModbusScanner(port, self.rpc_client)
+            modbus_scanner = serial_bus.WBModbusScanner(port, self.rpc_client, mqtt_rpc.AsyncModbusInstrument)
 
         # New firmwares can work with any stopbits, but old ones can't
         # Since it doesn't matter what to use, let's use 2
@@ -444,7 +445,9 @@ class DeviceManager:
                     )
                     device_info.fw.ext_support = is_ext_scan
 
-                    mb_conn = self._get_mb_connection(device_info, is_ext_scan)
+                    mb_conn = self._get_mb_connection(
+                        device_info, is_ext_scan, mqtt_rpc.AsyncModbusInstrument
+                    )
 
                     errors = []
                     errors.extend(await self.fill_device_info(device_info, mb_conn))
@@ -458,7 +461,7 @@ class DeviceManager:
                     "No %s-modbus devices on %s", "extended" if is_ext_scan else "ordinary", debug_str
                 )
             except Exception as e:
-                logger.exception("Unhandled exception during scan %s" % port)
+                logger.exception("Unhandled exception during scan %s", port)
                 self._ports_errored.add(port)
                 await self.produce_state_update(
                     {"error": FailedScanStateError(failed_ports=self._ports_errored)}
