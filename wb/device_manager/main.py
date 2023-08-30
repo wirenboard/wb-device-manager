@@ -313,7 +313,7 @@ class DeviceManager:
                     pos += 1
                     yield bd, parity, stopbit, int(pos / len_iterable * 100)
 
-    async def _get_ports(self) -> list[str]:
+    async def get_ports(self) -> dict:
         response = await self.rpc_client.make_rpc_call(
             driver="wb-mqtt-serial",
             service="ports",
@@ -321,8 +321,17 @@ class DeviceManager:
             params={},
             timeout=1.0,  # s; rpc call goes around scheduler queue => relatively small
         )
-        ports = [port.get("path") for port in response]
-        return list(filter(None, ports))
+        serial_ports = []
+        tcp_ports = []
+        for port_info in response:
+            if "path" in port_info:
+                serial_ports.append(port_info["path"])
+            elif "address" in port_info and "port" in port_info:
+                tcp_ports.append(f"{port_info['address']}:{port_info['port']}")
+        return {
+            "serial" : serial_ports,
+            "tcp" : tcp_ports
+        }
 
     async def launch_bus_scan(self):
         if self._bus_scanning_task and not self._bus_scanning_task.done():
@@ -368,7 +377,7 @@ class DeviceManager:
         )
         state_error = None
         try:
-            ports = await self._get_ports()
+            ports = await self.get_ports()
         except mqtt_rpc.MQTTRPCInternalServerError:
             logger.exception("No answer from wb-mqtt-serial")
             state_error = RPCCallTimeoutStateError()
