@@ -47,8 +47,10 @@ class TestRPCClient(unittest.IsolatedAsyncioTestCase):
             {"address": "192.168.0.7", "port": 23},
         ]
         assumed_response = {
-            "serial" : ["/dev/ttyRS485-1", "/dev/ttyRS485-2"],
-            "tcp" : ["192.168.0.7:23",],
+            "serial": ["/dev/ttyRS485-1", "/dev/ttyRS485-2"],
+            "tcp": [
+                "192.168.0.7:23",
+            ],
         }
         self.mock_response(response)
         ret = await self.device_manager.get_ports()

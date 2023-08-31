@@ -104,9 +104,7 @@ class WBExtendedModbusScanner(WBModbusScanner):
     def __init__(self, port, rpc_client, instrument=mqtt_rpc.AsyncModbusInstrument):
         super().__init__(port, rpc_client)
         self.extended_modbus_wrapper = WBExtendedModbusWrapper()
-        self.instrument = instrument(
-            self.port, self.extended_modbus_wrapper.ADDR, self.rpc_client
-        )
+        self.instrument = instrument(self.port, self.extended_modbus_wrapper.ADDR, self.rpc_client)
 
     def _parse_device_data(self, device_data_bytestr):
         sn, slaveid = device_data_bytestr[:4], device_data_bytestr[4:]
@@ -199,7 +197,9 @@ class WBExtendedModbusScanner(WBModbusScanner):
 
 
 class WBAsyncModbus:
-    def __init__(self, addr, port, baudrate, parity, stopbits, rpc_client, instrument=mqtt_rpc.AsyncModbusInstrument):
+    def __init__(
+        self, addr, port, baudrate, parity, stopbits, rpc_client, instrument=mqtt_rpc.AsyncModbusInstrument
+    ):
         self.device = instrument(port, addr, rpc_client)
         self.addr = addr
         self.port = port
@@ -284,7 +284,9 @@ class WBAsyncExtendedModbus(WBAsyncModbus):
     Look at https://github.com/wirenboard/libwbmcu-modbus/blob/master/wbm_ext.md for more info
     """
 
-    def __init__(self, sn, port, baudrate, parity, stopbits, rpc_client, instrument=mqtt_rpc.AsyncModbusInstrument):
+    def __init__(
+        self, sn, port, baudrate, parity, stopbits, rpc_client, instrument=mqtt_rpc.AsyncModbusInstrument
+    ):
         dummy_slaveid = 0  # for compatibility with minimalmodbus checks
         super().__init__(dummy_slaveid, port, baudrate, parity, stopbits, rpc_client, instrument)
         self.serial_number = sn
