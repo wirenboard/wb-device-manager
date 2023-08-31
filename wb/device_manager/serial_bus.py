@@ -249,9 +249,8 @@ class WBAsyncModbus:
             ret = ret.replace(placeholder, "")  # 'A1B2C3' bytes-only string
         return str(unhexlify(ret).decode(encoding="utf-8", errors="backslashreplace")).strip()
 
-    async def read_string(self, first_addr, regs_length):
+    async def _do_read(self, payloadformat, first_addr, regs_length=1):
         funcode = 3
-        payloadformat = minimalmodbus._PAYLOADFORMAT_STRING
 
         request = self._build_request(funcode=funcode, reg=first_addr, number_of_regs=regs_length)
 
@@ -269,7 +268,14 @@ class WBAsyncModbus:
             response_bytestr=response,
             payloadformat=payloadformat,
         )
+        return ret
+
+    async def read_string(self, first_addr, regs_length):
+        ret = await self._do_read(minimalmodbus._PAYLOADFORMAT_STRING, first_addr, regs_length)
         return self._str_to_wb(ret)
+
+    async def read_u16_regs(self, first_addr, regs_length):
+        return await self._do_read(minimalmodbus._PAYLOADFORMAT_REGISTERS, first_addr, regs_length)
 
 
 class WBAsyncExtendedModbus(WBAsyncModbus):
