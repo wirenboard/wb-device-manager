@@ -3,6 +3,7 @@
 
 import asyncio
 import atexit
+import ipaddress
 import signal
 from functools import cache, partial
 from pathlib import PurePosixPath
@@ -90,6 +91,15 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
         linux_uart_processing_s = 50e-3  # with huge upper reserve
         return wb_devices_response_time_s
 
+    def get_transport_params(self):
+        return {
+            "path": self.serial.port,
+            "baud_rate": self.serial.SERIAL_SETTINGS["baudrate"],
+            "parity": self.serial.SERIAL_SETTINGS["parity"],
+            "data_bits": 8,
+            "stop_bits": self.serial.SERIAL_SETTINGS["stopbits"],
+        }
+
     async def _communicate(self, request, number_of_bytes_to_read):
         minimalmodbus._check_string(request, minlength=1, description="request")
         minimalmodbus._check_int(number_of_bytes_to_read)
@@ -108,13 +118,9 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
             "msg": minimalmodbus._hexencode(request),
             "response_timeout": round(self.serial.timeout * 1000),  # ms
             "frame_timeout": round(self.calculate_minimum_silent_period_s(bd) * 1000),  # ms
-            "path": self.serial.port,  # TODO: support modbus tcp in minimalmodbus
-            "baud_rate": bd,
-            "parity": self.serial.SERIAL_SETTINGS["parity"],
-            "stop_bits": self.serial.SERIAL_SETTINGS["stopbits"],
-            "data_bits": 8,
             "total_timeout": round(rpc_call_timeout * 1000),  # ms
         }
+        rpc_request.update(self.get_transport_params())
 
         try:
             response = await self.rpc_client.make_rpc_call(
@@ -138,6 +144,24 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
 
         else:
             return minimalmodbus._hexdecode(str(response.get("response", "")))
+
+
+class AsyncModbusInstrumentTCP(AsyncModbusInstrument):
+    def __init__(self, ip_addr_port, slaveaddress, rpc_client, **kwargs):
+        ip, _, port = ip_addr_port.partition(":")
+        try:
+            self.ip = ipaddress.ip_address(ip).exploded
+            self.tcp_port = int(port)
+        except ValueError as e:
+            raise rpcclient.MQTTRPCError('Format should be "valid_ip_addr:port"') from e
+
+        super().__init__(port=None, slaveaddress=slaveaddress, rpc_client=rpc_client, **kwargs)
+
+    def get_transport_params(self):
+        return {
+            "ip": self.ip,
+            "port": self.tcp_port,
+        }
 
 
 class MQTTRPCInternalServerError(rpcclient.MQTTRPCError):
