@@ -148,6 +148,11 @@ class ReadDeviceSignatureDeviceError(GenericStateError):
     MESSAGE = "Failed to read device signature."
 
 
+class ReadSerialParamsDeviceError(GenericStateError):
+    ID = "com.wb.device_manager.device.read_serial_params_error"
+    MESSAGE = "Failed to read serial params from device."
+
+
 class DeviceManager:
     MQTT_CLIENT_NAME = "wb-device-manager"
     STATE_PUBLISH_TOPIC = "/wb-device-manager/state"
@@ -289,7 +294,22 @@ class DeviceManager:
             logger.exception("Failed to read fw_version")
             errors.append(ReadFWVersionDeviceError())
 
-        return errors
+        device_info.errors.extend(errors)
+
+    async def fill_serial_params(self, device_info, mb_conn):
+        parities = {0: "N", 1: "O", 2: "E"}
+        bd, parity, stopbits = None, None, None
+        try:
+            bd, parity, stopbits = await mb_conn.read_u16_regs(110, 3)
+            bd = bd * 100
+            parity = parities[parity]
+        except minimalmodbus.ModbusException:
+            logger.exception("Failed to read serial params from device")
+            device_info.errors.append(ReadSerialParamsDeviceError())
+
+        device_info.cfg.baud_rate = bd
+        device_info.cfg.parity = parity
+        device_info.cfg.stop_bits = stopbits
 
     def _get_all_uart_params(
         self,
@@ -412,7 +432,11 @@ class DeviceManager:
     async def do_scan_port(self, path, instrument, scanner, **scan_kwargs):
         is_ext_scan = isinstance(scanner, serial_bus.WBExtendedModbusScanner)
         do_read_serial_params_from_device = issubclass(instrument, mqtt_rpc.AsyncModbusInstrumentTCP)
-        debug_str = path if do_read_serial_params_from_device else path + " " + "-".join(map(str, scan_kwargs.values()))
+        debug_str = (
+            path
+            if do_read_serial_params_from_device  # a tcp-port rpc-call hasn't serial params
+            else path + " " + "-".join(map(str, scan_kwargs.values()))
+        )
 
         self._ports_now_scanning.add(debug_str)
         logger.info(
@@ -439,17 +463,15 @@ class DeviceManager:
                     online=True,
                     poll=True,  # TODO: support "is_polling" rpc call in wb-mqtt-serial
                     port=Port(path),
-                    cfg=SerialParams(slave_id=slaveid),  # TODO: read & fill serial params
+                    cfg=SerialParams(slave_id=slaveid),
                 )
                 device_info.fw.ext_support = is_ext_scan
 
                 mb_conn = self._get_mb_connection(device_info, is_ext_scan, instrument)
 
-                errors = []
-                errors.extend(await self.fill_device_info(device_info, mb_conn))
-                # if do_read_serial_params_from_device:
-                #     errors.extend(await self.fill_serial_params(device_info, mb_conn))
-                device_info.errors = errors
+                await self.fill_device_info(device_info, mb_conn)
+                if do_read_serial_params_from_device:  # for tcp port, manually read serial params from device
+                    await self.fill_serial_params(device_info, mb_conn)
 
                 self._found_devices.append(sn)
                 await self.produce_state_update(device_info)

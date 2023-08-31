@@ -80,8 +80,8 @@ class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
             main.ReadFWSignatureDeviceError(),
             main.ReadFWVersionDeviceError(),
         ]
-        ret = await self.device_manager.fill_device_info(self.device_info, self.mb_conn)
-        self.assertListEqual(ret, assumed_errors)
+        await self.device_manager.fill_device_info(self.device_info, self.mb_conn)
+        self.assertListEqual(self.device_info.errors, assumed_errors)
 
 
 class TestDeviceManager(unittest.TestCase):
