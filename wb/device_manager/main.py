@@ -360,7 +360,8 @@ class DeviceManager:
         for serial_port in ports.get("serial", []):
             tasks.append(
                 asyncio.create_task(
-                    self.scan_serial_port(serial_port, is_ext_scan=is_extended), name=name_tmpl % (serial_port, "serial")
+                    self.scan_serial_port(serial_port, is_ext_scan=is_extended),
+                    name=name_tmpl % (serial_port, "serial"),
                 )
             )
         for tcp_port in ports.get("tcp", []):
@@ -371,6 +372,10 @@ class DeviceManager:
             )
 
         return tasks
+
+    @staticmethod
+    def make_uuid(sn):
+        return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
 
     async def scan_serial_bus(self):
         # TODO: introduce state-accumulator to communicate with worker-coros and get rid of these global vars
@@ -404,16 +409,67 @@ class DeviceManager:
         finally:
             await self.produce_state_update({"scanning": False, "progress": 0, "error": state_error})
 
-    async def scan_serial_port(self, port, is_ext_scan=True):
-        def make_uuid(sn):
-            return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
+    async def do_scan_port(self, path, instrument, scanner, **scan_kwargs):
+        is_ext_scan = isinstance(scanner, serial_bus.WBExtendedModbusScanner)
+        do_read_serial_params_from_device = issubclass(instrument, mqtt_rpc.AsyncModbusInstrumentTCP)
+        debug_str = path if do_read_serial_params_from_device else path + " " + "-".join(map(str, scan_kwargs.values()))
 
+        self._ports_now_scanning.add(debug_str)
+        logger.info(
+            "Scanning %s (extended modbus: %r; read serial params from device: %r)",
+            debug_str,
+            is_ext_scan,
+            do_read_serial_params_from_device,
+        )
+        await self.produce_state_update(
+            {"scanning_ports": self._ports_now_scanning, "is_ext_scan": is_ext_scan}
+        )
+
+        try:
+            async for slaveid, sn in scanner.scan_bus(**scan_kwargs):
+                if sn in self._found_devices:
+                    logger.info("Device %s already scanned; skipping", str(sn))
+                    continue
+
+                device_info = DeviceInfo(
+                    uuid=self.make_uuid(sn),
+                    title="Unknown",
+                    sn=str(sn),
+                    last_seen=int(time.time()),
+                    online=True,
+                    poll=True,  # TODO: support "is_polling" rpc call in wb-mqtt-serial
+                    port=Port(path),
+                    cfg=SerialParams(slave_id=slaveid),  # TODO: read & fill serial params
+                )
+                device_info.fw.ext_support = is_ext_scan
+
+                mb_conn = self._get_mb_connection(device_info, is_ext_scan, instrument)
+
+                errors = []
+                errors.extend(await self.fill_device_info(device_info, mb_conn))
+                # if do_read_serial_params_from_device:
+                #     errors.extend(await self.fill_serial_params(device_info, mb_conn))
+                device_info.errors = errors
+
+                self._found_devices.append(sn)
+                await self.produce_state_update(device_info)
+
+        except minimalmodbus.NoResponseError:
+            logger.debug("No %s-modbus devices on %s", "extended" if is_ext_scan else "ordinary", debug_str)
+        except Exception:
+            logger.exception("Unhandled exception during scan %s", debug_str)
+            self._ports_errored.add(debug_str)
+            await self.produce_state_update({"error": FailedScanStateError(failed_ports=self._ports_errored)})
+            raise
+        finally:
+            self._ports_now_scanning.discard(debug_str)
+
+    async def scan_serial_port(self, port, is_ext_scan=True):
+        instrument = mqtt_rpc.AsyncModbusInstrument
         if is_ext_scan:
-            modbus_scanner = serial_bus.WBExtendedModbusScanner(
-                port, self.rpc_client, mqtt_rpc.AsyncModbusInstrument
-            )
+            scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client, instrument)
         else:
-            modbus_scanner = serial_bus.WBModbusScanner(port, self.rpc_client, mqtt_rpc.AsyncModbusInstrument)
+            scanner = serial_bus.WBModbusScanner(port, self.rpc_client, instrument)
 
         # New firmwares can work with any stopbits, but old ones can't
         # Since it doesn't matter what to use, let's use 2
@@ -426,113 +482,19 @@ class DeviceManager:
         )
 
         for bd, parity, stopbits, progress_percent in self._get_all_uart_params(stopbits=allowed_stopbits):
-            debug_str = "%s %d %d%s%d" % (port, bd, 8, parity, stopbits)
-            self._ports_now_scanning.add(debug_str)
-            logger.info("Scanning (via %s modbus) %s", "extended" if is_ext_scan else "ordinary", debug_str)
-            await self.produce_state_update(
-                {"scanning_ports": self._ports_now_scanning, "is_ext_scan": is_ext_scan}
-            )
-            try:
-                async for slaveid, sn in modbus_scanner.scan_bus(
-                    baudrate=bd, parity=parity, stopbits=stopbits
-                ):
-                    if sn in self._found_devices:
-                        logger.info("Skipping device %s", str(sn))
-                        continue
-
-                    device_info = DeviceInfo(
-                        uuid=make_uuid(sn),
-                        title="Unknown",
-                        sn=str(sn),
-                        last_seen=int(time.time()),
-                        online=True,
-                        poll=True,  # TODO: support "is_polling" rpc call in wb-mqtt-serial
-                        port=Port(path=port),
-                        cfg=SerialParams(slave_id=slaveid, baud_rate=bd, parity=parity, stop_bits=stopbits),
-                    )
-                    device_info.fw.ext_support = is_ext_scan
-
-                    mb_conn = self._get_mb_connection(
-                        device_info, is_ext_scan, mqtt_rpc.AsyncModbusInstrument
-                    )
-
-                    errors = []
-                    errors.extend(await self.fill_device_info(device_info, mb_conn))
-                    device_info.errors = errors
-
-                    self._found_devices.append(sn)
-                    await self.produce_state_update(device_info)
-
-            except minimalmodbus.NoResponseError:
-                logger.debug(
-                    "No %s-modbus devices on %s", "extended" if is_ext_scan else "ordinary", debug_str
-                )
-            except Exception as e:
-                logger.exception("Unhandled exception during scan %s", port)
-                self._ports_errored.add(port)
-                await self.produce_state_update(
-                    {"error": FailedScanStateError(failed_ports=self._ports_errored)}
-                )
-                raise
-            finally:
-                self._ports_now_scanning.discard(debug_str)
+            await self.do_scan_port(port, instrument, scanner, baudrate=bd, parity=parity, stopbits=stopbits)
             await self.produce_state_update({"progress": progress_percent})
 
     async def scan_tcp_port(self, ip_port, is_ext_scan=True):
-        def make_uuid(sn):
-            return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
-
+        instrument = mqtt_rpc.AsyncModbusInstrumentTCP
         if is_ext_scan:
-            modbus_scanner = serial_bus.WBExtendedModbusScanner(
+            scanner = serial_bus.WBExtendedModbusScanner(
                 ip_port, self.rpc_client, mqtt_rpc.AsyncModbusInstrumentTCP
             )
         else:
-            modbus_scanner = serial_bus.WBModbusScanner(
-                ip_port, self.rpc_client, mqtt_rpc.AsyncModbusInstrumentTCP
-            )
+            scanner = serial_bus.WBModbusScanner(ip_port, self.rpc_client, mqtt_rpc.AsyncModbusInstrumentTCP)
 
-        debug_str = ip_port
-        self._ports_now_scanning.add(debug_str)
-        logger.info("Scanning (via %s modbus) %s", "extended" if is_ext_scan else "ordinary", debug_str)
-        await self.produce_state_update(
-            {"scanning_ports": self._ports_now_scanning, "is_ext_scan": is_ext_scan}
-        )
-        try:
-            async for slaveid, sn in modbus_scanner.scan_bus():
-                if sn in self._found_devices:
-                    logger.info("Skipping device %s", str(sn))
-                    continue
-
-                device_info = DeviceInfo(
-                    uuid=make_uuid(sn),
-                    title="Unknown",
-                    sn=str(sn),
-                    last_seen=int(time.time()),
-                    online=True,
-                    poll=True,  # TODO: support "is_polling" rpc call in wb-mqtt-serial
-                    port=Port(path=ip_port),
-                    cfg=SerialParams(slave_id=slaveid),  # TODO: read & fill serial params
-                )
-                device_info.fw.ext_support = is_ext_scan
-
-                mb_conn = self._get_mb_connection(device_info, is_ext_scan, mqtt_rpc.AsyncModbusInstrumentTCP)
-
-                errors = []
-                errors.extend(await self.fill_device_info(device_info, mb_conn))
-                device_info.errors = errors
-
-                self._found_devices.append(sn)
-                await self.produce_state_update(device_info)
-
-        except minimalmodbus.NoResponseError:
-            logger.debug("No %s-modbus devices on %s", "extended" if is_ext_scan else "ordinary", debug_str)
-        except Exception as e:
-            logger.exception("Unhandled exception during scan %s", ip_port)
-            self._ports_errored.add(ip_port)
-            await self.produce_state_update({"error": FailedScanStateError(failed_ports=self._ports_errored)})
-            raise
-        finally:
-            self._ports_now_scanning.discard(debug_str)
+        await self.do_scan_port(ip_port, instrument, scanner)
 
 
 class RetcodeArgParser(ArgumentParser):
