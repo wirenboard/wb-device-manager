@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from wb_modbus import minimalmodbus
 
 from wb.device_manager import main
+from wb.device_manager.serial_bus import WBAsyncModbus, WBModbusScanner
 
 
 class DummyDeviceManager(main.DeviceManager):
@@ -17,6 +18,15 @@ class DummyDeviceManager(main.DeviceManager):
         self._state_update_queue = AsyncMock()
         self._asyncio_loop = AsyncMock()
         self._is_scanning = False
+
+
+class DummyScanner(WBModbusScanner):
+    def __init__(self, *args, **kwargs):
+        self.port = "dummy_port"
+        self.rpc_client = AsyncMock()
+        self.instrument_cls = AsyncMock
+        self.modbus_wrapper = WBAsyncModbus
+        self.uart_params_mapping = {}
 
 
 class TestRPCClient(unittest.IsolatedAsyncioTestCase):
@@ -69,11 +79,13 @@ class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
             cfg=main.SerialParams(slave_id=1),
         )
 
-        cls.mb_conn = cls.device_manager._get_mb_connection(cls.device_info, True)
+        cls.mb_conn = DummyScanner().get_mb_connection(
+            cls.device_info.cfg.slave_id, cls.device_info.port.path
+        )
 
     @classmethod
     def mock_error(cls, errtype=minimalmodbus.ModbusException):
-        cls.device_manager.rpc_client.make_rpc_call = AsyncMock(side_effect=errtype)
+        cls.mb_conn._do_read = AsyncMock(side_effect=errtype)
 
     async def test_erroneous_fill_device_info(self):
         self.mock_error()

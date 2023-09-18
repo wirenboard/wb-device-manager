@@ -12,10 +12,12 @@ from . import logger, mqtt_rpc
 
 
 class WBModbusScanner:
-    def __init__(self, port, rpc_client, instrument=mqtt_rpc.AsyncModbusInstrument):
+    def __init__(self, port, rpc_client):
         self.port = port
         self.rpc_client = rpc_client
-        self.instrument_cls = instrument
+        self.instrument_cls = mqtt_rpc.AsyncModbusInstrument
+        self.modbus_wrapper = WBAsyncModbus
+        self.uart_params_mapping = {}  # to store at scan-moment
 
     async def get_serial_number(self, slaveid, uart_params) -> str:
         instrument = self.instrument_cls(self.port, slaveid, self.rpc_client)
@@ -56,10 +58,39 @@ class WBModbusScanner:
         for slaveid in random.sample(range(1, 247), 246):
             try:
                 sn = await self.get_serial_number(slaveid, uart_params)
-                logger.info("Got device: %d %d", slaveid, sn)
+                logger.info("Got device: %d %d %s", slaveid, sn, str(uart_params))
+                self.uart_params_mapping.update(
+                    {f"{slaveid}-{sn}": uart_params}
+                )  # we need context-independent uart params for actual device
                 yield slaveid, sn
             except minimalmodbus.ModbusException as e:
                 logger.debug("Modbus error: %s", e)
+
+    def get_mb_connection(self, addr, port, baudrate=9600, parity="N", stopbits=1):
+        conn = self.modbus_wrapper(
+            addr,
+            port=port,
+            baudrate=baudrate,
+            parity=parity,
+            stopbits=stopbits,
+            rpc_client=self.rpc_client,
+            instrument=self.instrument_cls,
+        )
+        return conn
+
+    async def get_uart_params(self, slaveid, sn):
+        ret = self.uart_params_mapping.get(f"{slaveid}-{sn}", {})
+        return ret.get("baudrate", None), ret.get("parity", None), ret.get("stopbits", None)
+
+
+class WBModbusScannerTCP(WBModbusScanner):
+    def __init__(self, port, rpc_client):
+        super().__init__(port, rpc_client)
+        self.instrument_cls = mqtt_rpc.AsyncModbusInstrumentTCP
+
+    async def get_uart_params(self, slaveid, sn):
+        bd, parity, stopbits = await self.get_mb_connection(slaveid, self.port).read_u16_regs(110, 3)
+        return bd * 100, parity, stopbits
 
 
 class WBExtendedModbusWrapper:
@@ -101,10 +132,12 @@ class WBExtendedModbusWrapper:
 
 
 class WBExtendedModbusScanner(WBModbusScanner):
-    def __init__(self, port, rpc_client, instrument=mqtt_rpc.AsyncModbusInstrument):
+    def __init__(self, port, rpc_client):
         super().__init__(port, rpc_client)
         self.extended_modbus_wrapper = WBExtendedModbusWrapper()
-        self.instrument = instrument(self.port, self.extended_modbus_wrapper.ADDR, self.rpc_client)
+        self.instrument_cls = mqtt_rpc.AsyncModbusInstrument
+        self.instrument = self.instrument_cls(self.port, self.extended_modbus_wrapper.ADDR, self.rpc_client)
+        self.modbus_wrapper = WBAsyncExtendedModbus
 
     def _parse_device_data(self, device_data_bytestr):
         sn, slaveid = device_data_bytestr[:4], device_data_bytestr[4:]
@@ -189,11 +222,26 @@ class WBExtendedModbusScanner(WBModbusScanner):
         )
         while sn_slaveid is not None:
             slaveid, sn = self._parse_device_data(sn_slaveid)
-            logger.info("Got device: %d %d", slaveid, sn)
+            logger.info("Got device: %d %d %s", slaveid, sn, str(uart_params))
+            self.uart_params_mapping.update(
+                {f"{slaveid}-{sn}": uart_params}
+            )  # we need context-independent uart params for actual device
             yield slaveid, sn
             sn_slaveid = await self.get_next_device_data(
                 cmd_code=self.extended_modbus_wrapper.CMDS.single_scan, uart_params=uart_params
             )
+
+
+class WBExtendedModbusScannerTCP(WBExtendedModbusScanner):
+    def __init__(self, port, rpc_client):
+        super().__init__(port, rpc_client)
+        self.instrument_cls = mqtt_rpc.AsyncModbusInstrumentTCP
+        self.instrument = self.instrument_cls(self.port, self.extended_modbus_wrapper.ADDR, self.rpc_client)
+
+    async def get_uart_params(self, slaveid, sn):
+        slaveid = int(sn)  # wb-extended modbus
+        bd, parity, stopbits = await self.get_mb_connection(slaveid, self.port).read_u16_regs(110, 3)
+        return bd * 100, parity, stopbits
 
 
 class WBAsyncModbus:

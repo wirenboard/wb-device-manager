@@ -231,29 +231,6 @@ class DeviceManager:
             finally:
                 self.mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
 
-    def _get_mb_connection(self, device_info, is_ext_scan, instrument=mqtt_rpc.AsyncModbusInstrument):
-        if is_ext_scan:
-            conn = serial_bus.WBAsyncExtendedModbus(
-                sn=int(device_info.sn),
-                port=device_info.port.path,
-                baudrate=device_info.cfg.baud_rate,
-                parity=device_info.cfg.parity,
-                stopbits=device_info.cfg.stop_bits,
-                rpc_client=self.rpc_client,
-                instrument=instrument,
-            )
-        else:
-            conn = serial_bus.WBAsyncModbus(
-                addr=device_info.cfg.slave_id,
-                port=device_info.port.path,
-                baudrate=device_info.cfg.baud_rate,
-                parity=device_info.cfg.parity,
-                stopbits=device_info.cfg.stop_bits,
-                rpc_client=self.rpc_client,
-                instrument=instrument,
-            )
-        return conn
-
     async def fill_device_info(self, device_info, mb_conn):
         errors = []
 
@@ -296,13 +273,12 @@ class DeviceManager:
 
         device_info.errors.extend(errors)
 
-    async def fill_serial_params(self, device_info, mb_conn):
+    async def fill_serial_params(self, device_info, scanner):
         parities = {0: "N", 1: "O", 2: "E"}
-        bd, parity, stopbits = None, None, None
+        bd, parity, stopbits = "-", "-", "-"
         try:
-            bd, parity, stopbits = await mb_conn.read_u16_regs(110, 3)
-            bd = bd * 100
-            parity = parities[parity]
+            bd, parity, stopbits = await scanner.get_uart_params(device_info.cfg.slave_id, device_info.sn)
+            parity = parities.get(parity, None)
         except minimalmodbus.ModbusException:
             logger.exception("Failed to read serial params from device")
             device_info.errors.append(ReadSerialParamsDeviceError())
@@ -429,21 +405,14 @@ class DeviceManager:
         finally:
             await self.produce_state_update({"scanning": False, "progress": 0, "error": state_error})
 
-    async def do_scan_port(self, path, instrument, scanner, **scan_kwargs):
-        is_ext_scan = isinstance(scanner, serial_bus.WBExtendedModbusScanner)
-        do_read_serial_params_from_device = issubclass(instrument, mqtt_rpc.AsyncModbusInstrumentTCP)
-        debug_str = (
-            path
-            if do_read_serial_params_from_device  # a tcp-port rpc-call hasn't serial params
-            else path + " " + "-".join(map(str, scan_kwargs.values()))
-        )
+    async def do_scan_port(self, path, scanner, is_ext_scan, **scan_kwargs):
+        debug_str = path + " " + "-".join(map(str, scan_kwargs.values()))
 
         self._ports_now_scanning.add(debug_str)
         logger.info(
-            "Scanning %s (extended modbus: %r; read serial params from device: %r)",
+            "Scanning %s (extended modbus: %r)",
             debug_str,
             is_ext_scan,
-            do_read_serial_params_from_device,
         )
         await self.produce_state_update(
             {"scanning_ports": self._ports_now_scanning, "is_ext_scan": is_ext_scan}
@@ -467,11 +436,11 @@ class DeviceManager:
                 )
                 device_info.fw.ext_support = is_ext_scan
 
-                mb_conn = self._get_mb_connection(device_info, is_ext_scan, instrument)
+                addr = int(device_info.sn) if is_ext_scan else device_info.cfg.slave_id
+                mb_conn = scanner.get_mb_connection(addr, path, **scan_kwargs)
 
                 await self.fill_device_info(device_info, mb_conn)
-                if do_read_serial_params_from_device:  # for tcp port, manually read serial params from device
-                    await self.fill_serial_params(device_info, mb_conn)
+                await self.fill_serial_params(device_info, scanner)
 
                 self._found_devices.append(sn)
                 await self.produce_state_update(device_info)
@@ -487,11 +456,10 @@ class DeviceManager:
             self._ports_now_scanning.discard(debug_str)
 
     async def scan_serial_port(self, port, is_ext_scan=True):
-        instrument = mqtt_rpc.AsyncModbusInstrument
         if is_ext_scan:
-            scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client, instrument)
+            scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
         else:
-            scanner = serial_bus.WBModbusScanner(port, self.rpc_client, instrument)
+            scanner = serial_bus.WBModbusScanner(port, self.rpc_client)
 
         # New firmwares can work with any stopbits, but old ones can't
         # Since it doesn't matter what to use, let's use 2
@@ -504,19 +472,16 @@ class DeviceManager:
         )
 
         for bd, parity, stopbits, progress_percent in self._get_all_uart_params(stopbits=allowed_stopbits):
-            await self.do_scan_port(port, instrument, scanner, baudrate=bd, parity=parity, stopbits=stopbits)
+            await self.do_scan_port(port, scanner, is_ext_scan, baudrate=bd, parity=parity, stopbits=stopbits)
             await self.produce_state_update({"progress": progress_percent})
 
     async def scan_tcp_port(self, ip_port, is_ext_scan=True):
-        instrument = mqtt_rpc.AsyncModbusInstrumentTCP
         if is_ext_scan:
-            scanner = serial_bus.WBExtendedModbusScanner(
-                ip_port, self.rpc_client, mqtt_rpc.AsyncModbusInstrumentTCP
-            )
+            scanner = serial_bus.WBExtendedModbusScannerTCP(ip_port, self.rpc_client)
         else:
-            scanner = serial_bus.WBModbusScanner(ip_port, self.rpc_client, mqtt_rpc.AsyncModbusInstrumentTCP)
+            scanner = serial_bus.WBModbusScannerTCP(ip_port, self.rpc_client)
 
-        await self.do_scan_port(ip_port, instrument, scanner)
+        await self.do_scan_port(ip_port, scanner, is_ext_scan)
 
 
 class RetcodeArgParser(ArgumentParser):
