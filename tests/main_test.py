@@ -56,15 +56,15 @@ class TestRPCClient(unittest.IsolatedAsyncioTestCase):
             },
             {"address": "192.168.0.7", "port": 23},
         ]
-        assumed_response = {
-            "serial": ["/dev/ttyRS485-1", "/dev/ttyRS485-2"],
-            "tcp": [
+        assumed_response = main.ParsedPorts(
+            serial=["/dev/ttyRS485-1", "/dev/ttyRS485-2"],
+            tcp=[
                 "192.168.0.7:23",
             ],
-        }
+        )
         self.mock_response(response)
         ret = await self.device_manager.get_ports()
-        self.assertDictEqual(ret, assumed_response)
+        self.assertEqual(ret, assumed_response)
 
 
 class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
@@ -96,6 +96,33 @@ class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
         ]
         await self.device_manager.fill_device_info(self.device_info, self.mb_conn)
         self.assertListEqual(self.device_info.errors, assumed_errors)
+
+
+class TestFillSerialParams(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.device_manager = DummyDeviceManager()
+        self.scanner = DummyScanner()
+
+        self.device_info = main.DeviceInfo(
+            uuid=uuid.uuid3(namespace=uuid.NAMESPACE_OID, name="dummy_device"),
+            port=main.Port(path="/dev/ttyDUMMY"),
+            sn=12345,
+            cfg=main.SerialParams(slave_id=1),
+        )
+
+    async def test_fill_uart_params(self):
+        self.scanner.get_uart_params = AsyncMock(return_value=[9600, 0, 2])
+        await self.device_manager.fill_serial_params(self.device_info, self.scanner)
+        self.assertEqual(self.device_info.cfg.baud_rate, 9600)
+        self.assertEqual(self.device_info.cfg.parity, "N")
+        self.assertEqual(self.device_info.cfg.stop_bits, 2)
+
+    async def test_fill_uart_params_err(self):
+        self.scanner.get_uart_params = AsyncMock(side_effect=minimalmodbus.ModbusException)
+        await self.device_manager.fill_serial_params(self.device_info, self.scanner)
+        self.assertEqual(self.device_info.cfg.baud_rate, "-")
+        self.assertEqual(self.device_info.cfg.parity, "-")
+        self.assertEqual(self.device_info.cfg.stop_bits, "-")
 
 
 class TestDeviceManager(unittest.TestCase):

@@ -58,9 +58,10 @@ class WBModbusScanner:
         for slaveid in random.sample(range(1, 247), 246):
             try:
                 sn = await self.get_serial_number(slaveid, uart_params)
-                logger.info("Got device: %d %d %s", slaveid, sn, str(uart_params))
+                sn = str(sn)
+                logger.info("Got device: %d %s %s", slaveid, sn, str(uart_params))
                 self.uart_params_mapping.update(
-                    {f"{slaveid}-{sn}": uart_params}
+                    {(slaveid, sn): uart_params}
                 )  # we need context-independent uart params for actual device
                 yield slaveid, sn
             except minimalmodbus.ModbusException as e:
@@ -79,8 +80,8 @@ class WBModbusScanner:
         return conn
 
     async def get_uart_params(self, slaveid, sn):
-        ret = self.uart_params_mapping.get(f"{slaveid}-{sn}", {})
-        return ret.get("baudrate", None), ret.get("parity", None), ret.get("stopbits", None)
+        ret = self.uart_params_mapping.get((slaveid, sn), {})
+        return ret.get("baudrate", "-"), ret.get("parity", "-"), ret.get("stopbits", "-")
 
 
 class WBModbusScannerTCP(WBModbusScanner):
@@ -139,13 +140,13 @@ class WBExtendedModbusScanner(WBModbusScanner):
         self.instrument = self.instrument_cls(self.port, self.extended_modbus_wrapper.ADDR, self.rpc_client)
         self.modbus_wrapper = WBAsyncExtendedModbus
 
-    def _parse_device_data(self, device_data_bytestr):
+    def _parse_device_data(self, device_data_bytestr) -> (int, str):
         sn, slaveid = device_data_bytestr[:4], device_data_bytestr[4:]
         sn = minimalmodbus._bytestring_to_long(  # u32, 4 bytes
             bytestring=sn, signed=False, number_of_registers=2, byteorder=minimalmodbus.BYTEORDER_BIG
         )
         slaveid = ord(slaveid)  # 1 byte
-        return slaveid, sn
+        return slaveid, str(sn)
 
     def _extract_response(self, plain_response_str):
         """
@@ -222,9 +223,9 @@ class WBExtendedModbusScanner(WBModbusScanner):
         )
         while sn_slaveid is not None:
             slaveid, sn = self._parse_device_data(sn_slaveid)
-            logger.info("Got device: %d %d %s", slaveid, sn, str(uart_params))
+            logger.info("Got device: %d %s %s", slaveid, sn, str(uart_params))
             self.uart_params_mapping.update(
-                {f"{slaveid}-{sn}": uart_params}
+                {(slaveid, sn): uart_params}
             )  # we need context-independent uart params for actual device
             yield slaveid, sn
             sn_slaveid = await self.get_next_device_data(

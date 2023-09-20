@@ -106,6 +106,12 @@ class SetEncoder(json.JSONEncoder):
         super().default(o)
 
 
+@dataclass
+class ParsedPorts:
+    serial: list[str] = field(default_factory=list)
+    tcp: list[str] = field(default_factory=list)
+
+
 """
 Errors, shown in json-state
 """
@@ -278,7 +284,8 @@ class DeviceManager:
         bd, parity, stopbits = "-", "-", "-"
         try:
             bd, parity, stopbits = await scanner.get_uart_params(device_info.cfg.slave_id, device_info.sn)
-            parity = parities.get(parity, None)
+            if parity in parities.keys():
+                parity = parities[parity]
         except minimalmodbus.ModbusException:
             logger.exception("Failed to read serial params from device")
             device_info.errors.append(ReadSerialParamsDeviceError())
@@ -311,7 +318,7 @@ class DeviceManager:
                     pos += 1
                     yield bd, parity, stopbit, int(pos / len_iterable * 100)
 
-    async def get_ports(self) -> dict:
+    async def get_ports(self) -> ParsedPorts:
         response = await self.rpc_client.make_rpc_call(
             driver="wb-mqtt-serial",
             service="ports",
@@ -326,7 +333,7 @@ class DeviceManager:
                 serial_ports.append(port_info["path"])
             elif "address" in port_info and "port" in port_info:
                 tcp_ports.append(f"{port_info['address']}:{port_info['port']}")
-        return {"serial": serial_ports, "tcp": tcp_ports}
+        return ParsedPorts(serial=serial_ports, tcp=tcp_ports)
 
     async def launch_bus_scan(self):
         if self._bus_scanning_task and not self._bus_scanning_task.done():
@@ -353,14 +360,14 @@ class DeviceManager:
     def _create_scan_tasks(self, ports, is_extended=False):
         tasks = []
         name_tmpl = "Extended scan %s %s" if is_extended else "Ordinary scan %s %s"
-        for serial_port in ports.get("serial", []):
+        for serial_port in ports.serial:
             tasks.append(
                 asyncio.create_task(
                     self.scan_serial_port(serial_port, is_ext_scan=is_extended),
                     name=name_tmpl % (serial_port, "serial"),
                 )
             )
-        for tcp_port in ports.get("tcp", []):
+        for tcp_port in ports.tcp:
             tasks.append(
                 asyncio.create_task(
                     self.scan_tcp_port(tcp_port, is_ext_scan=is_extended), name=name_tmpl % (tcp_port, "tcp")
@@ -388,7 +395,7 @@ class DeviceManager:
         except mqtt_rpc.MQTTRPCInternalServerError:
             logger.exception("No answer from wb-mqtt-serial")
             state_error = RPCCallTimeoutStateError()
-            ports = []
+            ports = ParsedPorts()
         try:
             await asyncio.gather(*self._create_scan_tasks(ports, is_extended=True), return_exceptions=True)
             await self.produce_state_update({"progress": 0})
