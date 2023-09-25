@@ -155,3 +155,4 @@
 | **com.wb.device_manager.device.read_fw_version_error** | Ошибка modbus-коммуникации с устройством (чтение fw_version) | ```null``` |
 | **com.wb.device_manager.device.read_fw_signature_error** | Ошибка modbus-коммуникации с устройством (чтение fw_signature) | ```null``` |
 | **com.wb.device_manager.device.read_device_signature_error** | Ошибка modbus-коммуникации с устройством (чтение device_signature) | ```null``` |
+| **com.wb.device_manager.device.read_serial_params_error** | Ошибка modbus-коммуникации с устройством (чтение serial-настроек; актуально для tcp портов) | ```null``` |

@@ -121,6 +121,11 @@ class AsyncModbusTestBase(unittest.IsolatedAsyncioTestCase):
         ret = await self.mb_connection.read_string(first_addr=200, regs_length=6)
         self.assertEqual(ret, string)
 
+    async def _test_read_u16_regs(self, mock, vals):
+        self.mock_response(mock)
+        ret = await self.mb_connection.read_u16_regs(first_addr=200, regs_length=6)
+        self.assertListEqual(ret, vals)
+
     async def _test_corrupted_answer(self, mock_without_crc):
         incorrect_crc = "0000"
         self.mock_response(mock_without_crc + incorrect_crc)
@@ -144,6 +149,11 @@ class TestWBAsyncModbus(AsyncModbusTestBase):
     async def test_read_string(self):
         await self._test_read_string(mock="0b030c00570042004d0041004f0034bbaa", string="WBMAO4")
 
+    async def test_read_u16_regs(self):
+        await self._test_read_u16_regs(
+            mock="0b030c00570042004d0041004f0034bbaa", vals=[87, 66, 77, 65, 79, 52]
+        )
+
     async def test_corrupted_answer(self):
         await self._test_corrupted_answer(mock_without_crc="0b030c00570042004d0041004f0034")
 
@@ -161,6 +171,11 @@ class TestWBAsyncExtendedModbus(AsyncModbusTestBase):
 
     async def test_read_string(self):
         await self._test_read_string(mock="fd6009fe48b6f5030c00570042004d0041004f0034e141", string="WBMAO4")
+
+    async def test_read_u16_regs(self):
+        await self._test_read_u16_regs(
+            mock="fd6009fe48b6f5030c00570042004d0041004f0034e141", vals=[87, 66, 77, 65, 79, 52]
+        )
 
     async def test_corrupted_answer(self):
         await self._test_corrupted_answer(mock_without_crc="fd6009fe48b6f5030c00570042004d0041004f0034")

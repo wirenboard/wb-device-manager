@@ -1,3 +1,9 @@
+wb-device-manager (1.6.0) stable; urgency=medium
+
+  * Add modbus rtu-over-tcp devices scanning (should be polled via wb-mqtt-serial already)
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Thu, 31 Aug 2023 18:00:01 +0300
+
 wb-device-manager (1.5.6) stable; urgency=medium
 
   * Fix PKG-INFO
