@@ -170,6 +170,8 @@ class DeviceManager:
         self._asyncio_loop = asyncio.get_event_loop()
         self.asyncio_loop.create_task(self.consume_state_update(), name="Build & publish overall state")
         self._bus_scanning_task = None
+        self._bus_scanning_task_cancel_event = asyncio.Event()
+
 
     @property
     def mqtt_connection(self):
@@ -352,7 +354,13 @@ class DeviceManager:
         """
         if self._bus_scanning_task and not self._bus_scanning_task.done():
             logger.info("Stop bus scanning")
+            self._bus_scanning_task_cancel_event.set()
             self._bus_scanning_task.cancel()
+            try:
+                await self._bus_scanning_task
+            except asyncio.CancelledError:
+                pass
+            self._bus_scanning_task_cancel_event.clear()
             return "Ok"
         else:
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
@@ -427,6 +435,8 @@ class DeviceManager:
 
         try:
             async for slaveid, sn in scanner.scan_bus(**scan_kwargs):
+                if self._bus_scanning_task_cancel_event.is_set():
+                    return
                 if sn in self._found_devices:
                     logger.info("Device %s already scanned; skipping", str(sn))
                     continue
@@ -479,6 +489,8 @@ class DeviceManager:
         )
 
         for bd, parity, stopbits, progress_percent in self._get_all_uart_params(stopbits=allowed_stopbits):
+            if self._bus_scanning_task_cancel_event.is_set():
+                return
             await self.do_scan_port(port, scanner, is_ext_scan, baudrate=bd, parity=parity, stopbits=stopbits)
             await self.produce_state_update({"progress": progress_percent})
 

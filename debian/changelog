@@ -1,3 +1,9 @@
+wb-device-manager (1.6.1) stable; urgency=medium
+
+  * Fix long reaction to stop scanning request
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Mon, 23 Oct 2023 14:39:54 +0500
+
 wb-device-manager (1.6.0) stable; urgency=medium
 
   * Add modbus rtu-over-tcp devices scanning (should be polled via wb-mqtt-serial already)
