@@ -172,7 +172,6 @@ class DeviceManager:
         self._bus_scanning_task = None
         self._bus_scanning_task_cancel_event = asyncio.Event()
 
-
     @property
     def mqtt_connection(self):
         return self._mqtt_connection
