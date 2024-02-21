@@ -52,7 +52,7 @@ class TestMBExtendedScanner(unittest.IsolatedAsyncioTestCase):
             ("fffffffffffffffffd6003fed2efd601501a0000000000000000", "FED2EFD601"),
             ("fffffffffffffffffd60033938169d38f7000000000000000000", "3938169D38"),  # crc ends with zeroes
         ]
-        for (mock, assumed_response) in mocks:
+        for mock, assumed_response in mocks:
             self.mock_response(mock)
             ret = await self.scanner.get_next_device_data(
                 cmd_code=self.scanner.extended_modbus_wrapper.CMDS.single_scan, uart_params=self.uart_params
