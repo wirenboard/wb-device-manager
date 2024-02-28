@@ -1,3 +1,9 @@
+wb-device-manager (1.7.0) stable; urgency=medium
+
+  * Fix device signatures reading
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Wed, 21 Feb 2024 08:51:36 +0500
+
 wb-device-manager (1.6.1) stable; urgency=medium
 
   * Fix long reaction to stop scanning request

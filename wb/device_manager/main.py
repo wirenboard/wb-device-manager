@@ -248,7 +248,7 @@ class DeviceManager:
                     first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"],
                     regs_length=reg_len,
                 )
-                device_info.device_signature = device_signature.strip("\x02")  # WB-MAP* fws failure
+                device_info.device_signature = device_signature
                 device_info.title = device_signature.strip(
                     "\x02"
                 )  # TODO: store somewhere human-readable titles
