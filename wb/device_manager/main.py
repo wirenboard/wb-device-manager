@@ -171,6 +171,9 @@ class DeviceManager:
         self.asyncio_loop.create_task(self.consume_state_update(), name="Build & publish overall state")
         self._bus_scanning_task = None
         self._bus_scanning_task_cancel_event = asyncio.Event()
+        self._found_devices = []
+        self._ports_now_scanning = set()
+        self._ports_errored = set()
 
     @property
     def mqtt_connection(self):
@@ -336,15 +339,15 @@ class DeviceManager:
                 tcp_ports.append(f"{port_info['address']}:{port_info['port']}")
         return ParsedPorts(serial=serial_ports, tcp=tcp_ports)
 
-    async def launch_bus_scan(self):
+    async def launch_bus_scan(self, **kwargs):
         if self._bus_scanning_task and not self._bus_scanning_task.done():
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
-        else:
-            logger.info("Start bus scanning")
-            self._bus_scanning_task = self.asyncio_loop.create_task(
-                self.scan_serial_bus(), name="Scan serial bus (long running)"
-            )
-            return "Ok"
+        logger.info("Start bus scanning")
+        self._bus_scanning_task = self.asyncio_loop.create_task(
+            self.scan_serial_bus(kwargs.get("scan_type"), kwargs.get("preserve_old_results")),
+            name="Scan serial bus (long running)",
+        )
+        return "Ok"
 
     async def stop_bus_scan(self):
         """
@@ -387,15 +390,20 @@ class DeviceManager:
     def make_uuid(sn):
         return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
 
-    async def scan_serial_bus(self):
+    async def scan_serial_bus(self, scan_type, preserve_old_results):
         # TODO: introduce state-accumulator to communicate with worker-coros and get rid of these global vars
-        self._found_devices = []
+        new_state = {
+            "scanning": True,
+            "progress": 0,
+            "error": None,
+        }
+        if not preserve_old_results:
+            self._found_devices = []
+            new_state["devices"] = []
+        await self.produce_state_update(new_state)
         self._ports_now_scanning = set()
         self._ports_errored = set()
 
-        await self.produce_state_update(
-            {"devices": [], "scanning": True, "progress": 0, "error": None}  # TODO: unit test?
-        )
         state_error = None
         try:
             ports = await self.get_ports()
@@ -404,9 +412,23 @@ class DeviceManager:
             state_error = RPCCallTimeoutStateError()
             ports = ParsedPorts()
         try:
-            await asyncio.gather(*self._create_scan_tasks(ports, is_extended=True), return_exceptions=True)
-            await self.produce_state_update({"progress": 0})
-            await asyncio.gather(*self._create_scan_tasks(ports, is_extended=False), return_exceptions=True)
+            if scan_type == "extended":
+                await asyncio.gather(
+                    *self._create_scan_tasks(ports, is_extended=True), return_exceptions=True
+                )
+            elif scan_type == "standard":
+                await asyncio.gather(
+                    *self._create_scan_tasks(ports, is_extended=False), return_exceptions=True
+                )
+            else:
+                await asyncio.gather(
+                    *self._create_scan_tasks(ports, is_extended=True), return_exceptions=True
+                )
+                await self.produce_state_update({"progress": 0})
+                await asyncio.gather(
+                    *self._create_scan_tasks(ports, is_extended=False), return_exceptions=True
+                )
+
             await self.produce_state_update(
                 {"scanning": False, "progress": 100, "scanning_ports": self._ports_now_scanning}
             )
