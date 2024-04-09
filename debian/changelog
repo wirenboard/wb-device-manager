@@ -1,3 +1,9 @@
+wb-device-manager (1.8.0) stable; urgency=medium
+
+  * Add scan_type and preserve_old_results parameters to bus-scan/Start RPC request
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 28 Mar 2024 14:50:49 +0500
+
 wb-device-manager (1.7.0) stable; urgency=medium
 
   * Fix device signatures reading
