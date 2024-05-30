@@ -1,3 +1,9 @@
+wb-device-manager (1.8.1) stable; urgency=medium
+
+  * Do not stop the whole scanning on a port after receiving invalid Modbus packet
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Tue, 28 May 2024 18:17:22 +0500
+
 wb-device-manager (1.8.0) stable; urgency=medium
 
   * Add scan_type and preserve_old_results parameters to bus-scan/Start RPC request
