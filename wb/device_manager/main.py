@@ -485,6 +485,8 @@ class DeviceManager:
 
         except minimalmodbus.NoResponseError:
             logger.debug("No %s-modbus devices on %s", "extended" if is_ext_scan else "ordinary", debug_str)
+        except minimalmodbus.InvalidResponseError as err:
+            logger.error("Invalid response during scan %s: %s", debug_str, err)
         except Exception:
             logger.exception("Unhandled exception during scan %s", debug_str)
             self._ports_errored.add(debug_str)
