@@ -344,7 +344,9 @@ class DeviceManager:
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         logger.info("Start bus scanning")
         self._bus_scanning_task = self.asyncio_loop.create_task(
-            self.scan_serial_bus(kwargs.get("scan_type"), kwargs.get("preserve_old_results")),
+            self.scan_serial_bus(
+                kwargs.get("scan_type"), kwargs.get("preserve_old_results"), kwargs.get("port")
+            ),
             name="Scan serial bus (long running)",
         )
         return "Ok"
@@ -390,7 +392,7 @@ class DeviceManager:
     def make_uuid(sn):
         return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
 
-    async def scan_serial_bus(self, scan_type, preserve_old_results):
+    async def scan_serial_bus(self, scan_type, preserve_old_results, port_config):
         # TODO: introduce state-accumulator to communicate with worker-coros and get rid of these global vars
         new_state = {
             "scanning": True,
@@ -405,12 +407,15 @@ class DeviceManager:
         self._ports_errored = set()
 
         state_error = None
-        try:
-            ports = await self.get_ports()
-        except mqtt_rpc.MQTTRPCInternalServerError:
-            logger.exception("No answer from wb-mqtt-serial")
-            state_error = RPCCallTimeoutStateError()
-            ports = ParsedPorts()
+        if isinstance(port_config, dict) and "path" in port_config:
+            ports = ParsedPorts(serial=[port_config["path"]], tcp=[])
+        else:
+            try:
+                ports = await self.get_ports()
+            except mqtt_rpc.MQTTRPCInternalServerError:
+                logger.exception("No answer from wb-mqtt-serial")
+                state_error = RPCCallTimeoutStateError()
+                ports = ParsedPorts()
         try:
             if scan_type == "extended":
                 await asyncio.gather(
