@@ -1,3 +1,9 @@
+wb-device-manager (1.9.1) stable; urgency=medium
+
+  * Stop slow scan faster
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 11 Jul 2024 11:35:29 +0500
+
 wb-device-manager (1.9.0) stable; urgency=medium
 
   * Add port path parameter to bus-scan/Start RPC request

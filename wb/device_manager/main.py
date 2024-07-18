@@ -159,6 +159,17 @@ class ReadSerialParamsDeviceError(GenericStateError):
     MESSAGE = "Failed to read serial params from device."
 
 
+class ScanCancelCondition:
+    def __init__(self):
+        self._bus_scanning_task_cancel_event = asyncio.Event()
+
+    def should_cancel(self):
+        return self._bus_scanning_task_cancel_event.is_set()
+
+    def request_cancel(self):
+        self._bus_scanning_task_cancel_event.set()
+
+
 class DeviceManager:
     MQTT_CLIENT_NAME = "wb-device-manager"
     STATE_PUBLISH_TOPIC = "/wb-device-manager/state"
@@ -170,7 +181,7 @@ class DeviceManager:
         self._asyncio_loop = asyncio.get_event_loop()
         self.asyncio_loop.create_task(self.consume_state_update(), name="Build & publish overall state")
         self._bus_scanning_task = None
-        self._bus_scanning_task_cancel_event = asyncio.Event()
+        self._bus_scanning_task_cancel_condition = None
         self._found_devices = []
         self._ports_now_scanning = set()
         self._ports_errored = set()
@@ -343,6 +354,7 @@ class DeviceManager:
         if self._bus_scanning_task and not self._bus_scanning_task.done():
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
         logger.info("Start bus scanning")
+        self._bus_scanning_task_cancel_condition = ScanCancelCondition()
         self._bus_scanning_task = self.asyncio_loop.create_task(
             self.scan_serial_bus(
                 kwargs.get("scan_type"), kwargs.get("preserve_old_results"), kwargs.get("port")
@@ -358,13 +370,12 @@ class DeviceManager:
         """
         if self._bus_scanning_task and not self._bus_scanning_task.done():
             logger.info("Stop bus scanning")
-            self._bus_scanning_task_cancel_event.set()
+            self._bus_scanning_task_cancel_condition.request_cancel()
             self._bus_scanning_task.cancel()
             try:
                 await self._bus_scanning_task
             except asyncio.CancelledError:
                 pass
-            self._bus_scanning_task_cancel_event.clear()
             return "Ok"
         else:
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
@@ -460,8 +471,10 @@ class DeviceManager:
         )
 
         try:
-            async for slaveid, sn in scanner.scan_bus(**scan_kwargs):
-                if self._bus_scanning_task_cancel_event.is_set():
+            async for slaveid, sn in scanner.scan_bus(
+                **scan_kwargs, cancel_condition=self._bus_scanning_task_cancel_condition
+            ):
+                if self._bus_scanning_task_cancel_condition.should_cancel():
                     return
                 if sn in self._found_devices:
                     logger.info("Device %s already scanned; skipping", str(sn))
@@ -517,7 +530,7 @@ class DeviceManager:
         )
 
         for bd, parity, stopbits, progress_percent in self._get_all_uart_params(stopbits=allowed_stopbits):
-            if self._bus_scanning_task_cancel_event.is_set():
+            if self._bus_scanning_task_cancel_condition.should_cancel():
                 return
             await self.do_scan_port(port, scanner, is_ext_scan, baudrate=bd, parity=parity, stopbits=stopbits)
             await self.produce_state_update({"progress": progress_percent})
