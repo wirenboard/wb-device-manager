@@ -179,3 +179,38 @@
 | **com.wb.device_manager.device.read_fw_signature_error** | Ошибка modbus-коммуникации с устройством (чтение fw_signature) | ```null``` |
 | **com.wb.device_manager.device.read_device_signature_error** | Ошибка modbus-коммуникации с устройством (чтение device_signature) | ```null``` |
 | **com.wb.device_manager.device.read_serial_params_error** | Ошибка modbus-коммуникации с устройством (чтение serial-настроек; актуально для tcp портов) | ```null``` |
+
+
+### Запрос текущей и доступной для обновления прошивок 
+MQTT RPC запрос `wb-device-manager/bus-scan/GetFirmwareInfo/client_id`.
+
+Структура параметров запроса
+```jsonc
+{
+    // Адрес устройства. Обязательный парамер
+    "address": 123,
+
+    // Системный путь до устройства порта. Обязательный параметр
+    "path": "/dev/ttyRS485-2",
+
+    // Скорость порта. Если не задано, будет использоваться 9600
+    "baud_rate": 9600,
+
+    // Чётность - N, O или E. Если не задано, будет использоваться N
+    "parity": "N",
+
+    // Количество стоп-бит.  Если не задано, будет использоваться 2
+    "stop_bits": 2
+}
+```
+
+В качестве ответа в топике `wb-device-manager/bus-scan/GetFirmwareInfo/client_id/reply` будет опубликована структура с данными
+```jsonc
+{
+    // Текущая прошивка устройства
+    "fw": "1.2.3",
+
+    // Прошивка, доступная для обновления
+    "available_fw": "2.3.5"
+}
+```

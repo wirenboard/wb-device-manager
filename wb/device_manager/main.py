@@ -13,6 +13,7 @@ from sys import argv, stderr, stdout
 
 from mqttrpc import Dispatcher
 from wb_common.mqtt_client import DEFAULT_BROKER_URL, MQTTClient
+from wb_mcu_fw_updater import releases, update_monitor
 from wb_modbus import bindings
 from wb_modbus import logger as mb_logger
 from wb_modbus import minimalmodbus
@@ -380,6 +381,30 @@ class DeviceManager:
         else:
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
 
+    async def get_firmware_info(self, **kwargs):
+        logger.debug("Request firmware info")
+        modbus_wrapper = serial_bus.WBAsyncModbus(
+            kwargs.get("address"),
+            kwargs.get("path"),
+            kwargs.get("baud_rate", 9600),
+            kwargs.get("parity", "N"),
+            kwargs.get("stop_bits", 2),
+            self.rpc_client,
+        )
+        fw_signature = await modbus_wrapper.read_string(
+            bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"],
+            bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH,
+        )
+        logger.debug("Get firmware info for: %s", fw_signature)
+        fw = await modbus_wrapper.read_string(
+            bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"],
+            bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH,
+        )
+        available_fw, _released_fw_endpoint = update_monitor.get_released_fw(
+            fw_signature, releases.parse_releases("/usr/lib/wb-release")
+        )
+        return {"fw": fw, "available_fw": available_fw}
+
     def _create_scan_tasks(self, ports, is_extended=False):
         tasks = []
         name_tmpl = "Extended scan %s %s" if is_extended else "Ordinary scan %s %s"
@@ -586,6 +611,7 @@ def main(args=argv):
     async_callables_mapping = {
         ("bus-scan", "Start"): device_manager.launch_bus_scan,
         ("bus-scan", "Stop"): device_manager.stop_bus_scan,
+        ("bus-scan", "GetFirmwareInfo"): device_manager.get_firmware_info,
     }
 
     server = mqtt_rpc.AsyncMQTTServer(
