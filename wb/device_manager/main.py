@@ -391,17 +391,22 @@ class DeviceManager:
             kwargs.get("stop_bits", 2),
             self.rpc_client,
         )
-        fw_signature = await modbus_wrapper.read_string(
-            bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"],
-            bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH,
-        )
-        logger.debug("Get firmware info for: %s", fw_signature)
+        try:
+            fw_signature = await modbus_wrapper.read_string(
+                bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"],
+                bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH,
+            )
+            logger.debug("Get firmware info for: %s", fw_signature)
+            available_fw, _released_fw_endpoint = update_monitor.get_released_fw(
+                fw_signature, releases.parse_releases("/usr/lib/wb-release")
+            )
+        except minimalmodbus.IllegalRequestError:
+            available_fw = ""
+            logger.debug("Can't get firmware signature, may be the device is too old")
+
         fw = await modbus_wrapper.read_string(
             bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"],
             bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH,
-        )
-        available_fw, _released_fw_endpoint = update_monitor.get_released_fw(
-            fw_signature, releases.parse_releases("/usr/lib/wb-release")
         )
         return {"fw": fw, "available_fw": available_fw}
 
