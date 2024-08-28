@@ -1,3 +1,10 @@
+wb-device-manager (1.10.0) stable; urgency=medium
+
+ * Add fw-update/GetFirmwareInfo RPC for requesting information about device firmware
+ * Add fw-update/Update RPC for updating firmwares of Wiren Board devices
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Mon, 22 Jul 2024 17:53:26 +0500
+
 wb-device-manager (1.9.1) stable; urgency=medium
 
   * Stop slow scan faster
