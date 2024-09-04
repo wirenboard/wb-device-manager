@@ -61,6 +61,9 @@ def main(args=argv):
     rpc_client = mqtt_rpc.SRPCClient(mqtt_connection)
     event_loop = asyncio.get_event_loop()
 
+    if args.log_level == logging.DEBUG:
+        event_loop.set_debug(True)
+
     bus_scanner = BusScanner(mqtt_connection, rpc_client, event_loop)
     fw_updater = FirmwareUpdater(mqtt_connection, rpc_client, event_loop)
 
