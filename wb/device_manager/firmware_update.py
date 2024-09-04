@@ -32,6 +32,12 @@ class StateError:
 class Port:
     path: str = None
 
+    def __init__(self, port_config: Union[SerialConfig, TcpConfig]):
+        if isinstance(port_config, SerialConfig):
+            self.path = port_config.path
+        elif isinstance(port_config, TcpConfig):
+            self.path = f"{port_config.address}:{port_config.port}"
+
 
 @dataclass
 class DeviceUpdateInfo:
@@ -209,7 +215,7 @@ class FirmwareUpdater:
     async def update_firmware(self, **kwargs):
         if self._update_firmware_task and not self._update_firmware_task.done():
             raise MQTTRPCAlreadyProcessingException()
-        logger.info("Start firmware update")
+        logger.debug("Start firmware update")
         slave_id = kwargs.get("slave_id")
         port_config = read_port_config(kwargs.get("port", {}))
         fw_info = await self._read_firmware_info(port_config, slave_id)
@@ -228,7 +234,7 @@ class FirmwareUpdater:
         fw_info: FirmwareInfo,
     ) -> None:
         update_info = DeviceUpdateInfo(
-            port=Port(path=str(port_config)),
+            port=Port(port_config),
             slave_id=slave_id,
             from_fw=fw_info.current,
             to_fw=fw_info.available.version,
@@ -249,10 +255,24 @@ class FirmwareUpdater:
                 update_info,
                 fw_info.bootloader_can_preserve_port_settings,
             )
+            logger.info(
+                "Firmware of (%s, %d) updated from %s to %s",
+                port_config,
+                slave_id,
+                fw_info.current,
+                fw_info.available.version,
+            )
         except Exception as e:
             update_info.error.message = str(e)
             self._update_state(update_info)
-            logger.error("Flashing firmware to (%s, %d) failed: %s", port_config, slave_id, e)
+            logger.error(
+                "Updating firmware of (%s, %d) from %s to %s failed: %s",
+                port_config,
+                slave_id,
+                fw_info.current,
+                fw_info.available.version,
+                e,
+            )
 
     async def _do_flash(
         self,

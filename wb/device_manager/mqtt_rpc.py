@@ -230,7 +230,6 @@ class AsyncMQTTServer:
         for sig in signals:
             self.asyncio_loop.add_signal_handler(sig, lambda: self.asyncio_loop.stop())
         logger.debug("Add handler for: %s; event loop: %s", str(signals), str(self.asyncio_loop))
-        self.asyncio_loop.set_debug(True)
 
     def _setup_mqtt_connection(self):
         self.mqtt_connection.on_connect = self._on_mqtt_connect

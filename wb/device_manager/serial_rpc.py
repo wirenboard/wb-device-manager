@@ -42,7 +42,7 @@ class SerialConfig:
         self.stop_bits = 2
 
     def __str__(self) -> str:
-        return self.path
+        return f"{self.path} {self.baud_rate} {self.data_bits}{self.parity}{self.stop_bits}"
 
 
 @dataclass
