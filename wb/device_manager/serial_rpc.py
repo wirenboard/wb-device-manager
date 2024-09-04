@@ -132,6 +132,24 @@ WB_DEVICE_PARAMETERS = {
     "stop_bits": ParameterConfig(
         register_address=112,
     ),
+    "sn": ParameterConfig(
+        register_address=270,
+        register_count=2,
+        write_fn=None,
+        data_type=DataType.BYTES,
+    ),
+    "device_model_extended": ParameterConfig(
+        register_address=200,
+        register_count=20,
+        write_fn=None,
+        data_type=DataType.STR,
+    ),
+    "device_model": ParameterConfig(
+        register_address=200,
+        register_count=6,
+        write_fn=None,
+        data_type=DataType.STR,
+    ),
 }
 
 

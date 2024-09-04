@@ -4,6 +4,7 @@
 import asyncio
 import json
 import os
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Union
 
@@ -227,6 +228,38 @@ class FirmwareUpdater:
         )
         return "Ok"
 
+    async def _read_device_model(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int) -> str:
+        try:
+            return await self._serial_rpc.read(
+                port_config, slave_id, WB_DEVICE_PARAMETERS["device_model_extended"]
+            )
+        except Exception as err:
+            logger.debug("Can't read extended device model: %s", err)
+            try:
+                return await self._serial_rpc.read(
+                    port_config, slave_id, WB_DEVICE_PARAMETERS["device_model_extended"]
+                )
+            except Exception as err2:
+                logger.debug("Can't read device model: %s", err2)
+        return ""
+
+    async def _read_sn(
+        self, port_config: Union[SerialConfig, TcpConfig], slave_id: int, device_model: str
+    ) -> int:
+        try:
+            sn = int.from_bytes(
+                await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["sn"]),
+                byteorder="big",
+            )
+            # WB-MAP* uses 25 bit for serial number
+            wbmap_re = re.compile(r"\S*MAP\d+\S*")
+            if wbmap_re.match(device_model):
+                return sn & 0x1FFFFFF
+            return sn
+        except Exception as err:
+            logger.debug("Can't read SN: %s", err)
+        return 0
+
     async def _do_firmware_update(
         self,
         slave_id: int,
@@ -246,6 +279,8 @@ class FirmwareUpdater:
             self._update_state(update_info)
             return
 
+        device_model = await self._read_device_model(port_config, slave_id)
+        sn = await self._read_sn(port_config, slave_id, device_model)
         try:
             downloaded_wbfw_path = download_remote_file(fw_info.available.endpoint, "/tmp")
             await self._do_flash(
@@ -256,9 +291,11 @@ class FirmwareUpdater:
                 fw_info.bootloader_can_preserve_port_settings,
             )
             logger.info(
-                "Firmware of (%s, %d) updated from %s to %s",
-                port_config,
+                "Firmware of %s (sn: %d, slave_id: %d, %s) updated from %s to %s",
+                device_model,
+                sn,
                 slave_id,
+                port_config,
                 fw_info.current,
                 fw_info.available.version,
             )
@@ -266,9 +303,11 @@ class FirmwareUpdater:
             update_info.error.message = str(e)
             self._update_state(update_info)
             logger.error(
-                "Updating firmware of (%s, %d) from %s to %s failed: %s",
-                port_config,
+                "Updating firmware of %s (sn: %d, slave_id: %d, %s) from %s to %s failed: %s",
+                device_model,
+                sn,
                 slave_id,
+                port_config,
                 fw_info.current,
                 fw_info.available.version,
                 e,
