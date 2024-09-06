@@ -224,7 +224,9 @@ class BusScanner:
         errors = []
 
         err_ctx = None
-        for reg_len in [20, bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH]:
+        # Actual firmwares have 20 registers for device model, old ones have only 6, try to read both
+        EXTENDED_DEVICE_MODEL_SIZE = 20
+        for reg_len in [EXTENDED_DEVICE_MODEL_SIZE, bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH]:
             try:
                 device_signature = await mb_conn.read_string(
                     first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"],
