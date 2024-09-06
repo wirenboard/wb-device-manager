@@ -38,7 +38,7 @@ def parse_fw_version(endpoint_url: str) -> str:
     """
     Parsing fw version from endpoint url, stored in releases file
     """
-    re_str = ".+/(.+)\\.wbfw"
+    re_str = r'.+/(.+)\.wbfw'
     mat = re.match(re_str, endpoint_url)  # matches .../*.wbfw
     if mat:
         return str(mat.group(1))
