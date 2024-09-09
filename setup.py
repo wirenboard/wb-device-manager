@@ -22,4 +22,5 @@ setup(
         "wb.device_manager",
     ],
     test_suite="tests",
+    tests_require=["pytest"],
 )
