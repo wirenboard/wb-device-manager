@@ -168,7 +168,7 @@ class FirmwareUpdater:
                 ModbusExceptionCode.ILLEGAL_DATA_ADDRESS.value,
                 ModbusExceptionCode.ILLEGAL_DATA_VALUE.value,
             ]:
-                logger.debug("Can't get firmware signature, may be the device is too old")
+                logger.debug("Can't get firmware signature, maybe the device is too old")
             raise err
 
         fw = await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["fw_version"])
