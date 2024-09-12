@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+import re
 import time
 import uuid
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -10,6 +11,8 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from wb_modbus import bindings, minimalmodbus
 
 from . import logger, mqtt_rpc, serial_bus
+
+WBMAP_MARKER = re.compile("\S*MAP\d+\S*")  # *MAP%d* matches
 
 
 @dataclass
@@ -237,6 +240,8 @@ class BusScanner:
                     "\x02"
                 )  # TODO: store somewhere human-readable titles
                 err_ctx = None
+                if WBMAP_MARKER.match(device_signature):
+                    device_info.sn = device_info.sn - 0xFE000000
                 break
             except minimalmodbus.ModbusException as e:
                 err_ctx = e
