@@ -1,3 +1,9 @@
+wb-device-manager (1.9.2) stable; urgency=medium
+
+  * Fix reading of WB-MAP serial numbers
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Wed, 11 Sep 2024 15:31:34 +0500
+
 wb-device-manager (1.9.1) stable; urgency=medium
 
   * Stop slow scan faster

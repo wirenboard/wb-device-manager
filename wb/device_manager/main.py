@@ -4,6 +4,7 @@
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 from argparse import ArgumentParser
@@ -21,6 +22,9 @@ from . import logger, mqtt_rpc, serial_bus
 
 EXIT_INVALIDARGUMENT = 2
 EXIT_FAILURE = 1
+
+
+WBMAP_MARKER = re.compile("\S*MAP\d+\S*")  # *MAP%d* matches
 
 
 @dataclass
@@ -267,6 +271,8 @@ class DeviceManager:
                     "\x02"
                 )  # TODO: store somewhere human-readable titles
                 err_ctx = None
+                if WBMAP_MARKER.match(device_signature):
+                    device_info.sn = device_info.sn - 0xFE000000
                 break
             except minimalmodbus.ModbusException as e:
                 err_ctx = e
