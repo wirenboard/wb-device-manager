@@ -1,3 +1,10 @@
+wb-device-manager (1.10.0) stable; urgency=medium
+
+ * Add fw-update/GetFirmwareInfo RPC for requesting information about device firmware
+ * Add fw-update/Update RPC for updating firmwares of Wiren Board devices
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 12 Sep 2024 17:43:56 +0500
+
 wb-device-manager (1.9.2) stable; urgency=medium
 
   * Fix reading of WB-MAP serial numbers
