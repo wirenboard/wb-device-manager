@@ -1,2 +1,4 @@
 buildDebSbuild defaultTargets: 'bullseye-armhf',
-defaultRunPythonChecks: true
+               defaultRunPythonChecks: true,
+               defaultRunCoverage: true,
+               defaultCoverageMin: "50"
