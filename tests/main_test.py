@@ -8,10 +8,19 @@ from unittest.mock import AsyncMock
 from wb_modbus import minimalmodbus
 
 from wb.device_manager import main
+from wb.device_manager.bus_scan import (
+    DeviceInfo,
+    ParsedPorts,
+    Port,
+    ReadDeviceSignatureDeviceError,
+    ReadFWSignatureDeviceError,
+    ReadFWVersionDeviceError,
+    SerialParams,
+)
 from wb.device_manager.serial_bus import WBAsyncModbus, WBModbusScanner
 
 
-class DummyDeviceManager(main.DeviceManager):
+class DummyBusScanner(main.BusScanner):
     def __init__(self):
         self._mqtt_connection = AsyncMock()
         self._rpc_client = AsyncMock()
@@ -32,7 +41,7 @@ class DummyScanner(WBModbusScanner):
 class TestRPCClient(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
-        cls.device_manager = DummyDeviceManager()
+        cls.device_manager = DummyBusScanner()
 
     @classmethod
     def mock_response(cls, response):
@@ -56,7 +65,7 @@ class TestRPCClient(unittest.IsolatedAsyncioTestCase):
             },
             {"address": "192.168.0.7", "port": 23},
         ]
-        assumed_response = main.ParsedPorts(
+        assumed_response = ParsedPorts(
             serial=["/dev/ttyRS485-1", "/dev/ttyRS485-2"],
             tcp=[
                 "192.168.0.7:23",
@@ -70,13 +79,13 @@ class TestRPCClient(unittest.IsolatedAsyncioTestCase):
 class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
-        cls.device_manager = DummyDeviceManager()
+        cls.device_manager = DummyBusScanner()
 
-        cls.device_info = main.DeviceInfo(
+        cls.device_info = DeviceInfo(
             uuid=uuid.uuid3(namespace=uuid.NAMESPACE_OID, name="dummy_device"),
-            port=main.Port(path="/dev/ttyDUMMY"),
+            port=Port(path="/dev/ttyDUMMY"),
             sn=12345,
-            cfg=main.SerialParams(slave_id=1),
+            cfg=SerialParams(slave_id=1),
         )
 
         cls.mb_conn = DummyScanner().get_mb_connection(
@@ -90,9 +99,9 @@ class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
     async def test_erroneous_fill_device_info(self):
         self.mock_error()
         assumed_errors = [
-            main.ReadDeviceSignatureDeviceError(),
-            main.ReadFWSignatureDeviceError(),
-            main.ReadFWVersionDeviceError(),
+            ReadDeviceSignatureDeviceError(),
+            ReadFWSignatureDeviceError(),
+            ReadFWVersionDeviceError(),
         ]
         await self.device_manager.fill_device_info(self.device_info, self.mb_conn)
         self.assertListEqual(self.device_info.errors, assumed_errors)
@@ -100,14 +109,14 @@ class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
 
 class TestFillSerialParams(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.device_manager = DummyDeviceManager()
+        self.device_manager = DummyBusScanner()
         self.scanner = DummyScanner()
 
-        self.device_info = main.DeviceInfo(
+        self.device_info = DeviceInfo(
             uuid=uuid.uuid3(namespace=uuid.NAMESPACE_OID, name="dummy_device"),
-            port=main.Port(path="/dev/ttyDUMMY"),
+            port=Port(path="/dev/ttyDUMMY"),
             sn=12345,
-            cfg=main.SerialParams(slave_id=1),
+            cfg=SerialParams(slave_id=1),
         )
 
     async def test_fill_uart_params(self):
@@ -127,7 +136,7 @@ class TestFillSerialParams(unittest.IsolatedAsyncioTestCase):
 
 class TestDeviceManager(unittest.TestCase):
     def setUp(self):
-        self.device_manager = DummyDeviceManager()
+        self.device_manager = DummyBusScanner()
 
     def test_get_all_uart_params(self):
         assumed_order = [

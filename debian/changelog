@@ -1,3 +1,22 @@
+wb-device-manager (1.10.1) stable; urgency=medium
+
+  * Fix build, no functional changes
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 13 Sep 2024 13:40:00 +0400
+
+wb-device-manager (1.10.0) stable; urgency=medium
+
+  * Add fw-update/GetFirmwareInfo RPC for requesting information about device firmware
+  * Add fw-update/Update RPC for updating firmwares of Wiren Board devices
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 12 Sep 2024 17:43:56 +0500
+
+wb-device-manager (1.9.2) stable; urgency=medium
+
+  * Fix reading of WB-MAP serial numbers
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Wed, 11 Sep 2024 15:31:34 +0500
+
 wb-device-manager (1.9.1) stable; urgency=medium
 
   * Stop slow scan faster
