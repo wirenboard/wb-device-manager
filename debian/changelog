@@ -1,3 +1,9 @@
+wb-device-manager (1.10.2) stable; urgency=medium
+
+  * Run tests on pytest
+
+ --  Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Fri, 13 Sep 2024 15:43:45 +0300
+
 wb-device-manager (1.10.1) stable; urgency=medium
 
   * Fix build, no functional changes
