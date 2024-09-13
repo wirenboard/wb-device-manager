@@ -47,7 +47,7 @@ class DeviceUpdateInfo:
     progress: int = 0
     from_fw: str = None
     to_fw: str = None
-    error: StateError = StateError()
+    error: StateError = field(default_factory=StateError)
 
     def __eq__(self, o):
         return self.slave_id == o.slave_id and self.port == o.port
