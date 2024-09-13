@@ -12,7 +12,7 @@ from wb_modbus import bindings, minimalmodbus
 
 from . import logger, mqtt_rpc, serial_bus
 
-WBMAP_MARKER = re.compile("\S*MAP\d+\S*")  # *MAP%d* matches
+WBMAP_MARKER = re.compile(r"\S*MAP\d+\S*")  # *MAP%d* matches
 
 
 @dataclass
