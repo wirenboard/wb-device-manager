@@ -33,11 +33,13 @@ class StateError:
 class Port:
     path: str = None
 
-    def __init__(self, port_config: Union[SerialConfig, TcpConfig]):
+    def __init__(self, port_config: Union[SerialConfig, TcpConfig, str]):
         if isinstance(port_config, SerialConfig):
             self.path = port_config.path
         elif isinstance(port_config, TcpConfig):
             self.path = f"{port_config.address}:{port_config.port}"
+        elif isinstance(port_config, str):
+            self.path = port_config
 
 
 @dataclass
@@ -68,7 +70,21 @@ class FirmwareUpdateState:
         for i, d in enumerate(self.devices):
             if d == device_info:
                 self.devices.pop(i)
-                return
+                return True
+        return False
+
+    def is_updating(self, slave_id: int, port: Port) -> bool:
+        for d in self.devices:
+            if d.slave_id == slave_id and d.port == port and d.progress < 100 and d.error.message is None:
+                return True
+        return False
+
+    def clear_error(self, slave_id: int, port: Port) -> bool:
+        for d in self.devices:
+            if d.slave_id == slave_id and d.port == port and d.error.message is not None:
+                self.devices.remove(d)
+                return True
+        return False
 
 
 def to_dict_for_json(device_update_info: DeviceUpdateInfo) -> dict:
@@ -206,6 +222,8 @@ class FirmwareUpdater:
         logger.debug("Request firmware info")
         port_config = read_port_config(kwargs.get("port", {}))
         slave_id = kwargs.get("slave_id")
+        if self._state.is_updating(slave_id, Port(port_config)):
+            raise MQTTRPCAlreadyProcessingException()
         fw_info = await self._read_firmware_info(port_config, slave_id)
         return {
             "fw": fw_info.current,
@@ -226,6 +244,14 @@ class FirmwareUpdater:
             self._do_firmware_update(slave_id, port_config, fw_info),
             name="Update firmware (long running)",
         )
+        return "Ok"
+
+    async def clear_error(self, **kwargs):
+        slave_id = kwargs.get("slave_id")
+        port = Port(kwargs.get("port", {}).get("path"))
+        logger.debug("Clear error: %d %s", slave_id, port.path)
+        if self._state.clear_error(slave_id, port):
+            self._mqtt_connection.publish(self.state_publish_topic, to_json_string(self._state), retain=True)
         return "Ok"
 
     async def _read_device_model(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int) -> str:
