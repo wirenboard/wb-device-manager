@@ -1,3 +1,9 @@
+wb-device-manager (1.10.3) stable; urgency=medium
+
+  * Fix scan crashing on WB-MAP*
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 19 Sep 2024 09:36:31 +0500
+
 wb-device-manager (1.10.2) stable; urgency=medium
 
   * Run tests on pytest, no functional changes

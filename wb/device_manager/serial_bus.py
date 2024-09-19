@@ -10,6 +10,15 @@ from wb_modbus import bindings, minimalmodbus
 
 from . import logger, mqtt_rpc
 
+WBMAP_MARKER = re.compile(r"\S*MAP\d+\S*")  # *MAP%d* matches
+
+
+def fix_sn(device_model: str, sn: int) -> int:
+    # WB-MAP* uses 25 bit for serial number
+    if WBMAP_MARKER.match(device_model):
+        return sn - 0xFE000000
+    return sn
+
 
 class WBModbusScanner:
     def __init__(self, port, rpc_client):

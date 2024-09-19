@@ -4,7 +4,6 @@
 import asyncio
 import json
 import os
-import re
 from dataclasses import asdict, dataclass, field
 from typing import Union
 
@@ -14,6 +13,7 @@ from . import logger
 from .fw_downloader import ReleasedFirmware, download_remote_file, get_released_fw
 from .mqtt_rpc import MQTTRPCAlreadyProcessingException
 from .releases import parse_releases
+from .serial_bus import fix_sn
 from .serial_rpc import (
     WB_DEVICE_PARAMETERS,
     ModbusExceptionCode,
@@ -237,7 +237,7 @@ class FirmwareUpdater:
             logger.debug("Can't read extended device model: %s", err)
             try:
                 return await self._serial_rpc.read(
-                    port_config, slave_id, WB_DEVICE_PARAMETERS["device_model_extended"]
+                    port_config, slave_id, WB_DEVICE_PARAMETERS["device_model"]
                 )
             except Exception as err2:
                 logger.debug("Can't read device model: %s", err2)
@@ -251,11 +251,7 @@ class FirmwareUpdater:
                 await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["sn"]),
                 byteorder="big",
             )
-            # WB-MAP* uses 25 bit for serial number
-            wbmap_re = re.compile(r"\S*MAP\d+\S*")
-            if wbmap_re.match(device_model):
-                return sn & 0x1FFFFFF
-            return sn
+            return fix_sn(device_model, sn)
         except Exception as err:
             logger.debug("Can't read SN: %s", err)
         return 0

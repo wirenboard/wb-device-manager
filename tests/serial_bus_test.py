@@ -182,3 +182,10 @@ class TestWBAsyncExtendedModbus(AsyncModbusTestBase):
 
     async def test_slave_reported(self):
         await self._test_slave_reported(illegal_data_address_mock="fd6009fe48b6f58302ea17")
+
+
+class TestFixSn(unittest.TestCase):
+    def test_fix_sn(self):
+        sn = 0xFE123456
+        self.assertEqual(serial_bus.fix_sn("WB-MAP12E", sn), 0x00123456)
+        self.assertEqual(serial_bus.fix_sn("WB-MR6C", sn), sn)
