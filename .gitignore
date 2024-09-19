@@ -11,7 +11,7 @@
 ### coverage ###
 .coverage
 htmlcov
-cov.xml
+coverage.xml
 .coveragerc
 
 ### cache ###
