@@ -143,19 +143,11 @@ class UpdateNotifier:
             return True
         return False
 
+class FirmwareInfoReader:
+    def __init__(self, serial_rpc):
+        self._serial_rpc = serial_rpc
 
-class FirmwareUpdater:
-    STATE_PUBLISH_TOPIC = "/wb-device-manager/firmware_update/state"
-
-    def __init__(self, mqtt_connection, rpc_client, asyncio_loop):
-        self._mqtt_connection = mqtt_connection
-        self._rpc_client = rpc_client
-        self._serial_rpc = SerialRPCWrapper(rpc_client)
-        self._asyncio_loop = asyncio_loop
-        self._state = FirmwareUpdateState()
-        self._update_firmware_task = None
-
-    async def _read_firmware_info(
+    async def read(
         self, port_config: Union[SerialConfig, TcpConfig], slave_id: int
     ) -> FirmwareInfo:
         try:
@@ -185,6 +177,18 @@ class FirmwareUpdater:
             bootloader_can_preserve_port_settings = False
         return FirmwareInfo(fw, released_fw, fw_signature, bootloader_can_preserve_port_settings)
 
+class FirmwareUpdater:
+    STATE_PUBLISH_TOPIC = "/wb-device-manager/firmware_update/state"
+
+    def __init__(self, mqtt_connection, rpc_client, asyncio_loop, fw_info_reader):
+        self._mqtt_connection = mqtt_connection
+        self._rpc_client = rpc_client
+        self._serial_rpc = SerialRPCWrapper(rpc_client)
+        self._asyncio_loop = asyncio_loop
+        self._state = FirmwareUpdateState()
+        self._update_firmware_task = None
+        self._fw_info_reader = fw_info_reader
+
     async def _check_updatable(
         self, slave_id: int, fw_info: FirmwareInfo, port_config: Union[SerialConfig, TcpConfig]
     ) -> bool:
@@ -209,7 +213,7 @@ class FirmwareUpdater:
         port_config = read_port_config(kwargs.get("port", {}))
         slave_id = kwargs.get("slave_id")
         try:
-            fw_info = await self._read_firmware_info(port_config, slave_id)
+            fw_info = await self._fw_info_reader.read(port_config, slave_id)
         except WBModbusException as err:
             logger.error("Can't get firmware info for %s (%s): %s", slave_id, port_config, err)
             raise JSONRPCDispatchException(
@@ -232,7 +236,7 @@ class FirmwareUpdater:
         logger.debug("Start firmware update")
         slave_id = kwargs.get("slave_id")
         port_config = read_port_config(kwargs.get("port", {}))
-        fw_info = await self._read_firmware_info(port_config, slave_id)
+        fw_info = await self._fw_info_reader.read(port_config, slave_id)
         if not await self._check_updatable(slave_id, fw_info, port_config):
             raise ValueError("Can't update firmware over TCP")
         self._update_firmware_task = self._asyncio_loop.create_task(
