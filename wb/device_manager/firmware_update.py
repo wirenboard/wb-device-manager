@@ -180,10 +180,11 @@ class FirmwareInfoReader:
 class FirmwareUpdater:
     STATE_PUBLISH_TOPIC = "/wb-device-manager/firmware_update/state"
 
-    def __init__(self, mqtt_connection, rpc_client, asyncio_loop, fw_info_reader):
+    def __init__(
+        self, mqtt_connection, serial_rpc: SerialRPCWrapper, asyncio_loop, fw_info_reader: FirmwareInfoReader
+    ) -> None:
         self._mqtt_connection = mqtt_connection
-        self._rpc_client = rpc_client
-        self._serial_rpc = SerialRPCWrapper(rpc_client)
+        self._serial_rpc = serial_rpc
         self._asyncio_loop = asyncio_loop
         self._state = FirmwareUpdateState()
         self._update_firmware_task = None
@@ -221,7 +222,10 @@ class FirmwareUpdater:
             ) from err
         except rpcclient.MQTTRPCError as err:
             logger.error("Can't get firmware info for %s (%s): %s", slave_id, port_config, err)
-            if err.code == MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value:
+            if err.code in [
+                MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value,
+                MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value,
+            ]:
                 raise JSONRPCDispatchException(code=err.code, message=err.rpc_message, data=err.data) from err
             raise err
         return {

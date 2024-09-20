@@ -399,7 +399,7 @@ class BusScanner:
         else:
             try:
                 ports = await self.get_ports()
-            except mqtt_rpc.MQTTRPCInternalServerError:
+            except mqtt_rpc.MQTTRPCCallTimeoutError:
                 logger.exception("No answer from wb-mqtt-serial")
                 state_error = RPCCallTimeoutStateError()
                 ports = ParsedPorts()
