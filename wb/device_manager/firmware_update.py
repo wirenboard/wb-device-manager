@@ -143,13 +143,12 @@ class UpdateNotifier:
             return True
         return False
 
+
 class FirmwareInfoReader:
     def __init__(self, serial_rpc):
         self._serial_rpc = serial_rpc
 
-    async def read(
-        self, port_config: Union[SerialConfig, TcpConfig], slave_id: int
-    ) -> FirmwareInfo:
+    async def read(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int) -> FirmwareInfo:
         try:
             fw_signature = await self._serial_rpc.read(
                 port_config, slave_id, WB_DEVICE_PARAMETERS["fw_signature"]
@@ -176,6 +175,7 @@ class FirmwareInfoReader:
         except Exception:
             bootloader_can_preserve_port_settings = False
         return FirmwareInfo(fw, released_fw, fw_signature, bootloader_can_preserve_port_settings)
+
 
 class FirmwareUpdater:
     STATE_PUBLISH_TOPIC = "/wb-device-manager/firmware_update/state"
