@@ -9,10 +9,12 @@ from dataclasses import asdict, dataclass, field
 from typing import Union
 
 import semantic_version
+from jsonrpc.exceptions import JSONRPCDispatchException
+from mqttrpc import client as rpcclient
 
 from . import logger
 from .fw_downloader import ReleasedFirmware, download_remote_file, get_released_fw
-from .mqtt_rpc import MQTTRPCAlreadyProcessingException
+from .mqtt_rpc import MQTTRPCAlreadyProcessingException, MQTTRPCErrorCode
 from .releases import parse_releases
 from .serial_rpc import (
     WB_DEVICE_PARAMETERS,
@@ -206,7 +208,18 @@ class FirmwareUpdater:
         logger.debug("Request firmware info")
         port_config = read_port_config(kwargs.get("port", {}))
         slave_id = kwargs.get("slave_id")
-        fw_info = await self._read_firmware_info(port_config, slave_id)
+        try:
+            fw_info = await self._read_firmware_info(port_config, slave_id)
+        except WBModbusException as err:
+            logger.error("Can't get firmware info for %s (%s): %s", slave_id, port_config, err)
+            raise JSONRPCDispatchException(
+                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message=str(err), data=err.code
+            ) from err
+        except rpcclient.MQTTRPCError as err:
+            logger.error("Can't get firmware info for %s (%s): %s", slave_id, port_config, err)
+            if err.code == MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value:
+                raise JSONRPCDispatchException(code=err.code, message=err.rpc_message, data=err.data) from err
+            raise err
         return {
             "fw": fw_info.current,
             "available_fw": fw_info.available.version if fw_info.available is not None else "",

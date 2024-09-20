@@ -8,6 +8,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field, is_dataclass
 
+from mqttrpc import client as rpcclient
 from wb_modbus import bindings, minimalmodbus
 
 from . import logger, mqtt_rpc, serial_bus
@@ -328,7 +329,7 @@ class BusScanner:
     async def launch_bus_scan(self, **kwargs):
         if self._bus_scanning_task and not self._bus_scanning_task.done():
             raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
-        logger.info("Start bus scanning")
+        logger.debug("Start bus scanning")
         self._bus_scanning_task_cancel_condition = ScanCancelCondition()
         self._bus_scanning_task = self.asyncio_loop.create_task(
             self.scan_serial_bus(
@@ -344,7 +345,7 @@ class BusScanner:
         Check https://docs.python.org/dev/library/asyncio-task.html#asyncio.Task.cancel for more info
         """
         if self._bus_scanning_task and not self._bus_scanning_task.done():
-            logger.info("Stop bus scanning")
+            logger.debug("Stop bus scanning")
             self._bus_scanning_task_cancel_condition.request_cancel()
             self._bus_scanning_task.cancel()
             try:
@@ -436,7 +437,7 @@ class BusScanner:
         debug_str = path + " " + "-".join(map(str, scan_kwargs.values()))
 
         self._ports_now_scanning.add(debug_str)
-        logger.info(
+        logger.debug(
             "Scanning %s (extended modbus: %r)",
             debug_str,
             is_ext_scan,
@@ -452,7 +453,7 @@ class BusScanner:
                 if self._bus_scanning_task_cancel_condition.should_cancel():
                     return
                 if sn in self._found_devices:
-                    logger.info("Device %s already scanned; skipping", str(sn))
+                    logger.debug("Device %s already scanned; skipping", str(sn))
                     continue
 
                 device_info = DeviceInfo(
@@ -478,8 +479,11 @@ class BusScanner:
             logger.debug("No %s-modbus devices on %s", "extended" if is_ext_scan else "ordinary", debug_str)
         except minimalmodbus.InvalidResponseError as err:
             logger.error("Invalid response during scan %s: %s", debug_str, err)
-        except Exception:
-            logger.exception("Unhandled exception during scan %s", debug_str)
+        except Exception as err:
+            if isinstance(err, rpcclient.MQTTRPCError):
+                logger.error("MQTT RPC error during scan %s: %s", debug_str, err)
+            else:
+                logger.exception("Unhandled exception during scan %s", debug_str)
             self._ports_errored.add(debug_str)
             await self.produce_state_update({"error": FailedScanStateError(failed_ports=self._ports_errored)})
             raise

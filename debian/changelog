@@ -1,3 +1,9 @@
+wb-device-manager (1.10.3) stable; urgency=medium
+
+  * Make logs less verbose
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Fri, 20 Sep 2024 10:28:48 +0500
+
 wb-device-manager (1.10.2) stable; urgency=medium
 
   * Run tests on pytest, no functional changes
