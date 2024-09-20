@@ -23,6 +23,7 @@ def get_topic_path(*args):
     ret = PurePosixPath(TOPIC_HEADER, *[str(arg) for arg in args])
     return str(ret)
 
+
 class MQTTRPCErrorCode(Enum):
     JSON_PARSE_ERROR = -32700
     REQUEST_HANDLING_ERROR = -32000
