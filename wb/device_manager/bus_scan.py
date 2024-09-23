@@ -3,7 +3,6 @@
 
 import asyncio
 import json
-import re
 import time
 import uuid
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -11,8 +10,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from wb_modbus import bindings, minimalmodbus
 
 from . import logger, mqtt_rpc, serial_bus
-
-WBMAP_MARKER = re.compile(r"\S*MAP\d+\S*")  # *MAP%d* matches
+from .serial_bus import fix_sn
 
 
 @dataclass
@@ -240,8 +238,7 @@ class BusScanner:
                     "\x02"
                 )  # TODO: store somewhere human-readable titles
                 err_ctx = None
-                if WBMAP_MARKER.match(device_signature):
-                    device_info.sn = device_info.sn - 0xFE000000
+                device_info.sn = str(fix_sn(device_info.device_signature, int(device_info.sn)))
                 break
             except minimalmodbus.ModbusException as e:
                 err_ctx = e
@@ -468,8 +465,12 @@ class BusScanner:
                 addr = int(device_info.sn) if is_ext_scan else device_info.cfg.slave_id
                 mb_conn = scanner.get_mb_connection(addr, path, **scan_kwargs)
 
-                await self.fill_device_info(device_info, mb_conn)
+                # fill_device_info can modify sn
+                # scanner searches port parameters based on cached sn
+                # and can return empty values for modified sn
+                # so need to call fill_serial_params first
                 await self.fill_serial_params(device_info, scanner)
+                await self.fill_device_info(device_info, mb_conn)
 
                 self._found_devices.append(sn)
                 await self.produce_state_update(device_info)
