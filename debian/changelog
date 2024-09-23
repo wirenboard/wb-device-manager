@@ -1,3 +1,9 @@
+wb-device-manager (1.11.0) stable; urgency=medium
+
+  * Add fw-update/ClearError RPC for removing firmware update errors from state topic
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Mon, 23 Sep 2024 20:44:30 +0500
+
 wb-device-manager (1.10.3) stable; urgency=medium
 
   * Fix scan crashing on WB-MAP*

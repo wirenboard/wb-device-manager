@@ -7,3 +7,13 @@
 ### direnv ###
 .direnv
 .envrc
+
+### coverage ###
+.coverage
+htmlcov
+coverage.xml
+.coveragerc
+
+### cache ###
+.pytest_cache
+__pycache__
