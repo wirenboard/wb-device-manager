@@ -74,10 +74,10 @@ class FirmwareUpdateState:
         return False
 
     def is_updating(self, slave_id: int, port: Port) -> bool:
-        for d in self.devices:
-            if d.slave_id == slave_id and d.port == port and d.progress < 100 and d.error.message is None:
-                return True
-        return False
+        return any(
+            d.slave_id == slave_id and d.port == port and d.progress < 100 and d.error.message is None
+            for d in self.devices
+        )
 
     def clear_error(self, slave_id: int, port: Port) -> bool:
         for d in self.devices:
