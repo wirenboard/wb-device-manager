@@ -74,6 +74,7 @@ def main(args=argv):
         ("bus-scan", "Stop"): bus_scanner.stop_bus_scan,
         ("fw-update", "GetFirmwareInfo"): fw_updater.get_firmware_info,
         ("fw-update", "Update"): fw_updater.update_firmware,
+        ("fw-update", "ClearError"): fw_updater.clear_error,
     }
 
     server = mqtt_rpc.AsyncMQTTServer(

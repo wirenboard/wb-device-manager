@@ -4,7 +4,6 @@
 import asyncio
 import json
 import os
-import re
 from dataclasses import asdict, dataclass, field
 from typing import Union
 
@@ -16,6 +15,7 @@ from . import logger
 from .fw_downloader import ReleasedFirmware, download_remote_file, get_released_fw
 from .mqtt_rpc import MQTTRPCAlreadyProcessingException, MQTTRPCErrorCode
 from .releases import parse_releases
+from .serial_bus import fix_sn
 from .serial_rpc import (
     WB_DEVICE_PARAMETERS,
     ModbusExceptionCode,
@@ -35,11 +35,13 @@ class StateError:
 class Port:
     path: str = None
 
-    def __init__(self, port_config: Union[SerialConfig, TcpConfig]):
+    def __init__(self, port_config: Union[SerialConfig, TcpConfig, str]):
         if isinstance(port_config, SerialConfig):
             self.path = port_config.path
         elif isinstance(port_config, TcpConfig):
             self.path = f"{port_config.address}:{port_config.port}"
+        elif isinstance(port_config, str):
+            self.path = port_config
 
 
 @dataclass
@@ -70,7 +72,21 @@ class FirmwareUpdateState:
         for i, d in enumerate(self.devices):
             if d == device_info:
                 self.devices.pop(i)
-                return
+                return True
+        return False
+
+    def is_updating(self, slave_id: int, port: Port) -> bool:
+        return any(
+            d.slave_id == slave_id and d.port == port and d.progress < 100 and d.error.message is None
+            for d in self.devices
+        )
+
+    def clear_error(self, slave_id: int, port: Port) -> bool:
+        for d in self.devices:
+            if d.slave_id == slave_id and d.port == port and d.error.message is not None:
+                self.devices.remove(d)
+                return True
+        return False
 
 
 def to_dict_for_json(device_update_info: DeviceUpdateInfo) -> dict:
@@ -213,6 +229,8 @@ class FirmwareUpdater:
         logger.debug("Request firmware info")
         port_config = read_port_config(kwargs.get("port", {}))
         slave_id = kwargs.get("slave_id")
+        if self._state.is_updating(slave_id, Port(port_config)):
+            raise MQTTRPCAlreadyProcessingException()
         try:
             fw_info = await self._fw_info_reader.read(port_config, slave_id)
         except WBModbusException as err:
@@ -249,6 +267,14 @@ class FirmwareUpdater:
         )
         return "Ok"
 
+    async def clear_error(self, **kwargs):
+        slave_id = kwargs.get("slave_id")
+        port = Port(kwargs.get("port", {}).get("path"))
+        logger.debug("Clear error: %d %s", slave_id, port.path)
+        if self._state.clear_error(slave_id, port):
+            self._mqtt_connection.publish(self.state_publish_topic, to_json_string(self._state), retain=True)
+        return "Ok"
+
     async def _read_device_model(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int) -> str:
         try:
             return await self._serial_rpc.read(
@@ -258,7 +284,7 @@ class FirmwareUpdater:
             logger.debug("Can't read extended device model: %s", err)
             try:
                 return await self._serial_rpc.read(
-                    port_config, slave_id, WB_DEVICE_PARAMETERS["device_model_extended"]
+                    port_config, slave_id, WB_DEVICE_PARAMETERS["device_model"]
                 )
             except Exception as err2:
                 logger.debug("Can't read device model: %s", err2)
@@ -272,11 +298,7 @@ class FirmwareUpdater:
                 await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["sn"]),
                 byteorder="big",
             )
-            # WB-MAP* uses 25 bit for serial number
-            wbmap_re = re.compile(r"\S*MAP\d+\S*")
-            if wbmap_re.match(device_model):
-                return sn & 0x1FFFFFF
-            return sn
+            return fix_sn(device_model, sn)
         except Exception as err:
             logger.debug("Can't read SN: %s", err)
         return 0
