@@ -8,10 +8,12 @@ from dataclasses import asdict, dataclass, field
 from typing import Union
 
 import semantic_version
+from jsonrpc.exceptions import JSONRPCDispatchException
+from mqttrpc import client as rpcclient
 
 from . import logger
 from .fw_downloader import ReleasedFirmware, download_remote_file, get_released_fw
-from .mqtt_rpc import MQTTRPCAlreadyProcessingException
+from .mqtt_rpc import MQTTRPCAlreadyProcessingException, MQTTRPCErrorCode
 from .releases import parse_releases
 from .serial_bus import fix_sn
 from .serial_rpc import (
@@ -158,20 +160,11 @@ class UpdateNotifier:
         return False
 
 
-class FirmwareUpdater:
-    STATE_PUBLISH_TOPIC = "/wb-device-manager/firmware_update/state"
+class FirmwareInfoReader:
+    def __init__(self, serial_rpc):
+        self._serial_rpc = serial_rpc
 
-    def __init__(self, mqtt_connection, rpc_client, asyncio_loop):
-        self._mqtt_connection = mqtt_connection
-        self._rpc_client = rpc_client
-        self._serial_rpc = SerialRPCWrapper(rpc_client)
-        self._asyncio_loop = asyncio_loop
-        self._state = FirmwareUpdateState()
-        self._update_firmware_task = None
-
-    async def _read_firmware_info(
-        self, port_config: Union[SerialConfig, TcpConfig], slave_id: int
-    ) -> FirmwareInfo:
+    async def read(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int) -> FirmwareInfo:
         try:
             fw_signature = await self._serial_rpc.read(
                 port_config, slave_id, WB_DEVICE_PARAMETERS["fw_signature"]
@@ -199,6 +192,20 @@ class FirmwareUpdater:
             bootloader_can_preserve_port_settings = False
         return FirmwareInfo(fw, released_fw, fw_signature, bootloader_can_preserve_port_settings)
 
+
+class FirmwareUpdater:
+    STATE_PUBLISH_TOPIC = "/wb-device-manager/firmware_update/state"
+
+    def __init__(
+        self, mqtt_connection, serial_rpc: SerialRPCWrapper, asyncio_loop, fw_info_reader: FirmwareInfoReader
+    ) -> None:
+        self._mqtt_connection = mqtt_connection
+        self._serial_rpc = serial_rpc
+        self._asyncio_loop = asyncio_loop
+        self._state = FirmwareUpdateState()
+        self._update_firmware_task = None
+        self._fw_info_reader = fw_info_reader
+
     async def _check_updatable(
         self, slave_id: int, fw_info: FirmwareInfo, port_config: Union[SerialConfig, TcpConfig]
     ) -> bool:
@@ -224,7 +231,21 @@ class FirmwareUpdater:
         slave_id = kwargs.get("slave_id")
         if self._state.is_updating(slave_id, Port(port_config)):
             raise MQTTRPCAlreadyProcessingException()
-        fw_info = await self._read_firmware_info(port_config, slave_id)
+        try:
+            fw_info = await self._fw_info_reader.read(port_config, slave_id)
+        except WBModbusException as err:
+            logger.error("Can't get firmware info for %s (%s): %s", slave_id, port_config, err)
+            raise JSONRPCDispatchException(
+                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message=str(err), data=err.code
+            ) from err
+        except rpcclient.MQTTRPCError as err:
+            logger.error("Can't get firmware info for %s (%s): %s", slave_id, port_config, err)
+            if err.code in [
+                MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value,
+                MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value,
+            ]:
+                raise JSONRPCDispatchException(code=err.code, message=err.rpc_message, data=err.data) from err
+            raise err
         return {
             "fw": fw_info.current,
             "available_fw": fw_info.available.version if fw_info.available is not None else "",
@@ -237,7 +258,7 @@ class FirmwareUpdater:
         logger.debug("Start firmware update")
         slave_id = kwargs.get("slave_id")
         port_config = read_port_config(kwargs.get("port", {}))
-        fw_info = await self._read_firmware_info(port_config, slave_id)
+        fw_info = await self._fw_info_reader.read(port_config, slave_id)
         if not await self._check_updatable(slave_id, fw_info, port_config):
             raise ValueError("Can't update firmware over TCP")
         self._update_firmware_task = self._asyncio_loop.create_task(

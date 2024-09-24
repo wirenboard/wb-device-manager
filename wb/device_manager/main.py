@@ -12,7 +12,8 @@ from wb_modbus import logger as mb_logger
 
 from . import logger, mqtt_rpc
 from .bus_scan import BusScanner
-from .firmware_update import FirmwareUpdater
+from .firmware_update import FirmwareInfoReader, FirmwareUpdater
+from .serial_rpc import SerialRPCWrapper
 
 EXIT_INVALIDARGUMENT = 2
 EXIT_FAILURE = 1
@@ -65,7 +66,8 @@ def main(args=argv):
         event_loop.set_debug(True)
 
     bus_scanner = BusScanner(mqtt_connection, rpc_client, event_loop)
-    fw_updater = FirmwareUpdater(mqtt_connection, rpc_client, event_loop)
+    serial_rpc = SerialRPCWrapper(rpc_client)
+    fw_updater = FirmwareUpdater(mqtt_connection, serial_rpc, event_loop, FirmwareInfoReader(serial_rpc))
 
     async_callables_mapping = {
         ("bus-scan", "Start"): bus_scanner.launch_bus_scan,

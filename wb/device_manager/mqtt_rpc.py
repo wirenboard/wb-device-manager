@@ -5,6 +5,7 @@ import asyncio
 import atexit
 import ipaddress
 import signal
+from enum import Enum
 from functools import cache, partial
 from pathlib import PurePosixPath
 
@@ -21,6 +22,13 @@ from . import TOPIC_HEADER, logger
 def get_topic_path(*args):
     ret = PurePosixPath(TOPIC_HEADER, *[str(arg) for arg in args])
     return str(ret)
+
+
+class MQTTRPCErrorCode(Enum):
+    JSON_PARSE_ERROR = -32700
+    REQUEST_HANDLING_ERROR = -32000
+    REQUEST_TIMEOUT_ERROR = -32600
+    RPC_CALL_TIMEOUT = -33000
 
 
 class RPCResultFuture(asyncio.Future):
@@ -60,10 +68,10 @@ class SRPCClient(rpcclient.TMQTTRPCClient):
             logger.debug("RPC Client <- %s", response)
             return response
         except asyncio.exceptions.TimeoutError as e:
-            raise MQTTRPCInternalServerError(
+            raise MQTTRPCCallTimeoutError(
                 message="rpc call to %s/%s/%s -> %.2fs: no answer" % (driver, service, method, timeout),
                 data="rpc call params: %s" % str(params),
-            )
+            ) from e
 
 
 class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
@@ -164,8 +172,8 @@ class AsyncModbusInstrumentTCP(AsyncModbusInstrument):
         }
 
 
-class MQTTRPCInternalServerError(rpcclient.MQTTRPCError):
-    CODE = -33000
+class MQTTRPCCallTimeoutError(rpcclient.MQTTRPCError):
+    CODE = MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value
 
     def __init__(self, message, code=None, data=""):
         super().__init__(message, code or self.CODE, data)
