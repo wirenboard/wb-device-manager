@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 from wb_modbus import minimalmodbus
 
 from wb.device_manager import main
-from wb.device_manager.bus_scan import (
+from wb.device_manager.bus_scan_state import (
     DeviceInfo,
     ParsedPorts,
     Port,
@@ -16,6 +16,7 @@ from wb.device_manager.bus_scan import (
     ReadFWSignatureDeviceError,
     ReadFWVersionDeviceError,
     SerialParams,
+    get_all_uart_params,
 )
 from wb.device_manager.serial_bus import WBAsyncModbus, WBModbusScanner
 
@@ -83,7 +84,7 @@ class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
 
         cls.device_info = DeviceInfo(
             uuid=uuid.uuid3(namespace=uuid.NAMESPACE_OID, name="dummy_device"),
-            port=Port(path="/dev/ttyDUMMY"),
+            port=Port("/dev/ttyDUMMY"),
             sn=12345,
             cfg=SerialParams(slave_id=1),
         )
@@ -114,7 +115,7 @@ class TestFillSerialParams(unittest.IsolatedAsyncioTestCase):
 
         self.device_info = DeviceInfo(
             uuid=uuid.uuid3(namespace=uuid.NAMESPACE_OID, name="dummy_device"),
-            port=Port(path="/dev/ttyDUMMY"),
+            port=Port("/dev/ttyDUMMY"),
             sn=12345,
             cfg=SerialParams(slave_id=1),
         )
@@ -189,5 +190,5 @@ class TestDeviceManager(unittest.TestCase):
             "19200-O1",
             "38400-O1",
         ]
-        for bd, parity, stopbits, progress_percent in self.device_manager._get_all_uart_params():
+        for bd, parity, stopbits, progress_percent in get_all_uart_params():
             self.assertEqual(f"{bd}-{parity}{stopbits}", assumed_order.pop(0))

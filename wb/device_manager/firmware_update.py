@@ -12,6 +12,7 @@ from jsonrpc.exceptions import JSONRPCDispatchException
 from mqttrpc import client as rpcclient
 
 from . import logger
+from .bus_scan_state import Port
 from .fw_downloader import ReleasedFirmware, download_remote_file, get_released_fw
 from .mqtt_rpc import MQTTRPCAlreadyProcessingException, MQTTRPCErrorCode
 from .releases import parse_releases
@@ -29,19 +30,6 @@ from .serial_rpc import (
 @dataclass
 class StateError:
     message: str = None
-
-
-@dataclass
-class Port:
-    path: str = None
-
-    def __init__(self, port_config: Union[SerialConfig, TcpConfig, str]):
-        if isinstance(port_config, SerialConfig):
-            self.path = port_config.path
-        elif isinstance(port_config, TcpConfig):
-            self.path = f"{port_config.address}:{port_config.port}"
-        elif isinstance(port_config, str):
-            self.path = port_config
 
 
 @dataclass

@@ -1,3 +1,9 @@
+wb-device-manager (1.11.3) stable; urgency=medium
+
+  * Source code refactoring. No functional changes
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Fri, 27 Sep 2024 11:02:05 +0500
+
 wb-device-manager (1.11.2) stable; urgency=medium
 
   * Clear /wb-device-manager/firmware_update/state on start and exit
