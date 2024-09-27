@@ -1,5 +1,11 @@
 wb-device-manager (1.11.1) stable; urgency=medium
 
+  * Clear /wb-device-manager/firmware_update/state on start and exit
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Wed, 25 Sep 2024 18:19:28 +0500
+
+wb-device-manager (1.11.1) stable; urgency=medium
+
   * Make logs less verbose
 
  -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Tue, 24 Sep 2024 16:29:33 +0500

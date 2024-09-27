@@ -439,3 +439,6 @@ class FirmwareUpdater:
                 continue
         update_info.progress = 100
         self._update_state(update_info)
+
+    def start(self) -> None:
+        self._mqtt_connection.publish(self.state_publish_topic, to_json_string(self._state), retain=True)

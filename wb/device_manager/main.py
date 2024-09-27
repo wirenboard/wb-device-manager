@@ -84,12 +84,14 @@ def main(args=argv):
         rpc_client=rpc_client,
         additional_topics_to_clear=[
             bus_scanner.state_publish_topic,
+            fw_updater.state_publish_topic
         ],
         asyncio_loop=event_loop,
     )
 
     try:
         server.setup()
+        fw_updater.start()
     except Exception:
         ec = EXIT_FAILURE
         logger.exception("Exiting with %d", ec)

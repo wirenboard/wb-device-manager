@@ -51,7 +51,7 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         reader_mock = AsyncMock()
         reader_mock.read = AsyncMock()
         reader_mock.read.side_effect = WBModbusException("test msg", 1)
-        updater = FirmwareUpdater(None, None, None, reader_mock)
+        updater = FirmwareUpdater(AsyncMock(), None, None, reader_mock)
         with self.assertRaises(JSONRPCDispatchException) as cm:
             await updater.get_firmware_info(slave_id=1, port={"path": "test"})
 
@@ -65,7 +65,7 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         reader_mock.read.side_effect = rpcclient.MQTTRPCError(
             "test msg", MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value, "test data"
         )
-        updater = FirmwareUpdater(None, None, None, reader_mock)
+        updater = FirmwareUpdater(AsyncMock(), None, None, reader_mock)
         with self.assertRaises(JSONRPCDispatchException) as cm:
             await updater.get_firmware_info(slave_id=1, port={"path": "test"})
 
@@ -89,7 +89,7 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         reader_mock.read.side_effect = rpcclient.MQTTRPCError(
             "test msg", MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, "test data"
         )
-        updater = FirmwareUpdater(None, None, None, reader_mock)
+        updater = FirmwareUpdater(AsyncMock(), None, None, reader_mock)
         with self.assertRaises(rpcclient.MQTTRPCError) as cm:
             await updater.get_firmware_info(slave_id=1, port={"path": "test"})
 
@@ -99,7 +99,7 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         reader_mock = AsyncMock()
         reader_mock.read = AsyncMock()
         reader_mock.read.return_value = FirmwareInfo("1", ReleasedFirmware("2", "endpoint"), "sig", True)
-        updater = FirmwareUpdater(None, None, None, reader_mock)
+        updater = FirmwareUpdater(AsyncMock(), None, None, reader_mock)
         res = await updater.get_firmware_info(slave_id=1, port={"path": "test"})
 
         self.assertEqual(res.get("fw"), "1")
