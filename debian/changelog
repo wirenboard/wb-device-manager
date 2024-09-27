@@ -1,4 +1,4 @@
-wb-device-manager (1.11.1) stable; urgency=medium
+wb-device-manager (1.11.2) stable; urgency=medium
 
   * Clear /wb-device-manager/firmware_update/state on start and exit
 
