@@ -82,10 +82,7 @@ def main(args=argv):
         mqtt_connection=mqtt_connection,
         mqtt_url_str=args.broker_url,
         rpc_client=rpc_client,
-        additional_topics_to_clear=[
-            bus_scanner.state_publish_topic,
-            fw_updater.state_publish_topic
-        ],
+        additional_topics_to_clear=[bus_scanner.state_publish_topic, fw_updater.state_publish_topic],
         asyncio_loop=event_loop,
     )
 
