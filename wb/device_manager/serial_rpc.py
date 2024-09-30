@@ -232,8 +232,8 @@ class SerialRPCWrapper:
 
     async def read(
         self,
-        port_config,
-        slave_id,
+        port_config: Union[SerialConfig, TcpConfig],
+        slave_id: int,
         param_config: ParameterConfig,
         response_timeout_s: float = None,
     ):

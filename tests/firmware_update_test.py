@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock
 from jsonrpc.exceptions import JSONRPCDispatchException
 from mqttrpc import client as rpcclient
 
+from wb.device_manager.bus_scan_state import Port
 from wb.device_manager.firmware_update import (
     DeviceUpdateInfo,
     FirmwareInfo,
     FirmwareUpdater,
-    Port,
 )
 from wb.device_manager.fw_downloader import ReleasedFirmware
 from wb.device_manager.mqtt_rpc import MQTTRPCErrorCode
