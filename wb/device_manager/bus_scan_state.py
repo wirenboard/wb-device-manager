@@ -234,10 +234,10 @@ class BusScanStateManager:
         new_state = {
             "scanning": True,
             "progress": 0,
-            "error": None,
         }
         if not preserve_old_results:
             self._found_devices = []
+            new_state["error"] = None
             new_state["devices"] = []
         await self._produce_state_update(new_state)
         self._ports_now_scanning = set()

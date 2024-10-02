@@ -150,6 +150,20 @@ WB_DEVICE_PARAMETERS = {
         write_fn=None,
         data_type=DataType.STR,
     ),
+    "bootloader_signature_full": ParameterConfig(
+        register_address=330,
+        register_count=8,
+        read_fn=ModbusFunctionCode.READ_HOLDING,
+        write_fn=None,
+        data_type=DataType.BYTES,
+    ),
+    "bootloader_signature": ParameterConfig(
+        register_address=330,
+        register_count=7,
+        read_fn=ModbusFunctionCode.READ_HOLDING,
+        write_fn=None,
+        data_type=DataType.STR,
+    ),
 }
 
 

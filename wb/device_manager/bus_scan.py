@@ -9,6 +9,7 @@ from mqttrpc import client as rpcclient
 from wb_modbus import bindings, minimalmodbus
 
 from . import logger, mqtt_rpc, serial_bus
+from .bootloader_scan import BootloaderModeScanner
 from .bus_scan_state import (
     BusScanStateManager,
     DeviceInfo,
@@ -26,6 +27,7 @@ from .bus_scan_state import (
     make_uuid,
 )
 from .serial_bus import fix_sn
+from .serial_rpc import SerialRPCWrapper
 
 
 class BusScanner:
@@ -128,6 +130,7 @@ class BusScanner:
         scan_type = kwargs.get("scan_type")
         preserve_old_results = kwargs.get("preserve_old_results")
         port = kwargs.get("port")
+        out_of_order_slave_ids = kwargs.get("out_of_order_slave_ids", [])
         logger.debug(
             "Start %s bus scanning, preserve old results %s, port %s",
             scan_type,
@@ -136,7 +139,7 @@ class BusScanner:
         )
         self._bus_scanning_task_cancel_condition = ScanCancelCondition()
         self._bus_scanning_task = self.asyncio_loop.create_task(
-            self.scan_serial_bus(scan_type, preserve_old_results, port),
+            self.scan_serial_bus(scan_type, preserve_old_results, port, out_of_order_slave_ids),
             name="Scan serial bus (long running)",
         )
         return "Ok"
@@ -177,7 +180,9 @@ class BusScanner:
 
         return tasks
 
-    async def scan_serial_bus(self, scan_type, preserve_old_results, port_config):
+    async def scan_serial_bus(
+        self, scan_type, preserve_old_results, port_config, out_of_order_slave_ids: list[int]
+    ):
         await self._state_manager.reset(preserve_old_results)
 
         if isinstance(port_config, dict) and "path" in port_config:
@@ -197,6 +202,17 @@ class BusScanner:
             elif scan_type == "standard":
                 await asyncio.gather(
                     *self._create_scan_tasks(ports, is_extended=False), return_exceptions=True
+                )
+            elif scan_type == "bootloader":
+                bootloader_mode_scanner = BootloaderModeScanner(
+                    SerialRPCWrapper(self.rpc_client),
+                    self._state_manager,
+                    self._bus_scanning_task_cancel_condition,
+                    get_all_uart_params,
+                )
+                await asyncio.gather(
+                    *bootloader_mode_scanner.create_scan_tasks(ports, out_of_order_slave_ids),
+                    return_exceptions=True,
                 )
             else:
                 await asyncio.gather(
