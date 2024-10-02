@@ -1,3 +1,9 @@
+wb-device-manager (1.13.0) stable; urgency=medium
+
+  * Add fw-update/Restore RPC for restoring devices in bootloader mode
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Mon, 30 Sep 2024 18:04:09 +0500
+
 wb-device-manager (1.12.0) stable; urgency=medium
 
   * Add searching for devices in bootloader mode

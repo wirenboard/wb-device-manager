@@ -31,6 +31,13 @@ class MQTTRPCErrorCode(Enum):
     RPC_CALL_TIMEOUT = -33000
 
 
+def is_rpc_timeout_error(err: rpcclient.MQTTRPCError) -> bool:
+    return err.code in [
+        MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value,
+        MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value,
+    ]
+
+
 class RPCResultFuture(asyncio.Future):
     """
     an rpc-call-result obj:

@@ -18,7 +18,7 @@ from .bus_scan_state import (
     SerialParams,
     make_uuid,
 )
-from .mqtt_rpc import MQTTRPCErrorCode
+from .mqtt_rpc import is_rpc_timeout_error
 from .serial_rpc import WB_DEVICE_PARAMETERS, SerialConfig, SerialRPCWrapper, TcpConfig
 
 
@@ -42,20 +42,14 @@ async def is_in_bootloader_mode(
     try:
         await serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_signature_full"])
     except rpcclient.MQTTRPCError as err:
-        if err.code in [
-            MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value,
-            MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value,
-        ]:
+        if is_rpc_timeout_error(err):
             return False
         raise
     try:
         await serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_signature"])
         return False
     except rpcclient.MQTTRPCError as err:
-        if err.code in [
-            MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value,
-            MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value,
-        ]:
+        if is_rpc_timeout_error(err):
             return True
         raise
 

@@ -121,7 +121,7 @@ class TestFillSerialParams(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_fill_uart_params(self):
-        self.scanner.get_uart_params = AsyncMock(return_value=[9600, 0, 2])
+        self.scanner.get_uart_params = AsyncMock(return_value=[9600, "N", 2])
         await self.device_manager.fill_serial_params(self.device_info, self.scanner)
         self.assertEqual(self.device_info.cfg.baud_rate, 9600)
         self.assertEqual(self.device_info.cfg.parity, "N")
