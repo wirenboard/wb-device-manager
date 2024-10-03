@@ -14,7 +14,6 @@ from .bus_scan_state import (
     DeviceInfo,
     Port,
     ReadFWSignatureDeviceError,
-    ScanCancelCondition,
     SerialParams,
     make_uuid,
 )
@@ -72,12 +71,10 @@ class BootloaderModeScanner:
         self,
         serial_rpc: SerialRPCWrapper,
         scanner_state: BusScanStateManager,
-        bus_scanning_task_cancel_condition: ScanCancelCondition,
         serial_port_configs_generator,
     ) -> None:
         self._serial_rpc = serial_rpc
         self._scanner_state = scanner_state
-        self._bus_scanning_task_cancel_condition = bus_scanning_task_cancel_condition
         self._serial_port_configs_generator = serial_port_configs_generator
 
     def _fill_serial_params(
@@ -147,8 +144,6 @@ class BootloaderModeScanner:
         logger.debug("Scanning %s for devices in bootloader", debug_str)
         await self._scanner_state.add_scanning_port(debug_str, is_ext_scan=False)
         for slave_id in slave_ids:
-            if self._bus_scanning_task_cancel_condition.should_cancel():
-                return
             await self._do_device_scan(slave_id, port_config)
         await self._scanner_state.remove_scanning_port(debug_str, progress)
 
@@ -162,14 +157,10 @@ class BootloaderModeScanner:
 
         if out_of_order_slave_ids:
             for bd, parity, stopbits, _ in self._serial_port_configs_generator():
-                if self._bus_scanning_task_cancel_condition.should_cancel():
-                    return
                 setup_port_config(bd, parity, stopbits)
                 await self._do_scan_port(port_config, out_of_order_slave_ids)
 
         for bd, parity, stopbits, progress_percent in self._serial_port_configs_generator():
-            if self._bus_scanning_task_cancel_condition.should_cancel():
-                return
             setup_port_config(bd, parity, stopbits)
             await self._do_scan_port(
                 port_config, allowed_modbus_slave_ids(out_of_order_slave_ids), progress_percent
