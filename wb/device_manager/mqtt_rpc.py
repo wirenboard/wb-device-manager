@@ -182,6 +182,7 @@ class MQTTRPCCallTimeoutError(rpcclient.MQTTRPCError):
     def __init__(self, message, code=None, data=""):
         super().__init__(message, code or self.CODE, data)
 
+
 class MQTTRPCRequestTimeoutError(rpcclient.MQTTRPCError):
     def __init__(self, message, data=""):
         super().__init__(message, MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value, data)
