@@ -76,13 +76,11 @@ class WBModbusScanner:
         )
         return sn
 
-    async def scan_bus(self, baudrate=9600, parity="N", stopbits=2, cancel_condition=None):
+    async def scan_bus(self, baudrate=9600, parity="N", stopbits=2):
         uart_params = {"baudrate": baudrate, "parity": parity, "stopbits": stopbits}
         logger.debug("Scanning %s %s", self.port, str(uart_params))
 
         for slaveid in random.sample(range(1, 247), 246):
-            if cancel_condition is not None and cancel_condition.should_cancel():
-                return
             try:
                 sn = await self.get_serial_number(slaveid, uart_params)
                 sn = str(sn)
@@ -238,7 +236,7 @@ class WBExtendedModbusScanner(WBModbusScanner):
                 )
             )
 
-    async def scan_bus(self, baudrate=9600, parity="N", stopbits=2, cancel_condition=None):
+    async def scan_bus(self, baudrate=9600, parity="N", stopbits=2):
         uart_params = {"baudrate": baudrate, "parity": parity, "stopbits": stopbits}
 
         response_timeout = self._get_arbitration_timeout(baudrate)
@@ -249,8 +247,6 @@ class WBExtendedModbusScanner(WBModbusScanner):
             cmd_code=self.extended_modbus_wrapper.CMDS.scan_init, uart_params=uart_params
         )
         while sn_slaveid is not None:
-            if cancel_condition is not None and cancel_condition.should_cancel():
-                return
             slaveid, sn = self._parse_device_data(sn_slaveid)
             logger.info("Got device: %d %s %s", slaveid, sn, str(uart_params))
             self.uart_params_mapping.update(

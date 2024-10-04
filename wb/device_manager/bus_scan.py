@@ -21,7 +21,6 @@ from .bus_scan_state import (
     ReadFWVersionDeviceError,
     ReadSerialParamsDeviceError,
     RPCCallTimeoutStateError,
-    ScanCancelCondition,
     SerialParams,
     get_all_uart_params,
     make_uuid,
@@ -35,7 +34,6 @@ class BusScanner:
         self._rpc_client = rpc_client
         self._asyncio_loop = asyncio_loop
         self._bus_scanning_task = None
-        self._bus_scanning_task_cancel_condition = None
         self._state_manager = BusScanStateManager(mqtt_connection, asyncio_loop)
 
     @property
@@ -135,7 +133,6 @@ class BusScanner:
             preserve_old_results,
             port,
         )
-        self._bus_scanning_task_cancel_condition = ScanCancelCondition()
         self._bus_scanning_task = self.asyncio_loop.create_task(
             self.scan_serial_bus(scan_type, preserve_old_results, port, out_of_order_slave_ids),
             name="Scan serial bus (long running)",
@@ -149,7 +146,6 @@ class BusScanner:
         """
         if self._bus_scanning_task and not self._bus_scanning_task.done():
             logger.debug("Stop bus scanning")
-            self._bus_scanning_task_cancel_condition.request_cancel()
             self._bus_scanning_task.cancel()
             try:
                 await self._bus_scanning_task
@@ -205,7 +201,6 @@ class BusScanner:
                 bootloader_mode_scanner = BootloaderModeScanner(
                     SerialRPCWrapper(self.rpc_client),
                     self._state_manager,
-                    self._bus_scanning_task_cancel_condition,
                     get_all_uart_params,
                 )
                 await asyncio.gather(
@@ -220,7 +215,10 @@ class BusScanner:
                     *self._create_scan_tasks(ports, is_extended=False), return_exceptions=True
                 )
 
+            await self._state_manager.scan_complete()
+        except asyncio.CancelledError:
             await self._state_manager.scan_finished()
+            raise
         except Exception as e:
             logger.exception("Unhandled exception during overall scan %s", e)
             await self._state_manager.scan_finished(GenericStateError())
@@ -238,11 +236,7 @@ class BusScanner:
         await self._state_manager.add_scanning_port(debug_str, is_ext_scan)
 
         try:
-            async for slave_id, sn in scanner.scan_bus(
-                **scan_kwargs, cancel_condition=self._bus_scanning_task_cancel_condition
-            ):
-                if self._bus_scanning_task_cancel_condition.should_cancel():
-                    return
+            async for slave_id, sn in scanner.scan_bus(**scan_kwargs):
                 if self._state_manager.is_device_found(sn):
                     logger.debug("Device %s already scanned; skipping", str(sn))
                     continue
@@ -300,8 +294,6 @@ class BusScanner:
         )
 
         for bd, parity, stopbits, progress_percent in get_all_uart_params(stopbits=allowed_stopbits):
-            if self._bus_scanning_task_cancel_condition.should_cancel():
-                return
             await self.do_scan_port(
                 port,
                 scanner,

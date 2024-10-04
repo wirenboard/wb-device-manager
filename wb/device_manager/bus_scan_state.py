@@ -146,17 +146,6 @@ class ReadSerialParamsDeviceError(GenericStateError):
     MESSAGE = "Failed to read serial params from device."
 
 
-class ScanCancelCondition:
-    def __init__(self):
-        self._bus_scanning_task_cancel_event = asyncio.Event()
-
-    def should_cancel(self):
-        return self._bus_scanning_task_cancel_event.is_set()
-
-    def request_cancel(self):
-        self._bus_scanning_task_cancel_event.set()
-
-
 def get_all_uart_params(bds=BAUDRATES_TO_SCAN, parities=["N", "E", "O"], stopbits=[2, 1]):
     """There are the following assumptions:
     1. Most frequently used baudrates are 9600, 115200, 57600
@@ -223,12 +212,14 @@ class BusScanStateManager:
         self._found_devices.append(sn)
         await self._produce_state_update(device_info)
 
-    async def scan_finished(self, error=None) -> None:
-        if error:
-            await self._produce_state_update({"scanning": False, "progress": 0, "error": error})
-            return
+    async def scan_complete(self) -> None:
+        await self._produce_state_update({"scanning": True, "progress": 100, "scanning_ports": []})
         await self._produce_state_update({"scanning": False, "progress": 0})
-        await self._produce_state_update({"scanning": False, "progress": 100, "scanning_ports": []})
+
+    async def scan_finished(self, error=None) -> None:
+        await self._produce_state_update(
+            {"scanning": False, "progress": 0, "scanning_ports": [], "error": error}
+        )
 
     async def reset(self, preserve_old_results: bool) -> None:
         new_state = {
