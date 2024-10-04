@@ -18,7 +18,7 @@ from .fw_downloader import ReleasedFirmware, download_remote_file, get_released_
 from .mqtt_rpc import (
     MQTTRPCAlreadyProcessingException,
     MQTTRPCErrorCode,
-    is_rpc_timeout_error,
+    MQTTRPCRequestTimeoutError,
 )
 from .releases import parse_releases
 from .serial_bus import fix_sn
@@ -235,11 +235,9 @@ class FirmwareUpdater:
             raise JSONRPCDispatchException(
                 code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message=str(err), data=err.code
             ) from err
-        except rpcclient.MQTTRPCError as err:
+        except MQTTRPCRequestTimeoutError as err:
             logger.error("Can't get firmware info for %s (%s): %s", slave_id, port_config, err)
-            if is_rpc_timeout_error(err):
-                raise JSONRPCDispatchException(code=err.code, message=err.rpc_message, data=err.data) from err
-            raise err
+            raise JSONRPCDispatchException(code=err.code, message=err.rpc_message, data=err.data) from err
         return {
             "fw": fw_info.current,
             "available_fw": fw_info.available.version if fw_info.available is not None else "",
