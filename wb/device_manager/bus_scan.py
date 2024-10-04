@@ -92,11 +92,9 @@ class BusScanner:
         device_info.errors.extend(errors)
 
     async def fill_serial_params(self, device_info, scanner):
-        parities = {0: "N", 1: "O", 2: "E"}
         bd, parity, stopbits = "-", "-", "-"
         try:
             bd, parity, stopbits = await scanner.get_uart_params(device_info.cfg.slave_id, device_info.sn)
-            parity = parities.get(parity, "-")
         except minimalmodbus.ModbusException:
             logger.exception("Failed to read serial params from device")
             device_info.errors.append(ReadSerialParamsDeviceError())

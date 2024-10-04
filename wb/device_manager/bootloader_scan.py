@@ -17,7 +17,7 @@ from .bus_scan_state import (
     SerialParams,
     make_uuid,
 )
-from .mqtt_rpc import MQTTRPCErrorCode
+from .mqtt_rpc import MQTTRPCRequestTimeoutError
 from .serial_rpc import WB_DEVICE_PARAMETERS, SerialConfig, SerialRPCWrapper, TcpConfig
 
 
@@ -40,23 +40,13 @@ async def is_in_bootloader_mode(
     # Bootloader allows to read only full signature, firmware - any number of registers.
     try:
         await serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_signature_full"])
-    except rpcclient.MQTTRPCError as err:
-        if err.code in [
-            MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value,
-            MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value,
-        ]:
-            return False
-        raise
+    except MQTTRPCRequestTimeoutError:
+        return False
     try:
         await serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_signature"])
         return False
-    except rpcclient.MQTTRPCError as err:
-        if err.code in [
-            MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value,
-            MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value,
-        ]:
-            return True
-        raise
+    except MQTTRPCRequestTimeoutError:
+        return True
 
 
 def make_sn_for_device_in_bootloader(slave_id: int, port_config: Union[SerialConfig, TcpConfig]) -> str:

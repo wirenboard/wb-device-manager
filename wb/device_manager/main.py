@@ -75,6 +75,7 @@ def main(args=argv):
         ("fw-update", "GetFirmwareInfo"): fw_updater.get_firmware_info,
         ("fw-update", "Update"): fw_updater.update_firmware,
         ("fw-update", "ClearError"): fw_updater.clear_error,
+        ("fw-update", "Restore"): fw_updater.restore_firmware,
     }
 
     server = mqtt_rpc.AsyncMQTTServer(

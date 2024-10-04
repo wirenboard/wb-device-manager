@@ -14,7 +14,7 @@ from wb.device_manager.firmware_update import (
     FirmwareUpdater,
 )
 from wb.device_manager.fw_downloader import ReleasedFirmware
-from wb.device_manager.mqtt_rpc import MQTTRPCErrorCode
+from wb.device_manager.mqtt_rpc import MQTTRPCErrorCode, MQTTRPCRequestTimeoutError
 from wb.device_manager.serial_rpc import SerialConfig, TcpConfig, WBModbusException
 
 
@@ -62,20 +62,8 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
     async def test_rpc_timeout_exception(self):
         reader_mock = AsyncMock()
         reader_mock.read = AsyncMock()
-        reader_mock.read.side_effect = rpcclient.MQTTRPCError(
-            "test msg", MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value, "test data"
-        )
+        reader_mock.read.side_effect = MQTTRPCRequestTimeoutError("test msg", "test data")
         updater = FirmwareUpdater(AsyncMock(), None, None, reader_mock)
-        with self.assertRaises(JSONRPCDispatchException) as cm:
-            await updater.get_firmware_info(slave_id=1, port={"path": "test"})
-
-        self.assertEqual(cm.exception.error.code, reader_mock.read.side_effect.code)
-        self.assertEqual(cm.exception.error.message, reader_mock.read.side_effect.rpc_message)
-        self.assertEqual(cm.exception.error.data, reader_mock.read.side_effect.data)
-
-        reader_mock.read.side_effect = rpcclient.MQTTRPCError(
-            "test msg2", MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value, "test data2"
-        )
         with self.assertRaises(JSONRPCDispatchException) as cm:
             await updater.get_firmware_info(slave_id=1, port={"path": "test"})
 

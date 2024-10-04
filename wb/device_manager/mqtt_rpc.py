@@ -72,6 +72,10 @@ class SRPCClient(rpcclient.TMQTTRPCClient):
                 message="rpc call to %s/%s/%s -> %.2fs: no answer" % (driver, service, method, timeout),
                 data="rpc call params: %s" % str(params),
             ) from e
+        except rpcclient.MQTTRPCError as e:
+            if e.code == MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value:
+                raise MQTTRPCRequestTimeoutError(e.rpc_message, e.data) from e
+            raise e
 
 
 class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
@@ -177,6 +181,11 @@ class MQTTRPCCallTimeoutError(rpcclient.MQTTRPCError):
 
     def __init__(self, message, code=None, data=""):
         super().__init__(message, code or self.CODE, data)
+
+
+class MQTTRPCRequestTimeoutError(rpcclient.MQTTRPCError):
+    def __init__(self, message, data=""):
+        super().__init__(message, MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value, data)
 
 
 class MQTTRPCAlreadyProcessingError(JSONRPCServerError):
