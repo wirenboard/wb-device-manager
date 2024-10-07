@@ -174,13 +174,20 @@ class BusScanner:
 
         return tasks
 
+    def _get_parsed_ports_from_request(self, port_config: dict) -> ParsedPorts:
+        if "path" not in port_config:
+            return ParsedPorts()
+        if ":" in port_config["path"]:
+            return ParsedPorts(serial=[], tcp=[port_config["path"]])
+        return ParsedPorts(serial=[port_config["path"]], tcp=[])
+
     async def scan_serial_bus(
         self, scan_type, preserve_old_results, port_config, out_of_order_slave_ids: list[int]
     ):
         await self._state_manager.reset(preserve_old_results)
 
-        if isinstance(port_config, dict) and "path" in port_config:
-            ports = ParsedPorts(serial=[port_config["path"]], tcp=[])
+        if isinstance(port_config, dict):
+            ports = self._get_parsed_ports_from_request(port_config)
         else:
             try:
                 ports = await self.get_ports()
