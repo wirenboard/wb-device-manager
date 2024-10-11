@@ -17,3 +17,5 @@ coverage.xml
 ### cache ###
 .pytest_cache
 __pycache__
+
+.config

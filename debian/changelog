@@ -1,3 +1,9 @@
+wb-device-manager (1.14.0) stable; urgency=medium
+
+  * Allow update bootloader with fw-update/Update RPC
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Tue, 08 Oct 2024 11:28:58 +0500
+
 wb-device-manager (1.13.1) stable; urgency=medium
 
   * Fix scanning through TCP gateways

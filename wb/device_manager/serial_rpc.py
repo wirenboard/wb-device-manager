@@ -5,6 +5,10 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Union
 
+from mqttrpc import client as rpcclient
+
+from .mqtt_rpc import MQTTRPCErrorCode, SRPCClient
+
 
 class ModbusExceptionCode(Enum):
     ILLEGAL_FUNCTION = 1
@@ -19,12 +23,30 @@ class ModbusExceptionCode(Enum):
     GATEWAY_TARGET_DEVICE_FAILED_TO_RESPOND = 11
 
 
-class WBModbusException(Exception):
+class SerialExceptionBase(Exception):
+    pass
+
+
+class WBModbusException(SerialExceptionBase):
     code: int
 
     def __init__(self, message: str, code: int) -> None:
         super().__init__(message)
         self.code = code
+
+
+class SerialCommunicationException(SerialExceptionBase):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class SerialTimeoutException(SerialCommunicationException):
+    pass
+
+
+class ForbiddenOperationException(SerialExceptionBase):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
 
 
 @dataclass
@@ -97,12 +119,6 @@ WB_DEVICE_PARAMETERS = {
         write_fn=None,
         data_type=DataType.STR,
     ),
-    "bootloader_version": ParameterConfig(
-        register_address=300,
-        register_count=8,
-        read_fn=ModbusFunctionCode.READ_HOLDING,
-        data_type=DataType.STR,
-    ),
     "reboot_to_bootloader_preserve_port_settings": ParameterConfig(
         register_address=131,
     ),
@@ -150,14 +166,14 @@ WB_DEVICE_PARAMETERS = {
         write_fn=None,
         data_type=DataType.STR,
     ),
-    "bootloader_signature_full": ParameterConfig(
+    "bootloader_version_full": ParameterConfig(
         register_address=330,
         register_count=8,
         read_fn=ModbusFunctionCode.READ_HOLDING,
         write_fn=None,
         data_type=DataType.BYTES,
     ),
-    "bootloader_signature": ParameterConfig(
+    "bootloader_version": ParameterConfig(
         register_address=330,
         register_count=7,
         read_fn=ModbusFunctionCode.READ_HOLDING,
@@ -174,12 +190,12 @@ def value_to_bytes(register_data_type: DataType, value: Union[int, bytes]) -> by
     if register_data_type == DataType.UINT and isinstance(value, int):
         return value.to_bytes(2, byteorder="big")
 
-    raise ValueError(
-        "Can't write value of type %s to parameter of type %s" % type(value), register_data_type.name
+    raise ForbiddenOperationException(
+        f"Can't write value of type {type(value)} to parameter of type {register_data_type.name}"
     )
 
 
-def add_port_config_to_rpc_request(rpc_request, port_config):
+def add_port_config_to_rpc_request(rpc_request: dict, port_config: Union[SerialConfig, TcpConfig]) -> None:
     if isinstance(port_config, SerialConfig):
         rpc_request.update(asdict(port_config))
     else:
@@ -189,7 +205,7 @@ def add_port_config_to_rpc_request(rpc_request, port_config):
 
 class SerialRPCWrapper:
 
-    def __init__(self, rpc_client):
+    def __init__(self, rpc_client: SRPCClient) -> None:
         self.rpc_client = rpc_client
 
     def _calculate_default_response_timeout(self) -> float:
@@ -231,13 +247,21 @@ class SerialRPCWrapper:
             rpc_request["format"] = "HEX"
             rpc_request["msg"] = data.hex()
 
-        response = await self.rpc_client.make_rpc_call(
-            driver="wb-mqtt-serial",
-            service="port",
-            method="Load",
-            params=rpc_request,
-            timeout=rpc_call_timeout_ms / 1000,
-        )
+        try:
+            response = await self.rpc_client.make_rpc_call(
+                driver="wb-mqtt-serial",
+                service="port",
+                method="Load",
+                params=rpc_request,
+                timeout=rpc_call_timeout_ms / 1000,
+            )
+        except rpcclient.MQTTRPCError as err:
+            if err.code in [
+                MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value,
+                MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value,
+            ]:
+                raise SerialTimeoutException(str(err)) from err
+            raise SerialCommunicationException(str(err)) from err
 
         if "exception" in response:
             raise WBModbusException(response["exception"]["msg"], response["exception"]["code"])
@@ -250,9 +274,9 @@ class SerialRPCWrapper:
         slave_id: int,
         param_config: ParameterConfig,
         response_timeout_s: float = None,
-    ):
+    ) -> Union[str, int, bytes]:
         if param_config.read_fn is None:
-            raise ValueError("Register %d is not readable" % param_config.register_address)
+            raise ForbiddenOperationException("Register %d is not readable" % param_config.register_address)
 
         response = await self._communicate(
             port_config,
@@ -278,7 +302,7 @@ class SerialRPCWrapper:
         response_timeout_s: float = None,
     ) -> None:
         if param_config.write_fn is None:
-            raise ValueError("Register %d is not writable" % param_config.register_address)
+            raise ForbiddenOperationException("Register %d is not writable" % param_config.register_address)
 
         data = value_to_bytes(param_config.data_type, value)
 

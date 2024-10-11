@@ -6,8 +6,6 @@ import random
 import time
 from typing import Iterator, Optional, Union
 
-from mqttrpc import client as rpcclient
-
 from . import logger
 from .bus_scan_state import (
     BusScanStateManager,
@@ -17,8 +15,14 @@ from .bus_scan_state import (
     SerialParams,
     make_uuid,
 )
-from .mqtt_rpc import MQTTRPCRequestTimeoutError
-from .serial_rpc import WB_DEVICE_PARAMETERS, SerialConfig, SerialRPCWrapper, TcpConfig
+from .serial_rpc import (
+    WB_DEVICE_PARAMETERS,
+    SerialConfig,
+    SerialExceptionBase,
+    SerialRPCWrapper,
+    SerialTimeoutException,
+    TcpConfig,
+)
 
 
 def allowed_modbus_slave_ids(forbidden_ids: list[int]) -> Iterator[int]:
@@ -37,15 +41,15 @@ def partially_ordered_slave_ids(out_of_order_slave_ids: list[int]) -> Iterator[i
 async def is_in_bootloader_mode(
     slave_id: int, serial_rpc: SerialRPCWrapper, port_config: Union[SerialConfig, TcpConfig]
 ) -> bool:
-    # Bootloader allows to read only full signature, firmware - any number of registers.
+    # Bootloader allows to read only full version, firmware - any number of registers.
     try:
-        await serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_signature_full"])
-    except MQTTRPCRequestTimeoutError:
+        await serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_version_full"])
+    except SerialTimeoutException:
         return False
     try:
-        await serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_signature"])
+        await serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_version"])
         return False
-    except MQTTRPCRequestTimeoutError:
+    except SerialTimeoutException:
         return True
 
 
@@ -85,7 +89,7 @@ class BootloaderModeScanner:
                 port_config, slave_id, WB_DEVICE_PARAMETERS["fw_signature"]
             )
             device_info.title = device_info.fw_signature
-        except Exception as e:
+        except SerialExceptionBase as e:
             logger.debug("Read device model failed: %s", e)
             errors.append(ReadFWSignatureDeviceError())
         device_info.errors.extend(errors)
@@ -113,15 +117,12 @@ class BootloaderModeScanner:
                 await self._fill_device_info(device_info, port_config, slave_id)
 
                 await self._scanner_state.found_device(sn, device_info)
+        except SerialExceptionBase as err:
+            logger.debug("Error during device %d in bootloader scan %s: %s", slave_id, debug_str, err)
         except Exception as err:
-            if isinstance(err, rpcclient.MQTTRPCError):
-                logger.error(
-                    "MQTT RPC error during device %d in bootloader scan %s: %s", slave_id, debug_str, err
-                )
-            else:
-                logger.exception(
-                    "Unhandled exception during device %d in bootloader scan %s", slave_id, debug_str
-                )
+            logger.exception(
+                "Unhandled exception during device %d in bootloader scan %s: %s", slave_id, debug_str, err
+            )
             await self._scanner_state.add_error_port(debug_str)
 
     async def _do_scan_port(
