@@ -177,7 +177,7 @@ class UpdateNotifier:
         self.notification_step = max(100 / notifications_count, 1)
 
     def should_notify(self, progress_percent: int) -> bool:
-        if progress_percent == 100:
+        if progress_percent >= 100:
             return True
         current_step = int(progress_percent / self.notification_step)
         if current_step > self.step:
