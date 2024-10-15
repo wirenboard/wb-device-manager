@@ -5,7 +5,7 @@ import asyncio
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Union
+from typing import Optional, Union
 
 from jsonrpc.exceptions import JSONRPCDispatchException
 
@@ -40,7 +40,7 @@ class SoftwareType(Enum):
 
 @dataclass
 class StateError:
-    message: str = None
+    message: Optional[str] = None
 
 
 @dataclass
@@ -48,8 +48,8 @@ class DeviceUpdateInfo:
     port: Port
     slave_id: int
     progress: int = 0
-    from_version: str = None
-    to_version: str = None
+    from_version: Optional[str] = None
+    to_version: str
     type: SoftwareType = SoftwareType.FIRMWARE
     error: StateError = field(default_factory=StateError)
 
@@ -122,7 +122,7 @@ def to_dict_for_json(device_update_info: DeviceUpdateInfo) -> dict:
 @dataclass
 class SoftwareComponent:
     type: SoftwareType = SoftwareType.FIRMWARE
-    current_version: str = None
+    current_version: Optional[str] = None
     available: ReleasedBinary = None
 
 
@@ -136,7 +136,7 @@ class BootloaderInfo(SoftwareComponent):
 
 @dataclass
 class FirmwareInfo(SoftwareComponent):
-    signature: str = None
+    signature: str
     bootloader: BootloaderInfo = field(default_factory=BootloaderInfo)
 
     def __post_init__(self):
