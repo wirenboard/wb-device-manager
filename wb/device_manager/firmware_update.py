@@ -15,14 +15,20 @@ from .bus_scan_state import Port
 from .fw_downloader import (
     BinaryDownloader,
     ReleasedBinary,
-    RemoteFileReadingError,
+    WBRemoteStorageError,
     get_bootloader_info,
     get_released_fw,
 )
 from .mqtt_rpc import MQTTRPCAlreadyProcessingException, MQTTRPCErrorCode
 from .releases import parse_releases
-from .serial_bus import fix_sn
+from .serial_bus import (
+    fix_sn,
+    get_baud_rate_from_register_value,
+    get_parity_from_register_value,
+)
 from .serial_rpc import (
+    DEFAULT_BAUD_RATE,
+    DEFAULT_PARITY,
     WB_DEVICE_PARAMETERS,
     ParameterConfig,
     SerialConfig,
@@ -209,7 +215,7 @@ class FirmwareInfoReader:
                 port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_version"]
             )
             res.available = get_bootloader_info(fw_signature, self._downloader)
-        except (SerialExceptionBase, RemoteFileReadingError) as err:
+        except (SerialExceptionBase, WBRemoteStorageError) as err:
             logger.debug("Can't get bootloader information for %d %s: %s", slave_id, port_config, err)
         return res
 
@@ -334,31 +340,17 @@ async def update_software(
     binary_downloader: BinaryDownloader,
     bootloader_can_preserve_port_settings: bool = False,
 ) -> bool:
-    device_model = ""
-    sn = 0
+    update_state_notifier.set_progress(0)
+    device_model = await read_device_model(serial_device)
+    sn = await read_sn(serial_device, device_model)
     try:
-        update_state_notifier.set_progress(0)
-        device_model = await read_device_model(serial_device)
-        sn = await read_sn(serial_device, device_model)
-
         await reboot_to_bootloader(serial_device, bootloader_can_preserve_port_settings)
         await flash_fw(
             serial_device,
             parse_wbfw(binary_downloader.download_file(software.available.endpoint)),
             update_state_notifier,
         )
-
-        logger.info(
-            "%s (sn: %d, %s) %s update from %s to %s completed",
-            device_model,
-            sn,
-            serial_device.description,
-            software.type.value,
-            software.current_version,
-            software.available.version,
-        )
-        return True
-    except Exception as e:
+    except (WBRemoteStorageError, SerialExceptionBase) as e:
         logger.error(
             "%s (sn: %d, %s) %s update from %s to %s failed: %s",
             device_model,
@@ -371,6 +363,16 @@ async def update_software(
         )
         update_state_notifier.set_error(str(e))
         return False
+    logger.info(
+        "%s (sn: %d, %s) %s update from %s to %s completed",
+        device_model,
+        sn,
+        serial_device.description,
+        software.type.value,
+        software.current_version,
+        software.available.version,
+    )
+    return True
 
 
 async def restore_firmware(
@@ -379,18 +381,19 @@ async def restore_firmware(
     firmware: ReleasedBinary,
     binary_downloader: BinaryDownloader,
 ) -> None:
+    update_state_notifier.set_progress(0)
     try:
-        update_state_notifier.set_progress(0)
         await flash_fw(
             serial_device,
             parse_wbfw(binary_downloader.download_file(firmware.endpoint)),
             update_state_notifier,
         )
-        update_state_notifier.delete()
-        logger.info("Firmware of device %s is restored to %s", serial_device.description, firmware.version)
-    except Exception as e:
+    except (WBRemoteStorageError, SerialExceptionBase) as e:
         logger.error("Firmware restore of %s failed: %s", serial_device.description, e)
         update_state_notifier.set_error(str(e))
+        return
+    update_state_notifier.delete()
+    logger.info("Firmware of device %s is restored to %s", serial_device.description, firmware.version)
 
 
 async def read_device_model(serial_device: SerialDevice) -> str:
@@ -398,10 +401,12 @@ async def read_device_model(serial_device: SerialDevice) -> str:
         return await serial_device.read(WB_DEVICE_PARAMETERS["device_model_extended"])
     except SerialExceptionBase as err:
         logger.debug("Can't read extended device model: %s", err)
-        try:
-            return await serial_device.read(WB_DEVICE_PARAMETERS["device_model"])
-        except SerialExceptionBase as err2:
-            logger.debug("Can't read device model: %s", err2)
+
+    # Old devices have only standard model registers, try to read them
+    try:
+        return await serial_device.read(WB_DEVICE_PARAMETERS["device_model"])
+    except SerialExceptionBase as err2:
+        logger.debug("Can't read device model: %s", err2)
     return ""
 
 
@@ -439,9 +444,13 @@ class FirmwareUpdater:
             return True
 
         if isinstance(port_config, TcpConfig):
-            baud_rate = await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["baud_rate"])
-            parity = await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["parity"])
-            if baud_rate != 96 or parity != 0:
+            baud_rate = get_baud_rate_from_register_value(
+                await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["baud_rate"])
+            )
+            parity = get_parity_from_register_value(
+                await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["parity"])
+            )
+            if baud_rate != DEFAULT_BAUD_RATE or parity != DEFAULT_PARITY:
                 return False
         return True
 
