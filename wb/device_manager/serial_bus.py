@@ -36,6 +36,10 @@ def get_parity_from_register_value(value: int) -> str:
     return {0: "N", 1: "O", 2: "E"}.get(value, "-")
 
 
+def get_baud_rate_from_register_value(value: int) -> int:
+    return value * 100
+
+
 class WBModbusScanner:
     def __init__(self, port, rpc_client):
         self.port = port
@@ -116,7 +120,7 @@ class WBModbusScannerTCP(WBModbusScanner):
 
     async def get_uart_params(self, slaveid, sn):
         bd, parity, stopbits = await self.get_mb_connection(slaveid, self.port).read_u16_regs(110, 3)
-        return bd * 100, get_parity_from_register_value(parity), stopbits
+        return get_baud_rate_from_register_value(bd), get_parity_from_register_value(parity), stopbits
 
 
 class WBExtendedModbusWrapper:
@@ -267,7 +271,7 @@ class WBExtendedModbusScannerTCP(WBExtendedModbusScanner):
     async def get_uart_params(self, slaveid, sn):
         slaveid = int(sn)  # wb-extended modbus
         bd, parity, stopbits = await self.get_mb_connection(slaveid, self.port).read_u16_regs(110, 3)
-        return bd * 100, get_parity_from_register_value(parity), stopbits
+        return get_baud_rate_from_register_value(bd), get_parity_from_register_value(parity), stopbits
 
 
 class WBAsyncModbus:
