@@ -69,7 +69,7 @@ def main(args=argv):
 
     bus_scanner = BusScanner(mqtt_connection, rpc_client, event_loop)
     serial_rpc = SerialRPCWrapper(rpc_client)
-    httplib = httplib2.Http("/tmp/wb-device-manager/cache")
+    httplib = httplib2.Http("/tmp/wb-device-manager/cache", timeout=10)
     binary_downloader = BinaryDownloader(httplib)
     firmware_info_reader = FirmwareInfoReader(serial_rpc, binary_downloader)
     fw_updater = FirmwareUpdater(
