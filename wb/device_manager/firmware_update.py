@@ -53,9 +53,9 @@ class StateError:
 class DeviceUpdateInfo:
     port: Port
     slave_id: int
+    to_version: str
     progress: int = 0
     from_version: Optional[str] = None
-    to_version: str
     type: SoftwareType = SoftwareType.FIRMWARE
     error: StateError = field(default_factory=StateError)
 
@@ -140,7 +140,7 @@ class BootloaderInfo(SoftwareComponent):
 
 @dataclass
 class FirmwareInfo(SoftwareComponent):
-    signature: str
+    signature: str = ""
     type: SoftwareType = SoftwareType.FIRMWARE
     bootloader: BootloaderInfo = field(default_factory=BootloaderInfo)
 
@@ -351,6 +351,7 @@ async def update_software(
             update_state_notifier,
         )
     except (WBRemoteStorageError, SerialExceptionBase) as e:
+        update_state_notifier.set_error(str(e))
         logger.error(
             "%s (sn: %d, %s) %s update from %s to %s failed: %s",
             device_model,
@@ -361,7 +362,6 @@ async def update_software(
             software.available.version,
             e,
         )
-        update_state_notifier.set_error(str(e))
         return False
     logger.info(
         "%s (sn: %d, %s) %s update from %s to %s completed",
@@ -389,8 +389,8 @@ async def restore_firmware(
             update_state_notifier,
         )
     except (WBRemoteStorageError, SerialExceptionBase) as e:
-        logger.error("Firmware restore of %s failed: %s", serial_device.description, e)
         update_state_notifier.set_error(str(e))
+        logger.error("Firmware restore of %s failed: %s", serial_device.description, e)
         return
     update_state_notifier.delete()
     logger.info("Firmware of device %s is restored to %s", serial_device.description, firmware.version)

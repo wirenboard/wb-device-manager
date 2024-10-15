@@ -51,10 +51,10 @@ class PortTest(unittest.TestCase):
 
 class DeviceUpdateInfoTest(unittest.TestCase):
     def test_eq(self):
-        d1 = DeviceUpdateInfo(port=Port("test"), slave_id=1)
-        d2 = DeviceUpdateInfo(port=Port("test"), slave_id=1)
-        d3 = DeviceUpdateInfo(port=Port("test"), slave_id=2)
-        d4 = DeviceUpdateInfo(port=Port("test1"), slave_id=1)
+        d1 = DeviceUpdateInfo(port=Port("test"), slave_id=1, to_version="1")
+        d2 = DeviceUpdateInfo(port=Port("test"), slave_id=1, to_version="1")
+        d3 = DeviceUpdateInfo(port=Port("test"), slave_id=2, to_version="1")
+        d4 = DeviceUpdateInfo(port=Port("test1"), slave_id=1, to_version="1")
         self.assertEqual(d1, d2)
         self.assertNotEqual(d1, d3)
         self.assertNotEqual(d1, d4)
@@ -229,7 +229,6 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
         mock.download_file.return_value = self.fw_data
         mock.set_progress = Mock()
         mock.delete = Mock()
-        mock.get_description = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw):
             await restore_firmware(mock, mock, fw, mock)
@@ -238,10 +237,9 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
                 call.download_file(fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
                 call.delete(),
-                call.get_description(),
             ]
             mock.assert_has_calls(expected_calls, False)
-            self.assertEqual(len(mock.mock_calls), len(expected_calls))
+            self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))
 
     async def test_exception(self):
         mock = AsyncMock()
@@ -249,7 +247,6 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
         mock.download_file.return_value = self.fw_data
         mock.set_progress = Mock()
         mock.set_error = Mock()
-        mock.get_description = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw):
             mock.flash_fw.side_effect = SerialTimeoutException("ex")
@@ -258,11 +255,10 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
                 call.set_progress(0),
                 call.download_file(fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
-                call.get_description(),
                 call.set_error("ex"),
             ]
             mock.assert_has_calls(expected_calls, False)
-            self.assertEqual(len(mock.mock_calls), len(expected_calls))
+            self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))
 
 
 class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
@@ -280,7 +276,6 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.download_file.return_value = self.fw_data
         mock.set_progress = Mock()
         mock.delete = Mock()
-        mock.get_description = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         sw = SoftwareComponent(available=fw)
         with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
@@ -294,10 +289,9 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
                 call.reboot_to_bootloader(mock, True),
                 call.download_file(fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
-                call.get_description(),
             ]
             mock.assert_has_calls(expected_calls, False)
-            self.assertEqual(len(mock.mock_calls), len(expected_calls))
+            self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))
 
     async def test_exception(self):
         mock = AsyncMock()
@@ -306,7 +300,6 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.set_progress = Mock()
         mock.set_error = Mock()
         mock.delete = Mock()
-        mock.get_description = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         sw = SoftwareComponent(available=fw)
         with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
@@ -321,11 +314,10 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
                 call.reboot_to_bootloader(mock, True),
                 call.download_file(fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
-                call.get_description(),
                 call.set_error("ex"),
             ]
             mock.assert_has_calls(expected_calls, False)
-            self.assertEqual(len(mock.mock_calls), len(expected_calls))
+            self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))
 
 
 class TestParseWbfw(unittest.TestCase):
