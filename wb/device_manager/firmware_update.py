@@ -158,7 +158,8 @@ def parse_wbfw(data: bytes) -> ParsedWBFW:
     )
     if len(res.info) != info_block_length:
         raise ValueError(
-            f"Info block size should be {info_block_length} bytes! Got {len(res.info)}\nRaw: {res.info}"
+            "Info block size should be %d bytes! Got %d\nRaw: %s"
+            % (info_block_length, len(res.info), res.info)
         )
 
     return res
