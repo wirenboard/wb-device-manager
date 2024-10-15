@@ -49,19 +49,25 @@ class ForbiddenOperationException(SerialExceptionBase):
         super().__init__(message)
 
 
+DEFAULT_BAUD_RATE = 9600
+DEFAULT_PARITY = "N"
+DEFAULT_DATA_BITS = 8
+DEFAULT_STOP_BITS = 2
+
+
 @dataclass
 class SerialConfig:
     path: str
-    baud_rate: int = 9600
-    parity: str = "N"
-    data_bits: int = 8
-    stop_bits: int = 2
+    baud_rate: int = DEFAULT_BAUD_RATE
+    parity: str = DEFAULT_PARITY
+    data_bits: int = DEFAULT_DATA_BITS
+    stop_bits: int = DEFAULT_STOP_BITS
 
     def set_default_settings(self) -> None:
-        self.baud_rate = 9600
-        self.parity = "N"
-        self.data_bits = 8
-        self.stop_bits = 2
+        self.baud_rate = DEFAULT_BAUD_RATE
+        self.parity = DEFAULT_PARITY
+        self.data_bits = DEFAULT_DATA_BITS
+        self.stop_bits = DEFAULT_STOP_BITS
 
     def __str__(self) -> str:
         return f"{self.path} {self.baud_rate} {self.data_bits}{self.parity}{self.stop_bits}"
