@@ -129,18 +129,14 @@ class SoftwareComponent:
 @dataclass
 class BootloaderInfo(SoftwareComponent):
     can_preserve_port_settings: bool = False
-
-    def __post_init__(self):
-        self.type = SoftwareType.BOOTLOADER
+    type: SoftwareType = SoftwareType.BOOTLOADER
 
 
 @dataclass
 class FirmwareInfo(SoftwareComponent):
     signature: str
+    type: SoftwareType = SoftwareType.FIRMWARE
     bootloader: BootloaderInfo = field(default_factory=BootloaderInfo)
-
-    def __post_init__(self):
-        self.type = SoftwareType.FIRMWARE
 
 
 @dataclass
