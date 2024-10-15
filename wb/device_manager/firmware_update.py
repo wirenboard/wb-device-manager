@@ -239,6 +239,7 @@ class SerialDevice:
         self._serial_rpc = serial_rpc
         self._port_config = port_config
         self._slave_id = slave_id
+        self._description = f"slave id: {self._slave_id}, {self._port_config}"
 
     async def write(
         self, param_config: ParameterConfig, value: Union[int, bytes], response_timeout_s: float = None
@@ -254,8 +255,9 @@ class SerialDevice:
         if isinstance(self._port_config, SerialConfig):
             self._port_config.set_default_settings()
 
-    def get_description(self) -> str:
-        return f"slave id: {self._slave_id}, {self._port_config}"
+    @property
+    def description(self) -> str:
+        return self._description
 
 
 class UpdateStateNotifier:
@@ -350,7 +352,7 @@ async def update_software(
             "%s (sn: %d, %s) %s update from %s to %s completed",
             device_model,
             sn,
-            serial_device.get_description(),
+            serial_device.description,
             software.type.value,
             software.current_version,
             software.available.version,
@@ -361,7 +363,7 @@ async def update_software(
             "%s (sn: %d, %s) %s update from %s to %s failed: %s",
             device_model,
             sn,
-            serial_device.get_description(),
+            serial_device.description,
             software.type.value,
             software.current_version,
             software.available.version,
@@ -385,11 +387,9 @@ async def restore_firmware(
             update_state_notifier,
         )
         update_state_notifier.delete()
-        logger.info(
-            "Firmware of device %s is restored to %s", serial_device.get_description(), firmware.version
-        )
+        logger.info("Firmware of device %s is restored to %s", serial_device.description, firmware.version)
     except Exception as e:
-        logger.error("Firmware restore of %s failed: %s", serial_device.get_description(), e)
+        logger.error("Firmware restore of %s failed: %s", serial_device.description, e)
         update_state_notifier.set_error(str(e))
 
 
