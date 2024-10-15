@@ -15,6 +15,10 @@ class WBRemoteStorageError(Exception):
     pass
 
 
+class RemoteFileDownloadingError(WBRemoteStorageError):
+    pass
+
+
 class RemoteFileReadingError(WBRemoteStorageError):
     pass
 
@@ -39,15 +43,18 @@ class BinaryDownloader:
     def read_text_file(self, url: str) -> str:
         try:
             content = self.download_file(url).decode("utf-8").strip()
-        except httplib2.HttpLib2Error as err:
+        except UnicodeDecodeError as err:
             raise RemoteFileReadingError(f"Failed to read {url}: {err}") from err
         if content:
             return content
         raise RemoteFileReadingError(f"{url} is empty!")
 
     def download_file(self, url: str) -> bytes:
-        (_headers, content) = self._http.request(url, "GET")
-        return content
+        try:
+            (_headers, content) = self._http.request(url, "GET")
+            return content
+        except httplib2.HttpLib2Error as err:
+            raise RemoteFileDownloadingError(f"Failed to download {url}: {err}") from err
 
 
 def get_released_fw(
