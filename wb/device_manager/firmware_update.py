@@ -152,7 +152,10 @@ def parse_wbfw(data: bytes) -> ParsedWBFW:
     if bs % 2:
         raise ValueError(f"Fw file should be even-bytes long! Got {bs}b")
 
-    res = ParsedWBFW(data[:info_block_length], data[info_block_length:])
+    res = ParsedWBFW(
+        info=data[:info_block_length],
+        data=data[info_block_length:],
+    )
     if len(res.info) != info_block_length:
         raise ValueError(
             f"Info block size should be {info_block_length} bytes! Got {len(res.info)}\nRaw: {res.info}"
