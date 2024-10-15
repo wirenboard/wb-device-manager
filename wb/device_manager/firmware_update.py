@@ -176,10 +176,8 @@ def read_port_config(port: dict) -> Union[SerialConfig, TcpConfig]:
 
 
 class UpdateNotifier:
-    step: int = -1
-    notification_step: int = 1
-
     def __init__(self, notifications_count: int):
+        self.step = -1
         self.notification_step = max(100 / notifications_count, 1)
 
     def should_notify(self, progress_percent: int) -> bool:
