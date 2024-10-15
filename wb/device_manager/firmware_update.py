@@ -238,13 +238,13 @@ class FirmwareInfoReader:
         return res
 
 
+@dataclass
 class SerialDevice:
-    def __init__(
-        self, serial_rpc: SerialRPCWrapper, port_config: Union[SerialConfig, TcpConfig], slave_id: int
-    ) -> None:
-        self._serial_rpc = serial_rpc
-        self._port_config = port_config
-        self._slave_id = slave_id
+    _serial_rpc: SerialRPCWrapper
+    _port_config: Union[SerialConfig, TcpConfig]
+    _slave_id: int
+
+    def __post_init__(self) -> None:
         self._description = f"slave id: {self._slave_id}, {self._port_config}"
 
     async def write(
@@ -266,11 +266,11 @@ class SerialDevice:
         return self._description
 
 
+@dataclass
 class UpdateStateNotifier:
-    def __init__(self, device_update_info: DeviceUpdateInfo, update_state: UpdateState) -> None:
-        self._device_update_info = device_update_info
-        self._update_notifier = UpdateNotifier(30)
-        self._update_state = update_state
+    _device_update_info: DeviceUpdateInfo
+    _update_state: UpdateState
+    _update_notifier: UpdateNotifier = field(default_factory=lambda: UpdateNotifier(30))
 
     def set_progress(self, progress: int) -> None:
         self._device_update_info.progress = progress
