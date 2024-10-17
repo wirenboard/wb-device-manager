@@ -6,6 +6,7 @@ import logging
 from argparse import ArgumentParser
 from sys import argv, stderr, stdout
 
+import httplib2
 from mqttrpc import Dispatcher
 from wb_common.mqtt_client import DEFAULT_BROKER_URL, MQTTClient
 from wb_modbus import logger as mb_logger
@@ -13,6 +14,7 @@ from wb_modbus import logger as mb_logger
 from . import logger, mqtt_rpc
 from .bus_scan import BusScanner
 from .firmware_update import FirmwareInfoReader, FirmwareUpdater
+from .fw_downloader import BinaryDownloader
 from .serial_rpc import SerialRPCWrapper
 
 EXIT_INVALIDARGUMENT = 2
@@ -67,13 +69,18 @@ def main(args=argv):
 
     bus_scanner = BusScanner(mqtt_connection, rpc_client, event_loop)
     serial_rpc = SerialRPCWrapper(rpc_client)
-    fw_updater = FirmwareUpdater(mqtt_connection, serial_rpc, event_loop, FirmwareInfoReader(serial_rpc))
+    httplib = httplib2.Http("/tmp/wb-device-manager/cache", timeout=10)
+    binary_downloader = BinaryDownloader(httplib)
+    firmware_info_reader = FirmwareInfoReader(serial_rpc, binary_downloader)
+    fw_updater = FirmwareUpdater(
+        mqtt_connection, serial_rpc, event_loop, firmware_info_reader, binary_downloader
+    )
 
     async_callables_mapping = {
         ("bus-scan", "Start"): bus_scanner.launch_bus_scan,
         ("bus-scan", "Stop"): bus_scanner.stop_bus_scan,
         ("fw-update", "GetFirmwareInfo"): fw_updater.get_firmware_info,
-        ("fw-update", "Update"): fw_updater.update_firmware,
+        ("fw-update", "Update"): fw_updater.update_software,
         ("fw-update", "ClearError"): fw_updater.clear_error,
         ("fw-update", "Restore"): fw_updater.restore_firmware,
     }

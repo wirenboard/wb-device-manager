@@ -30,10 +30,6 @@ def parse_releases(fname: str) -> dict:
         return ret
 
 
-def get_release_file_url() -> str:
-    return "http://fw-releases.wirenboard.com/fw/by-signature/release-versions.yaml"
-
-
 def parse_fw_version(endpoint_url: str) -> str:
     """
     Parsing fw version from endpoint url, stored in releases file
