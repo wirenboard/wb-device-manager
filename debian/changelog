@@ -1,3 +1,9 @@
+wb-device-manager (1.14.1) stable; urgency=medium
+
+  * Improve exception logging during update
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Tue, 22 Oct 2024 10:27:37 +0500
+
 wb-device-manager (1.14.0) stable; urgency=medium
 
   * Allow update bootloader with fw-update/Update RPC
