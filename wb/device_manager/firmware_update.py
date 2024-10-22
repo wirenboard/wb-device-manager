@@ -495,6 +495,12 @@ class FirmwareUpdater:
                 return False
         return True
 
+    async def _catch_all_exceptions(self, task, message):
+        try:
+            await task
+        except Exception as e:
+            logger.exception("%s: %s", message, e)
+
     async def get_firmware_info(self, **kwargs) -> dict:
         """
         MQTT RPC handler. Retrieves firmware information for a device.
@@ -565,12 +571,18 @@ class FirmwareUpdater:
             raise ValueError("Can't update firmware over TCP")
         if software_type == SoftwareType.BOOTLOADER:
             self._update_software_task = self._asyncio_loop.create_task(
-                self._update_bootloader(slave_id, port_config, fw_info),
+                self._catch_all_exceptions(
+                    self._update_bootloader(slave_id, port_config, fw_info),
+                    "Bootloader update failed",
+                ),
                 name="Update bootloader (long running)",
             )
         else:
             self._update_software_task = self._asyncio_loop.create_task(
-                self._update_firmware(slave_id, port_config, fw_info),
+                self._catch_all_exceptions(
+                    self._update_firmware(slave_id, port_config, fw_info),
+                    "Firmware update failed",
+                ),
                 name="Update firmware (long running)",
             )
         return "Ok"
@@ -621,7 +633,10 @@ class FirmwareUpdater:
             return "Ok"
         fw_info = await self._fw_info_reader.read(port_config, slave_id, True)
         self._update_software_task = self._asyncio_loop.create_task(
-            self._restore_firmware(slave_id, port_config, fw_info),
+            self._catch_all_exceptions(
+                self._restore_firmware(slave_id, port_config, fw_info),
+                "Firmware restore failed",
+            ),
             name="Restore firmware (long running)",
         )
         return "Ok"
@@ -654,7 +669,7 @@ class FirmwareUpdater:
         if await update_software(
             serial_device,
             update_notifier,
-            fw_info.available,
+            fw_info,
             self._binary_downloader,
             fw_info.bootloader.can_preserve_port_settings,
         ):
