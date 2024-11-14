@@ -372,7 +372,7 @@ async def update_software(
     """
 
     update_state_notifier.set_progress(0)
-    device_model = await read_device_model(serial_device)
+    device_model = get_human_readable_device_model(await read_device_model(serial_device))
     sn = await read_sn(serial_device, device_model)
     try:
         await reboot_to_bootloader(serial_device, bootloader_can_preserve_port_settings)
@@ -437,7 +437,32 @@ async def restore_firmware(
     logger.info("Firmware of device %s is restored to %s", serial_device.description, firmware.version)
 
 
+def get_human_readable_device_model(device_model: str) -> str:
+    """
+    Returns the human-readable version of the device model read by read_device_model function.
+
+    Args:
+        device_model (str): The device model read by read_device_model function.
+
+    Returns:
+        str: The human-readable device model.
+             Example: MAP12\x02E -> MAP12E
+    """
+    return device_model.replace("\x02", "")
+
+
 async def read_device_model(serial_device: SerialDevice) -> str:
+    """
+    Reads the device model from the specified serial device.
+
+    Args:
+        serial_device (SerialDevice): The serial device to read from.
+
+    Returns:
+        str: The device model. An empty string is returned if the model can't be read.
+             The string has not stripped 0x02 characters for devices with firmwares v2.
+             Example: MAP12\x02E
+    """
     try:
         return await serial_device.read(WB_DEVICE_PARAMETERS["device_model_extended"])
     except SerialExceptionBase as err:
@@ -532,6 +557,9 @@ class FirmwareUpdater:
             raise JSONRPCDispatchException(
                 code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message=str(err)
             ) from err
+        device_model = get_human_readable_device_model(
+            await read_device_model(SerialDevice(self._serial_rpc, port_config, slave_id))
+        )
         return {
             "fw": fw_info.current_version,
             "available_fw": fw_info.available.version if fw_info.available is not None else "",
@@ -540,6 +568,7 @@ class FirmwareUpdater:
             "available_bootloader": (
                 fw_info.bootloader.available.version if fw_info.bootloader.available is not None else ""
             ),
+            "model": device_model,
         }
 
     async def update_software(self, **kwargs):

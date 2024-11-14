@@ -1,3 +1,9 @@
+wb-device-manager (1.15.0) stable; urgency=medium
+
+  * Add device model to fw-update/GetFirmwareInfo RPC response
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 14 Nov 2024 10:00:14 +0500
+
 wb-device-manager (1.14.1) stable; urgency=medium
 
   * Improve exception logging during update

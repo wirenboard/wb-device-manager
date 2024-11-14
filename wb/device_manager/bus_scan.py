@@ -25,6 +25,7 @@ from .bus_scan_state import (
     get_all_uart_params,
     make_uuid,
 )
+from .firmware_update import get_human_readable_device_model
 from .serial_bus import fix_sn
 from .serial_rpc import SerialRPCWrapper
 
@@ -61,7 +62,7 @@ class BusScanner:
                     regs_length=reg_len,
                 )
                 device_info.device_signature = device_signature
-                device_info.title = device_signature.strip("\x02")
+                device_info.title = get_human_readable_device_model(device_signature)
                 err_ctx = None
                 device_info.sn = str(fix_sn(device_info.device_signature, int(device_info.sn)))
                 break
