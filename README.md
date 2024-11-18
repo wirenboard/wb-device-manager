@@ -213,7 +213,10 @@ MQTT RPC запрос `wb-device-manager/fw-update/GetFirmwareInfo/client_id` п
     "available_bootloader": "2.2.2",
 
     // Признак того, что прошивка и загрузчик могут быть обновлены средствами wb-device-manager через RPC fw-update/Update
-    "can_update": false
+    "can_update": false,
+
+    // Модель устройства, получена, исходя из содержимого регистров 200-219
+    "model": "WB-LED"
 }
 ```
 

@@ -101,17 +101,21 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
     async def test_successful_read(self):
         reader_mock = AsyncMock()
         reader_mock.read = AsyncMock()
+        serial_rpc = AsyncMock()
+        serial_rpc.read = AsyncMock()
+        serial_rpc.read.return_value = "MAP12\x02E"
         firmware_info = FirmwareInfo(
             current_version="1", available=ReleasedBinary("2", "endpoint"), signature="sig"
         )
         firmware_info.bootloader.can_preserve_port_settings = True
         reader_mock.read.return_value = firmware_info
-        updater = FirmwareUpdater(AsyncMock(), None, None, reader_mock, None)
+        updater = FirmwareUpdater(AsyncMock(), serial_rpc, None, reader_mock, None)
         res = await updater.get_firmware_info(slave_id=1, port={"path": "test"})
 
         self.assertEqual(res.get("fw"), "1")
         self.assertEqual(res.get("available_fw"), "2")
         self.assertEqual(res.get("can_update"), True)
+        self.assertEqual(res.get("model"), "MAP12E")
 
 
 class TestFlashFw(unittest.IsolatedAsyncioTestCase):
