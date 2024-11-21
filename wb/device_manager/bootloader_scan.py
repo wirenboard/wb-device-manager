@@ -11,7 +11,6 @@ from .bus_scan_state import (
     BusScanStateManager,
     DeviceInfo,
     Port,
-    ReadFWSignatureDeviceError,
     SerialParams,
     make_uuid,
 )
@@ -23,6 +22,7 @@ from .serial_rpc import (
     SerialTimeoutException,
     TcpConfig,
 )
+from .state_error import ReadFWSignatureDeviceError
 
 
 def allowed_modbus_slave_ids(forbidden_ids: list[int]) -> Iterator[int]:

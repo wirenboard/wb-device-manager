@@ -44,6 +44,10 @@ class SerialTimeoutException(SerialCommunicationException):
     pass
 
 
+class SerialRPCTimeoutException(SerialTimeoutException):
+    pass
+
+
 class ForbiddenOperationException(SerialExceptionBase):
     def __init__(self, message: str) -> None:
         super().__init__(message)
@@ -262,11 +266,10 @@ class SerialRPCWrapper:
                 timeout=rpc_call_timeout_ms / 1000,
             )
         except rpcclient.MQTTRPCError as err:
-            if err.code in [
-                MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value,
-                MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value,
-            ]:
+            if err.code == MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value:
                 raise SerialTimeoutException(str(err)) from err
+            if err.code == MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value:
+                raise SerialRPCTimeoutException(str(err)) from err
             raise SerialCommunicationException(str(err)) from err
 
         if "exception" in response:

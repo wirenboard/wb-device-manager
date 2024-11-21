@@ -15,6 +15,7 @@ from .bus_scan_state import Port
 from .fw_downloader import (
     BinaryDownloader,
     ReleasedBinary,
+    RemoteFileDownloadingError,
     WBRemoteStorageError,
     get_bootloader_info,
     get_released_fw,
@@ -33,20 +34,23 @@ from .serial_rpc import (
     ParameterConfig,
     SerialConfig,
     SerialExceptionBase,
+    SerialRPCTimeoutException,
     SerialRPCWrapper,
     SerialTimeoutException,
     TcpConfig,
+)
+from .state_error import (
+    DeviceResponseTimeoutError,
+    FileDownloadError,
+    GenericStateError,
+    RPCCallTimeoutStateError,
+    StateError,
 )
 
 
 class SoftwareType(Enum):
     FIRMWARE = "firmware"
     BOOTLOADER = "bootloader"
-
-
-@dataclass
-class StateError:
-    message: Optional[str] = None
 
 
 @dataclass
@@ -57,7 +61,7 @@ class DeviceUpdateInfo:
     progress: int = 0
     from_version: Optional[str] = None
     type: SoftwareType = SoftwareType.FIRMWARE
-    error: StateError = field(default_factory=StateError)
+    error: Optional[StateError] = None
 
     def __eq__(self, o):
         return self.slave_id == o.slave_id and self.port == o.port and self.type == o.type
@@ -92,18 +96,13 @@ class UpdateState:
 
     def is_updating(self, slave_id: int, port: Port) -> bool:
         return any(
-            d.slave_id == slave_id and d.port == port and d.progress < 100 and d.error.message is None
+            d.slave_id == slave_id and d.port == port and d.progress < 100 and d.error is None
             for d in self._devices
         )
 
     def clear_error(self, slave_id: int, port: Port, software_type: SoftwareType) -> None:
         for d in self._devices:
-            if (
-                d.slave_id == slave_id
-                and d.port == port
-                and d.type == software_type
-                and d.error.message is not None
-            ):
+            if d.slave_id == slave_id and d.port == port and d.type == software_type and d.error is not None:
                 self._devices.remove(d)
                 self._mqtt_connection.publish(self._topic, self._to_json_string(), retain=True)
                 return
@@ -115,8 +114,6 @@ class UpdateState:
 
 def to_dict_for_json(device_update_info: DeviceUpdateInfo) -> dict:
     d = asdict(device_update_info)
-    if device_update_info.error.message is None:
-        del d["error"]
     d["type"] = device_update_info.type.value
     return d
 
@@ -271,8 +268,16 @@ class UpdateStateNotifier:
         if self._update_notifier.should_notify(progress):
             self._update_state.update(self._device_update_info)
 
-    def set_error(self, error: str) -> None:
-        self._device_update_info.error.message = error
+    def set_error_from_exception(self, exception: Exception) -> None:
+        if isinstance(exception, SerialRPCTimeoutException):
+            self._device_update_info.error = RPCCallTimeoutStateError()
+        elif isinstance(exception, SerialTimeoutException):
+            self._device_update_info.error = DeviceResponseTimeoutError()
+        elif isinstance(exception, RemoteFileDownloadingError):
+            self._device_update_info.error = FileDownloadError()
+        else:
+            self._device_update_info.error = GenericStateError()
+            self._device_update_info.error.metadata = {exception: str(exception)}
         self._update_state.update(self._device_update_info)
 
     def delete(self, should_notify: bool = True) -> None:
@@ -382,7 +387,7 @@ async def update_software(
             update_state_notifier,
         )
     except (WBRemoteStorageError, SerialExceptionBase) as e:
-        update_state_notifier.set_error(str(e))
+        update_state_notifier.set_error(e)
         logger.error(
             "%s (sn: %d, %s) %s update from %s to %s failed: %s",
             device_model,
@@ -430,7 +435,7 @@ async def restore_firmware(
             update_state_notifier,
         )
     except (WBRemoteStorageError, SerialExceptionBase) as e:
-        update_state_notifier.set_error(str(e))
+        update_state_notifier.set_error(e)
         logger.error("Firmware restore of %s failed: %s", serial_device.description, e)
         return
     update_state_notifier.delete()

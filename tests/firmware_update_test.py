@@ -259,7 +259,7 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
                 call.set_progress(0),
                 call.download_file(fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
-                call.set_error("ex"),
+                call.set_error(mock.flash_fw.side_effect),
             ]
             mock.assert_has_calls(expected_calls, False)
             self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))
@@ -318,7 +318,7 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
                 call.reboot_to_bootloader(mock, True),
                 call.download_file(fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
-                call.set_error("ex"),
+                call.set_error(mock.flash_fw.side_effect),
             ]
             mock.assert_has_calls(expected_calls, False)
             self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))
