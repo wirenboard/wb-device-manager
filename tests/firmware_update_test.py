@@ -250,7 +250,7 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
         mock.download_file = Mock()
         mock.download_file.return_value = self.fw_data
         mock.set_progress = Mock()
-        mock.set_error = Mock()
+        mock.set_error_from_exception = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw):
             mock.flash_fw.side_effect = SerialTimeoutException("ex")
@@ -259,7 +259,7 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
                 call.set_progress(0),
                 call.download_file(fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
-                call.set_error(mock.flash_fw.side_effect),
+                call.set_error_from_exception(mock.flash_fw.side_effect),
             ]
             mock.assert_has_calls(expected_calls, False)
             self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))
@@ -302,7 +302,7 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.download_file = Mock()
         mock.download_file.return_value = self.fw_data
         mock.set_progress = Mock()
-        mock.set_error = Mock()
+        mock.set_error_from_exception = Mock()
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         sw = SoftwareComponent(available=fw)
@@ -318,7 +318,7 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
                 call.reboot_to_bootloader(mock, True),
                 call.download_file(fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
-                call.set_error(mock.flash_fw.side_effect),
+                call.set_error_from_exception(mock.flash_fw.side_effect),
             ]
             mock.assert_has_calls(expected_calls, False)
             self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))

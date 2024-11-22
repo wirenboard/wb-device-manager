@@ -387,7 +387,7 @@ async def update_software(
             update_state_notifier,
         )
     except (WBRemoteStorageError, SerialExceptionBase) as e:
-        update_state_notifier.set_error(e)
+        update_state_notifier.set_error_from_exception(e)
         logger.error(
             "%s (sn: %d, %s) %s update from %s to %s failed: %s",
             device_model,
@@ -435,7 +435,7 @@ async def restore_firmware(
             update_state_notifier,
         )
     except (WBRemoteStorageError, SerialExceptionBase) as e:
-        update_state_notifier.set_error(e)
+        update_state_notifier.set_error_from_exception(e)
         logger.error("Firmware restore of %s failed: %s", serial_device.description, e)
         return
     update_state_notifier.delete()
