@@ -296,14 +296,26 @@ MQTT RPC запрос `wb-device-manager/fw-update/GetFirmwareInfo/client_id` п
 
             // Последняя ошибка обновления конкретного устройства
             "error": {
-                // Человекочитаемое сообщение
-                "message": "FW update failed. Check logs for more info"
+                // Идентификатор ошибки
+                "id": "com.wb.device_manager.generic_error",
+
+                // Сообщение об ошибке
+                "message": "FW update failed. Check logs for more info",
             },
         },
         ...
     ]
 }
 ```
+
+
+#### Возможные ошибки обновления:
+| Id | Условия возникновения | поле ```"metadata"``` |
+| :- | :-------------------- | :-------------- |
+| **com.wb.device_manager.generic_error** | Неожиданная ошибка внутри сервиса | содержит поле ```exception``` с расширенным описанием ошибки |
+| **com.wb.device_manager.rpc_call_timeout_error** | Таймаут rpc-запроса к wb-mqtt-serial (wb-device-manager - клиент) | ```null``` |
+| **com.wb.device_manager.device.response_timeout_error** | Таймаут ожидания ответа от устройства | ```null``` |
+| **com.wb.device_manager.download_error** | Ошибка скачивания прошивки или загрузчика | ```null``` |
 
 ### Сброс ошибок обновления прошивки или загрузчика
 

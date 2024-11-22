@@ -12,13 +12,15 @@ from wb.device_manager.bus_scan_state import (
     DeviceInfo,
     ParsedPorts,
     Port,
-    ReadDeviceSignatureDeviceError,
-    ReadFWSignatureDeviceError,
-    ReadFWVersionDeviceError,
     SerialParams,
     get_all_uart_params,
 )
 from wb.device_manager.serial_bus import WBAsyncModbus, WBModbusScanner
+from wb.device_manager.state_error import (
+    ReadDeviceSignatureDeviceError,
+    ReadFWSignatureDeviceError,
+    ReadFWVersionDeviceError,
+)
 
 
 class DummyBusScanner(main.BusScanner):

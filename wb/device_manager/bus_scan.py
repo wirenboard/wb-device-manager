@@ -13,14 +13,8 @@ from .bootloader_scan import BootloaderModeScanner
 from .bus_scan_state import (
     BusScanStateManager,
     DeviceInfo,
-    GenericStateError,
     ParsedPorts,
     Port,
-    ReadDeviceSignatureDeviceError,
-    ReadFWSignatureDeviceError,
-    ReadFWVersionDeviceError,
-    ReadSerialParamsDeviceError,
-    RPCCallTimeoutStateError,
     SerialParams,
     get_all_uart_params,
     make_uuid,
@@ -28,6 +22,14 @@ from .bus_scan_state import (
 from .firmware_update import get_human_readable_device_model
 from .serial_bus import fix_sn
 from .serial_rpc import SerialRPCWrapper
+from .state_error import (
+    GenericStateError,
+    ReadDeviceSignatureDeviceError,
+    ReadFWSignatureDeviceError,
+    ReadFWVersionDeviceError,
+    ReadSerialParamsDeviceError,
+    RPCCallTimeoutStateError,
+)
 
 
 class BusScanner:
