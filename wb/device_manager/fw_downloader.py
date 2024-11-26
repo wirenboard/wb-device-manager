@@ -41,6 +41,19 @@ class BinaryDownloader:
         self._http = http
 
     def read_text_file(self, url: str) -> str:
+        """
+        Reads the content of a text file from the given URL.
+
+        Args:
+            url (str): The URL of the text file.
+
+        Returns:
+            str: The content of the text file.
+
+        Raises:
+            RemoteFileReadingError: If the file is empty or cannot be decoded.
+            RemoteFileDownloadingError: If there is an error downloading the remote file.
+        """
         try:
             content = self.download_file(url).decode("utf-8").strip()
         except UnicodeDecodeError as err:
@@ -50,16 +63,44 @@ class BinaryDownloader:
         raise RemoteFileReadingError(f"{url} is empty!")
 
     def download_file(self, url: str) -> bytes:
+        """
+        Downloads a file from the specified URL.
+
+        Args:
+            url (str): The URL of the file to download.
+
+        Returns:
+            bytes: The content of the downloaded file.
+
+        Raises:
+            RemoteFileDownloadingError: If the file fails to download.
+
+        """
         try:
             (_headers, content) = self._http.request(url, "GET")
             return content
-        except httplib2.HttpLib2Error as err:
+        except Exception as err:
             raise RemoteFileDownloadingError(f"Failed to download {url}: {err}") from err
 
 
 def get_released_fw(
     fw_signature: str, release_suite: str, binary_downloader: BinaryDownloader
 ) -> ReleasedBinary:
+    """
+    Retrieves the released firmware for a given firmware signature and release suite.
+
+    Args:
+        fw_signature (str): The firmware signature.
+        release_suite (str): The release suite.
+        binary_downloader (BinaryDownloader): The binary downloader object.
+
+    Returns:
+        ReleasedBinary: The released binary object containing the firmware version and endpoint.
+
+    Raises:
+        NoReleasedFwError: If the firmware is not found.
+    """
+
     url = f"{FW_RELEASES_BASE_URL}/fw/by-signature/release-versions.yaml"
     logger.debug("Looking to %s (suite: %s)", url, release_suite)
     try:
@@ -78,10 +119,13 @@ def get_released_fw(
                 fw_endpoint,
             )
             return ReleasedBinary(fw_version, fw_endpoint)
-    except RemoteFileReadingError as e:
+    except WBRemoteStorageError as e:
         logger.warning('No released fw for "%s" in "%s": %s', fw_signature, url, e)
     except VersionParsingError as e:
         logger.exception(e)
+    except yaml.YAMLError as e:
+        message = f"Failed to parse YAML from {url}: {e}"
+        logger.warning(message)
     raise NoReleasedFwError(f"Released FW not found for {fw_signature}, release: {release_suite}")
 
 
