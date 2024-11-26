@@ -10,8 +10,8 @@ from mqttrpc import client as rpcclient
 
 from wb.device_manager.bus_scan_state import Port
 from wb.device_manager.firmware_update import (
+    BootloaderInfo,
     DeviceUpdateInfo,
-    FirmwareInfo,
     FirmwareUpdater,
     SoftwareComponent,
     flash_fw,
@@ -64,8 +64,8 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
 
     async def test_modbus_exception(self):
         reader_mock = AsyncMock()
-        reader_mock.read = AsyncMock()
-        reader_mock.read.side_effect = WBModbusException("test msg", 1)
+        reader_mock.read_fw_version = AsyncMock()
+        reader_mock.read_fw_version.side_effect = WBModbusException("test msg", 1)
         updater = FirmwareUpdater(AsyncMock(), None, None, reader_mock, None)
         with self.assertRaises(JSONRPCDispatchException) as cm:
             await updater.get_firmware_info(slave_id=1, port={"path": "test"})
@@ -76,8 +76,8 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
 
     async def test_rpc_timeout_exception(self):
         reader_mock = AsyncMock()
-        reader_mock.read = AsyncMock()
-        reader_mock.read.side_effect = SerialTimeoutException("test msg")
+        reader_mock.read_fw_version = AsyncMock()
+        reader_mock.read_fw_version.side_effect = SerialTimeoutException("test msg")
         updater = FirmwareUpdater(AsyncMock(), None, None, reader_mock, None)
         with self.assertRaises(JSONRPCDispatchException) as cm:
             await updater.get_firmware_info(slave_id=1, port={"path": "test"})
@@ -88,27 +88,29 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
 
     async def test_generic_rpc_exception(self):
         reader_mock = AsyncMock()
-        reader_mock.read = AsyncMock()
-        reader_mock.read.side_effect = rpcclient.MQTTRPCError(
+        reader_mock.read_fw_version = AsyncMock()
+        reader_mock.read_fw_version.side_effect = rpcclient.MQTTRPCError(
             "test msg", MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, "test data"
         )
         updater = FirmwareUpdater(AsyncMock(), None, None, reader_mock, None)
         with self.assertRaises(rpcclient.MQTTRPCError) as cm:
             await updater.get_firmware_info(slave_id=1, port={"path": "test"})
 
-        self.assertEqual(cm.exception, reader_mock.read.side_effect)
+        self.assertEqual(cm.exception, reader_mock.read_fw_version.side_effect)
 
     async def test_successful_read(self):
         reader_mock = AsyncMock()
-        reader_mock.read = AsyncMock()
+        reader_mock.read_fw_version = AsyncMock()
+        reader_mock.read_fw_version.return_value = "1"
+        reader_mock.read_fw_signature = AsyncMock()
+        reader_mock.read_fw_signature.return_value = "sig"
+        reader_mock.read_released_fw = Mock()
+        reader_mock.read_released_fw.return_value = ReleasedBinary("2", "endpoint")
+        reader_mock.read_bootloader = AsyncMock()
+        reader_mock.read_bootloader.return_value = BootloaderInfo(can_preserve_port_settings=True)
         serial_rpc = AsyncMock()
         serial_rpc.read = AsyncMock()
         serial_rpc.read.return_value = "MAP12\x02E"
-        firmware_info = FirmwareInfo(
-            current_version="1", available=ReleasedBinary("2", "endpoint"), signature="sig"
-        )
-        firmware_info.bootloader.can_preserve_port_settings = True
-        reader_mock.read.return_value = firmware_info
         updater = FirmwareUpdater(AsyncMock(), serial_rpc, None, reader_mock, None)
         res = await updater.get_firmware_info(slave_id=1, port={"path": "test"})
 
