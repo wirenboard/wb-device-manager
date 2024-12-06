@@ -7,6 +7,14 @@ from typing import Optional
 
 @dataclass
 class StateError:
+    """
+    Represents an error published in /wb-device-manager/state or /wb-device-manager/firmware-update/state topics.
+
+    Attributes:
+        id (str): The ID of the error.
+        message (str): The error message.
+        metadata (Optional[dict], optional): Additional metadata associated with the error. Defaults to None.
+    """
     id: str
     message: str
     metadata: Optional[dict] = None
