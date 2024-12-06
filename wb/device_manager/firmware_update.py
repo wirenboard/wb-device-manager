@@ -556,6 +556,7 @@ class FirmwareUpdater:
                 can_update (bool): Indicates if the firmware can be updated.
                 bootloader (str): The current bootloader version.
                 available_bootloader (str): The available bootloader version.
+                model (str): The device model.
         """
 
         logger.debug("Request firmware info")
