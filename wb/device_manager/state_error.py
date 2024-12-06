@@ -15,6 +15,7 @@ class StateError:
         message (str): The error message.
         metadata (Optional[dict], optional): Additional metadata associated with the error. Defaults to None.
     """
+
     id: str
     message: str
     metadata: Optional[dict] = None
