@@ -239,9 +239,9 @@ class AsyncMQTTServer:
             m_info.wait_for_publish()
 
     def _close_mqtt_connection(self):
-        self._delete_retained()
         self.bus_scanner.clear_state()
         self.fw_updater.clear_state()
+        self._delete_retained()
         self.mqtt_connection.stop()
         logger.info("Mqtt: close %s", self.mqtt_url_str)
 
@@ -283,9 +283,9 @@ class AsyncMQTTServer:
     def _on_mqtt_connect(self, client, userdata, flags, rc):
         logger.info("Mqtt: reconnect to %s -> %d", self.mqtt_url_str, rc)
         if rc == 0:
-            self._subscribe()
             self.bus_scanner.publish_state()
             self.fw_updater.publish_state()
+            self._subscribe()
         else:
             logger.warning("Got rc %d; shutting down...", rc)
             self._EXITCODE = rc
