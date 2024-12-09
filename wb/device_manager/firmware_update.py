@@ -112,6 +112,13 @@ class UpdateState:
         self._devices = []
         self._mqtt_connection.publish(self._topic, self._to_json_string(), retain=True)
 
+    def publish_state(self):
+        self._mqtt_connection.publish(self._topic, self._to_json_string(), retain=True)
+
+    def clear_state(self):
+        m_info = self._mqtt_connection.publish(self._topic, payload=None, retain=True, qos=1)
+        m_info.wait_for_publish()
+
 
 def to_dict_for_json(device_update_info: DeviceUpdateInfo) -> dict:
     d = asdict(device_update_info)
@@ -815,9 +822,11 @@ class FirmwareUpdater:
         )
         await restore_firmware(serial_device, update_notifier, fw_info.available, self._binary_downloader)
 
-    @property
-    def state_publish_topic(self) -> str:
-        return self.STATE_PUBLISH_TOPIC
+    def publish_state(self):
+        return self._state.publish_state()
+
+    def clear_state(self):
+        return self._state.clear_state()
 
     def start(self) -> None:
         self._state.reset()

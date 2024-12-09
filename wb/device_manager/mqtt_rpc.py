@@ -215,7 +215,8 @@ class AsyncMQTTServer:
         mqtt_connection,
         mqtt_url_str,
         rpc_client,
-        additional_topics_to_clear=[],
+        bus_scanner,
+        fw_updater,
         asyncio_loop=asyncio.get_event_loop(),
     ):
         self.methods_dispatcher = methods_dispatcher
@@ -223,7 +224,8 @@ class AsyncMQTTServer:
         self.rpc_client = rpc_client
         self.asyncio_loop = asyncio_loop
         self.mqtt_url_str = mqtt_url_str
-        self.additional_topics_to_clear = additional_topics_to_clear
+        self.bus_scanner = bus_scanner
+        self.fw_updater = fw_updater
 
     @property
     def now_processing(self):
@@ -231,13 +233,14 @@ class AsyncMQTTServer:
 
     def _delete_retained(self):
         to_clear = [get_topic_path(service, method) for service, method in self.methods_dispatcher.keys()]
-        to_clear.extend(self.additional_topics_to_clear)
         for topic in to_clear:
             logger.debug("Delete retained from: %s", topic)
             m_info = self.mqtt_connection.publish(topic, payload=None, retain=True, qos=1)
             m_info.wait_for_publish()
 
     def _close_mqtt_connection(self):
+        self.bus_scanner.clear_state()
+        self.fw_updater.clear_state()
         self._delete_retained()
         self.mqtt_connection.stop()
         logger.info("Mqtt: close %s", self.mqtt_url_str)
@@ -280,6 +283,8 @@ class AsyncMQTTServer:
     def _on_mqtt_connect(self, client, userdata, flags, rc):
         logger.info("Mqtt: reconnect to %s -> %d", self.mqtt_url_str, rc)
         if rc == 0:
+            self.bus_scanner.publish_state()
+            self.fw_updater.publish_state()
             self._subscribe()
         else:
             logger.warning("Got rc %d; shutting down...", rc)
