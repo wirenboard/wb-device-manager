@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Optional, Union
 
 from .serial_rpc import SerialConfig, TcpConfig
+from .state_error import FailedScanStateError, GenericStateError, StateError
 
 BAUDRATES_TO_SCAN = [9600, 115200, 57600, 1200, 2400, 4800, 19200, 38400]
 MAX_MODBUS_SLAVE_ID_TO_SCAN = 246
@@ -24,13 +25,6 @@ class Port:
             self.path = f"{port_config.address}:{port_config.port}"
         elif isinstance(port_config, str):
             self.path = port_config
-
-
-@dataclass
-class StateError:
-    id: str = None
-    message: str = None
-    metadata: dict = None
 
 
 @dataclass
@@ -97,53 +91,6 @@ class SetEncoder(json.JSONEncoder):
 class ParsedPorts:
     serial: list[str] = field(default_factory=list)
     tcp: list[str] = field(default_factory=list)
-
-
-"""
-Errors, shown in json-state
-"""
-
-
-class GenericStateError(StateError):
-    ID = "com.wb.device_manager.generic_error"
-    MESSAGE = "Internal error. Check logs for more info"
-
-    def __init__(self):
-        super().__init__(id=self.ID, message=self.MESSAGE)
-
-
-class RPCCallTimeoutStateError(GenericStateError):
-    ID = "com.wb.device_manager.rpc_call_timeout_error"
-    MESSAGE = "RPC call to wb-mqtt-serial timed out. Check, wb-mqtt-serial is running"
-
-
-class FailedScanStateError(GenericStateError):
-    ID = "com.wb.device_manager.failed_to_scan_error"
-    MESSAGE = "Some ports failed to scan. Check logs for more info"
-
-    def __init__(self, failed_ports):
-        super().__init__()
-        self.metadata = {"failed_ports": failed_ports}
-
-
-class ReadFWVersionDeviceError(GenericStateError):
-    ID = "com.wb.device_manager.device.read_fw_version_error"
-    MESSAGE = "Failed to read FW version."
-
-
-class ReadFWSignatureDeviceError(GenericStateError):
-    ID = "com.wb.device_manager.device.read_fw_signature_error"
-    MESSAGE = "Failed to read FW signature."
-
-
-class ReadDeviceSignatureDeviceError(GenericStateError):
-    ID = "com.wb.device_manager.device.read_device_signature_error"
-    MESSAGE = "Failed to read device signature."
-
-
-class ReadSerialParamsDeviceError(GenericStateError):
-    ID = "com.wb.device_manager.device.read_serial_params_error"
-    MESSAGE = "Failed to read serial params from device."
 
 
 def get_all_uart_params(bds=BAUDRATES_TO_SCAN, parities=["N", "E", "O"], stopbits=[2, 1]):
