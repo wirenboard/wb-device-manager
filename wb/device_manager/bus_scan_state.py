@@ -126,14 +126,11 @@ class BusScanStateManager:
         self._found_devices = []
         self._mqtt_connection = mqtt_connection
         self._asyncio_loop = asyncio_loop
+        self._state = BusScanState()
         self._state_update_queue = asyncio.Queue()
         self._asyncio_loop.create_task(
             self._consume_state_update(), name="Build & publish overall bus scan state"
         )
-
-    @property
-    def state_publish_topic(self):
-        return self.STATE_PUBLISH_TOPIC
 
     async def add_scanning_port(self, port: str, is_ext_scan: bool) -> None:
         self._ports_now_scanning.add(port)
@@ -188,27 +185,33 @@ class BusScanStateManager:
         """
         The only func, allowed to change state directly
         """
-        state = BusScanState()
-        self._mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
+        self.publish_state()
 
         while True:
             event = await self._state_update_queue.get()
             try:
                 if isinstance(event, DeviceInfo):
-                    state.devices.append(event)
+                    self._state.devices.append(event)
                 elif isinstance(event, dict):
                     progress = event.pop("progress", -1)  # could be filled asynchronously
-                    if (progress == 0) or (progress > state.progress):
-                        state.progress = progress
-                    state.update(event)
+                    if (progress == 0) or (progress > self._state.progress):
+                        self._state.progress = progress
+                    self._state.update(event)
                 else:
                     e = RuntimeError("Got incorrect state-update event: %s", repr(event))
-                    state.error = GenericStateError()
-                    state.scanning = False
-                    state.progress = 0
+                    self._state.error = GenericStateError()
+                    self._state.scanning = False
+                    self._state.progress = 0
                     raise e
             finally:
-                self._mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(state), retain=True)
+                self.publish_state()
+
+    def publish_state(self):
+        self._mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(self._state), retain=True)
+
+    def clear_state(self):
+        m_info = self._mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, payload=None, retain=True, qos=1)
+        m_info.wait_for_publish()
 
     @staticmethod
     def state_json(state_obj):

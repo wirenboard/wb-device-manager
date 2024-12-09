@@ -1,3 +1,9 @@
+wb-device-manager (1.16.1) stable; urgency=medium
+
+  * Add scanner and fw update state republish on mosquitto restart
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Mon, 09 Dec 2024 14:17:35 +0300
+
 wb-device-manager (1.16.0) stable; urgency=medium
 
   * Add id's to firmware update errors
