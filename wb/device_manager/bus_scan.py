@@ -43,9 +43,11 @@ class BusScanner:
     def rpc_client(self):
         return self._rpc_client
 
-    @property
-    def state_publish_topic(self):
-        return self._state_manager.state_publish_topic
+    def publish_state(self):
+        return self._state_manager.publish_state()
+
+    def clear_state(self):
+        return self._state_manager.clear_state()
 
     @property
     def asyncio_loop(self):
