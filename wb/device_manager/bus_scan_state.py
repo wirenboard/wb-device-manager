@@ -40,6 +40,7 @@ class SerialParams:
 class Firmware:
     version: str = None
     ext_support: bool = False
+    fast_modbus_command: int = None
 
 
 @dataclass

@@ -57,6 +57,7 @@ DEFAULT_BAUD_RATE = 9600
 DEFAULT_PARITY = "N"
 DEFAULT_DATA_BITS = 8
 DEFAULT_STOP_BITS = 2
+DEFAULT_RPC_CALL_TIMEOUT_MS = 10000
 
 
 @dataclass
@@ -237,7 +238,6 @@ class SerialRPCWrapper:
         data: bytes,
         response_timeout_s: float = None,
     ) -> bytes:
-        rpc_call_timeout_ms = 10000
         if response_timeout_s is None:
             response_timeout_s = self._calculate_default_response_timeout()
         response_timeout_ms = round(response_timeout_s * 1000)
@@ -248,7 +248,7 @@ class SerialRPCWrapper:
             "address": register_address,
             "count": register_count,
             "response_timeout": response_timeout_ms,
-            "total_timeout": rpc_call_timeout_ms,
+            "total_timeout": DEFAULT_RPC_CALL_TIMEOUT_MS,
             "protocol": "modbus",
             "format": "HEX",
         }
@@ -263,7 +263,7 @@ class SerialRPCWrapper:
                 service="port",
                 method="Load",
                 params=rpc_request,
-                timeout=rpc_call_timeout_ms / 1000,
+                timeout=DEFAULT_RPC_CALL_TIMEOUT_MS / 1000,
             )
         except rpcclient.MQTTRPCError as err:
             if err.code == MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value:

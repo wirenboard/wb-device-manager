@@ -19,6 +19,7 @@ from .bus_scan_state import (
     get_all_uart_params,
     make_uuid,
 )
+from .fast_modbus_scan import FastModbusScanner
 from .firmware_update import get_human_readable_device_model
 from .serial_bus import fix_sn
 from .serial_rpc import SerialRPCWrapper
@@ -159,20 +160,20 @@ class BusScanner:
             return "Ok"
         raise mqtt_rpc.MQTTRPCAlreadyProcessingException()
 
-    def _create_scan_tasks(self, ports, is_extended=False):
+    def _create_scan_tasks(self, ports):
         tasks = []
-        name_template = "Extended scan %s %s" if is_extended else "Ordinary scan %s %s"
+        name_template = "Ordinary scan %s %s"
         for serial_port in ports.serial:
             tasks.append(
                 asyncio.create_task(
-                    self.scan_serial_port(serial_port, is_ext_scan=is_extended),
+                    self.scan_serial_port(serial_port),
                     name=name_template % (serial_port, "serial"),
                 )
             )
         for tcp_port in ports.tcp:
             tasks.append(
                 asyncio.create_task(
-                    self.scan_tcp_port(tcp_port, is_ext_scan=is_extended),
+                    self.scan_tcp_port(tcp_port),
                     name=name_template % (tcp_port, "tcp"),
                 )
             )
@@ -202,13 +203,14 @@ class BusScanner:
                 return
         try:
             if scan_type == "extended":
-                await asyncio.gather(
-                    *self._create_scan_tasks(ports, is_extended=True), return_exceptions=True
+                fast_modbus_scanner = FastModbusScanner(
+                    self.rpc_client,
+                    self._state_manager,
+                    get_all_uart_params,
                 )
+                await asyncio.gather(*fast_modbus_scanner.create_scan_tasks(ports), return_exceptions=True)
             elif scan_type == "standard":
-                await asyncio.gather(
-                    *self._create_scan_tasks(ports, is_extended=False), return_exceptions=True
-                )
+                await asyncio.gather(*self._create_scan_tasks(ports), return_exceptions=True)
             elif scan_type == "bootloader":
                 bootloader_mode_scanner = BootloaderModeScanner(
                     SerialRPCWrapper(self.rpc_client),
@@ -220,12 +222,13 @@ class BusScanner:
                     return_exceptions=True,
                 )
             else:
-                await asyncio.gather(
-                    *self._create_scan_tasks(ports, is_extended=True), return_exceptions=True
+                fast_modbus_scanner = FastModbusScanner(
+                    self.rpc_client,
+                    self._state_manager,
+                    get_all_uart_params,
                 )
-                await asyncio.gather(
-                    *self._create_scan_tasks(ports, is_extended=False), return_exceptions=True
-                )
+                await asyncio.gather(*fast_modbus_scanner.create_scan_tasks(ports), return_exceptions=True)
+                await asyncio.gather(*self._create_scan_tasks(ports), return_exceptions=True)
 
             await self._state_manager.scan_complete()
         except asyncio.CancelledError:
@@ -235,17 +238,11 @@ class BusScanner:
             logger.exception("Unhandled exception during overall scan %s", e)
             await self._state_manager.scan_finished(GenericStateError())
 
-    async def do_scan_port(
-        self, path, scanner, is_ext_scan: bool, progress: Optional[int] = None, **scan_kwargs
-    ) -> None:
+    async def do_scan_port(self, path, scanner, progress: Optional[int] = None, **scan_kwargs) -> None:
         debug_str = path + " " + "-".join(map(str, scan_kwargs.values()))
 
-        logger.debug(
-            "Scanning %s (extended modbus: %r)",
-            debug_str,
-            is_ext_scan,
-        )
-        await self._state_manager.add_scanning_port(debug_str, is_ext_scan)
+        logger.debug("Scanning %s", debug_str)
+        await self._state_manager.add_scanning_port(debug_str, False)
 
         try:
             async for slave_id, sn in scanner.scan_bus(**scan_kwargs):
@@ -261,9 +258,8 @@ class BusScanner:
                     port=Port(path),
                     cfg=SerialParams(slave_id=slave_id),
                 )
-                device_info.fw.ext_support = is_ext_scan
 
-                addr = int(device_info.sn) if is_ext_scan else device_info.cfg.slave_id
+                addr = device_info.cfg.slave_id
                 mb_conn = scanner.get_mb_connection(addr, path, **scan_kwargs)
 
                 # fill_device_info can modify sn
@@ -276,7 +272,7 @@ class BusScanner:
                 await self._state_manager.found_device(sn, device_info)
 
         except minimalmodbus.NoResponseError:
-            logger.debug("No %s-modbus devices on %s", "extended" if is_ext_scan else "ordinary", debug_str)
+            logger.debug("No modbus devices on %s", debug_str)
         except minimalmodbus.InvalidResponseError as err:
             logger.error("Invalid response during scan %s: %s", debug_str, err)
         except Exception as err:
@@ -289,37 +285,21 @@ class BusScanner:
         finally:
             await self._state_manager.remove_scanning_port(debug_str, progress)
 
-    async def scan_serial_port(self, port, is_ext_scan=True):
-        if is_ext_scan:
-            scanner = serial_bus.WBExtendedModbusScanner(port, self.rpc_client)
-        else:
-            scanner = serial_bus.WBModbusScanner(port, self.rpc_client)
+    async def scan_serial_port(self, port):
+        scanner = serial_bus.WBModbusScanner(port, self.rpc_client)
 
-        # New firmwares can work with any stopbits, but old ones can't
-        # Since it doesn't matter what to use, let's use 2
-        allowed_stopbits = (
-            [
-                2,
-            ]
-            if is_ext_scan
-            else [2, 1]
-        )
+        allowed_stopbits = [2, 1]
 
         for bd, parity, stopbits, progress_percent in get_all_uart_params(stopbits=allowed_stopbits):
             await self.do_scan_port(
                 port,
                 scanner,
-                is_ext_scan,
                 baudrate=bd,
                 parity=parity,
                 stopbits=stopbits,
                 progress=progress_percent,
             )
 
-    async def scan_tcp_port(self, ip_port, is_ext_scan=True):
-        if is_ext_scan:
-            scanner = serial_bus.WBExtendedModbusScannerTCP(ip_port, self.rpc_client)
-        else:
-            scanner = serial_bus.WBModbusScannerTCP(ip_port, self.rpc_client)
-
-        await self.do_scan_port(ip_port, scanner, is_ext_scan)
+    async def scan_tcp_port(self, ip_port):
+        scanner = serial_bus.WBModbusScannerTCP(ip_port, self.rpc_client)
+        await self.do_scan_port(ip_port, scanner)
