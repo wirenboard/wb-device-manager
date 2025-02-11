@@ -290,7 +290,7 @@ class UpdateStateNotifier:
             self._device_update_info.error = FileDownloadError()
         else:
             self._device_update_info.error = GenericStateError()
-            self._device_update_info.error.metadata = {exception: str(exception)}
+            self._device_update_info.error.metadata = {"exception": str(exception)}
         self._update_state.update(self._device_update_info)
 
     def delete(self, should_notify: bool = True) -> None:
