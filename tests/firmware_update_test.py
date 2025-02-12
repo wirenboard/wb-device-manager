@@ -21,11 +21,13 @@ from wb.device_manager.firmware_update import (
     reboot_to_bootloader,
     restore_firmware,
     update_software,
+    write_fw_data_block,
 )
 from wb.device_manager.fw_downloader import ReleasedBinary
 from wb.device_manager.mqtt_rpc import MQTTRPCErrorCode
 from wb.device_manager.serial_rpc import (
     WB_DEVICE_PARAMETERS,
+    ModbusExceptionCode,
     SerialConfig,
     SerialTimeoutException,
     TcpConfig,
@@ -129,12 +131,61 @@ class TestFlashFw(unittest.IsolatedAsyncioTestCase):
         )
         self.wbfw = parse_wbfw(data)
 
+    async def test_write_fw_data_block_success(self):
+        serial_device_mock = AsyncMock()
+        serial_device_mock.write = AsyncMock()
+        await write_fw_data_block(serial_device_mock, self.wbfw.data[: self.chunk_size])
+        self.assertEqual(len(serial_device_mock.mock_calls), 1)
+        serial_device_mock.write.assert_called_once_with(
+            WB_DEVICE_PARAMETERS["fw_data_block"], self.wbfw.data[: self.chunk_size]
+        )
+
+    async def test_write_fw_data_block_slave_device_failure(self):
+        serial_device_mock = AsyncMock()
+        serial_device_mock.write = AsyncMock()
+        serial_device_mock.write.side_effect = WBModbusException(
+            "test", ModbusExceptionCode.SLAVE_DEVICE_FAILURE
+        )
+        await write_fw_data_block(serial_device_mock, self.wbfw.data[: self.chunk_size])
+        serial_device_mock.write.assert_called_once_with(
+            WB_DEVICE_PARAMETERS["fw_data_block"], self.wbfw.data[: self.chunk_size]
+        )
+
+    async def test_write_fw_data_block_timeout_then_slave_device_failure(self):
+        serial_device_mock = AsyncMock()
+        serial_device_mock.write = AsyncMock()
+        serial_device_mock.write.side_effect = [
+            SerialTimeoutException("timeout"),
+            WBModbusException("test", ModbusExceptionCode.SLAVE_DEVICE_FAILURE),
+        ]
+        await write_fw_data_block(serial_device_mock, self.wbfw.data[: self.chunk_size])
+        self.assertEqual(len(serial_device_mock.mock_calls), 2)
+        expected_calls = [
+            call.write(WB_DEVICE_PARAMETERS["fw_data_block"], self.wbfw.data[: self.chunk_size]),
+            call.write(WB_DEVICE_PARAMETERS["fw_data_block"], self.wbfw.data[: self.chunk_size]),
+        ]
+        serial_device_mock.assert_has_calls(expected_calls)
+
+    async def test_write_fw_data_block_failure(self):
+        serial_device_mock = AsyncMock()
+        serial_device_mock.write = AsyncMock()
+        serial_device_mock.write.side_effect = WBModbusException("test", 1)
+        with self.assertRaises(WBModbusException) as cm:
+            await write_fw_data_block(serial_device_mock, self.wbfw.data[: self.chunk_size])
+        self.assertEqual(cm.exception, serial_device_mock.write.side_effect)
+        self.assertEqual(len(serial_device_mock.mock_calls), 3)
+        expected_calls = [
+            call.write(WB_DEVICE_PARAMETERS["fw_data_block"], self.wbfw.data[: self.chunk_size]),
+            call.write(WB_DEVICE_PARAMETERS["fw_data_block"], self.wbfw.data[: self.chunk_size]),
+            call.write(WB_DEVICE_PARAMETERS["fw_data_block"], self.wbfw.data[: self.chunk_size]),
+        ]
+        serial_device_mock.assert_has_calls(expected_calls)
+
     async def test_success(self):
         mock = AsyncMock()
         mock.set_progress = Mock()
         mock.write = AsyncMock()
         await flash_fw(mock, self.wbfw, mock)
-        self.assertEqual(len(mock.mock_calls), 7)
         expected_calls = [
             call.write(WB_DEVICE_PARAMETERS["fw_info_block"], self.wbfw.info, 1.0),
             call.write(WB_DEVICE_PARAMETERS["fw_data_block"], self.wbfw.data[: self.chunk_size]),
@@ -154,23 +205,19 @@ class TestFlashFw(unittest.IsolatedAsyncioTestCase):
         mock = AsyncMock()
         mock.set_progress = Mock()
         mock.write = AsyncMock()
-        mock.write.side_effect = [None, None, SerialTimeoutException("1"), SerialTimeoutException("2")]
-        with self.assertRaises(SerialTimeoutException) as cm:
-            await flash_fw(mock, self.wbfw, mock)
-        self.assertEqual(str(cm.exception), "2")
-        self.assertEqual(len(mock.mock_calls), 5)
-        expected_calls = [
-            call.write(WB_DEVICE_PARAMETERS["fw_info_block"], self.wbfw.info, 1.0),
-            call.write(WB_DEVICE_PARAMETERS["fw_data_block"], self.wbfw.data[: self.chunk_size]),
-            call.set_progress(33),
-            call.write(
-                WB_DEVICE_PARAMETERS["fw_data_block"],
-                self.wbfw.data[self.chunk_size : 2 * self.chunk_size],
-            ),
-            call.write(WB_DEVICE_PARAMETERS["fw_data_block"], self.wbfw.data[2 * self.chunk_size :]),
-        ]
-        mock.assert_has_calls(expected_calls, False)
-        self.assertEqual(len(mock.mock_calls), len(expected_calls))
+        with patch("wb.device_manager.firmware_update.write_fw_data_block", mock.write_fw_data_block):
+            mock.write_fw_data_block.side_effect = [None, SerialTimeoutException("timeout")]
+            with self.assertRaises(SerialTimeoutException) as cm:
+                await flash_fw(mock, self.wbfw, mock)
+            self.assertEqual(str(cm.exception), "timeout")
+            expected_calls = [
+                call.write(WB_DEVICE_PARAMETERS["fw_info_block"], self.wbfw.info, 1.0),
+                call.write_fw_data_block(mock, self.wbfw.data[: self.chunk_size]),
+                call.set_progress(33),
+                call.write_fw_data_block(mock, self.wbfw.data[self.chunk_size : 2 * self.chunk_size]),
+            ]
+            mock.assert_has_calls(expected_calls, False)
+            self.assertEqual(len(mock.mock_calls), len(expected_calls))
 
 
 class TestRebootToBootloader(unittest.IsolatedAsyncioTestCase):
@@ -188,7 +235,6 @@ class TestRebootToBootloader(unittest.IsolatedAsyncioTestCase):
         mock = AsyncMock()
         mock.set_default_port_settings = Mock()
         await reboot_to_bootloader(mock, False)
-        self.assertEqual(len(mock.mock_calls), 2)
         expected_calls = [
             call.write(WB_DEVICE_PARAMETERS["reboot_to_bootloader"], 1, 1.0),
             call.set_default_port_settings(),
