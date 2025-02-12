@@ -1,3 +1,10 @@
+wb-device-manager (1.16.2) stable; urgency=medium
+
+  * Fix error handling during firmware update.
+    Correctly publish the error in the status topic.
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Tue, 11 Feb 2025 09:24:29 +0500
+
 wb-device-manager (1.16.1) stable; urgency=medium
 
   * Add scanner and fw update state republish on mosquitto restart
