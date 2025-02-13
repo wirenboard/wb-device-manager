@@ -1,3 +1,9 @@
+wb-device-manager (1.16.3) stable; urgency=medium
+
+  * Retry firmware flashing on errors
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Tue, 11 Feb 2025 18:05:24 +0500
+
 wb-device-manager (1.16.2) stable; urgency=medium
 
   * Fix error handling during firmware update.
