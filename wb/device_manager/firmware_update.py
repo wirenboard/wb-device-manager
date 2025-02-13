@@ -314,23 +314,21 @@ async def write_fw_data_block(serial_device: SerialDevice, chunk: bytes) -> None
     Raises:
         SerialExceptionBase derived exception: If there is a failure during flashing.
     """
-    error_count = 0
     MAX_ERRORS = 3
-    while True:
+    exception = None
+    for _ in range(MAX_ERRORS):
         try:
-            try:
-                await serial_device.write(WB_DEVICE_PARAMETERS["fw_data_block"], chunk)
+            await serial_device.write(WB_DEVICE_PARAMETERS["fw_data_block"], chunk)
+            return
+        except WBModbusException as e:
+            # The device sends slave device failure (0x04) if the chunk is already written
+            if e.code == ModbusExceptionCode.SLAVE_DEVICE_FAILURE:
                 return
-            except WBModbusException as e:
-                # The device sends slave device failure (0x04) if the chunk is already written
-                if e.code == ModbusExceptionCode.SLAVE_DEVICE_FAILURE:
-                    return
-                raise e
+            exception = e
         except SerialExceptionBase as e:
             # Could be an error during transmission, retry
-            error_count += 1
-            if error_count >= MAX_ERRORS:
-                raise e
+            exception = e
+    raise exception
 
 
 async def flash_fw(
