@@ -31,15 +31,13 @@ async def port_scan(rpc_client: SRPCClient, port_config: Union[SerialConfig, Tcp
     }
     add_port_config_to_rpc_request(rpc_request, port_config)
 
-    response = await rpc_client.make_rpc_call(
+    return await rpc_client.make_rpc_call(
         driver="wb-mqtt-serial",
         service="port",
         method="Scan",
         params=rpc_request,
         timeout=DEFAULT_RPC_CALL_TIMEOUT_MS / 1000,
     )
-
-    return response.get("devices", [])
 
 
 class FastModbusScanner:
@@ -56,7 +54,8 @@ class FastModbusScanner:
     async def _do_scan(self, port_config: Union[SerialConfig, TcpConfig]) -> None:
         debug_str = str(port_config)
         try:
-            for device in await port_scan(self._rpc_client, port_config):
+            res = await port_scan(self._rpc_client, port_config)
+            for device in res.get("devices", []):
                 sn = device.get("sn")
                 fw = Firmware(**device.get("fw", {}))
                 fw.ext_support = True
@@ -80,6 +79,9 @@ class FastModbusScanner:
                     device_info.errors.append(StateError(**error))
 
                 await self._scanner_state.found_device(sn, device_info)
+            if "error" in res:
+                logger.error("Fast Modbus search error %s: %s", debug_str, res["error"])
+                await self._scanner_state.add_error_port(debug_str)
         except Exception as err:
             logger.exception("Unhandled exception during Fast Modbus search %s: %s", debug_str, err)
             await self._scanner_state.add_error_port(debug_str)
