@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+import math
 import uuid
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Optional, Union
@@ -94,28 +95,48 @@ class ParsedPorts:
     tcp: list[str] = field(default_factory=list)
 
 
+def get_uart_params_count(bds=BAUDRATES_TO_SCAN, parities=["N", "E", "O"], stopbits=[2, 1]) -> int:
+    return len(bds) * len(parities) * len(stopbits)
+
+
 def get_all_uart_params(bds=BAUDRATES_TO_SCAN, parities=["N", "E", "O"], stopbits=[2, 1]):
     """There are the following assumptions:
     1. Most frequently used baudrates are 9600, 115200, 57600
     2. Most frequently used parity is "N"
     So, yield them first, then yield less frequently used baudrates and parities
     """
-    len_iterable = len(bds) * len(parities) * len(stopbits)
-    pos = 0
     most_frequent_bds, less_frequent_bds = bds[:3], bds[3:]
     for parity in parities:
         for stopbit in stopbits:
             for bd in most_frequent_bds:
-                pos += 1
-                yield bd, parity, stopbit, int(pos / len_iterable * 100)
+                yield bd, parity, stopbit
         for stopbit in stopbits:
             for bd in less_frequent_bds:
-                pos += 1
-                yield bd, parity, stopbit, int(pos / len_iterable * 100)
+                yield bd, parity, stopbit
 
 
 def make_uuid(sn):
     return str(uuid.uuid3(namespace=uuid.NAMESPACE_OID, name=str(sn)))
+
+
+class ProgressMeter:
+    def __init__(self) -> None:
+        self._total_items = 0
+        self._current_item = 0
+
+    def reset(self, total_items: int) -> None:
+        if total_items < 1:
+            raise ValueError("Total items should be greater than 0")
+        self._total_items = total_items
+        self._current_item = 0
+
+    def update(self) -> int:
+        if self._total_items == 0:
+            return 0
+        if self._current_item >= self._total_items:
+            return 100
+        self._current_item += 1
+        return math.ceil(self._current_item / self._total_items * 100)
 
 
 class BusScanStateManager:
@@ -129,9 +150,13 @@ class BusScanStateManager:
         self._asyncio_loop = asyncio_loop
         self._state = BusScanState()
         self._state_update_queue = asyncio.Queue()
+        self._progress_meter = ProgressMeter()
         self._asyncio_loop.create_task(
             self._consume_state_update(), name="Build & publish overall bus scan state"
         )
+
+    def set_scan_items_count(self, count: int) -> None:
+        self._progress_meter.reset(count)
 
     async def add_scanning_port(self, port: str, is_ext_scan: bool) -> None:
         self._ports_now_scanning.add(port)
@@ -139,11 +164,10 @@ class BusScanStateManager:
             {"scanning_ports": self._ports_now_scanning, "is_ext_scan": is_ext_scan}
         )
 
-    async def remove_scanning_port(self, port: str, progress: Optional[int] = None) -> None:
+    async def remove_scanning_port(self, port: str) -> None:
         self._ports_now_scanning.discard(port)
         update = {"scanning_ports": self._ports_now_scanning}
-        if progress is not None:
-            update["progress"] = progress
+        update["progress"] = self._progress_meter.update()
         await self._produce_state_update(update)
 
     async def add_error_port(self, port: str) -> None:
