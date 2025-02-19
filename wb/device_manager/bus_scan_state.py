@@ -6,7 +6,7 @@ import json
 import math
 import uuid
 from dataclasses import asdict, dataclass, field, is_dataclass
-from typing import Optional, Union
+from typing import Union
 
 from .serial_rpc import SerialConfig, TcpConfig
 from .state_error import FailedScanStateError, GenericStateError, StateError
@@ -130,7 +130,14 @@ class ProgressMeter:
         self._total_items = total_items
         self._current_item = 0
 
-    def update(self) -> int:
+    def increment(self) -> int:
+        """
+        Increments by one complete items count and returns the progress as a percentage.
+
+        Returns:
+            int: The progress as a percentage.
+        """
+
         if self._total_items == 0:
             return 0
         if self._current_item >= self._total_items:
@@ -167,7 +174,7 @@ class BusScanStateManager:
     async def remove_scanning_port(self, port: str) -> None:
         self._ports_now_scanning.discard(port)
         update = {"scanning_ports": self._ports_now_scanning}
-        update["progress"] = self._progress_meter.update()
+        update["progress"] = self._progress_meter.increment()
         await self._produce_state_update(update)
 
     async def add_error_port(self, port: str) -> None:

@@ -29,6 +29,11 @@ from .state_error import (
 
 
 class OneByOneBusScanner:
+    """
+    A class that searches for Wiren Board Modbus devices by attempting
+    to read serial number using all possible slave ids.
+    """
+
     def __init__(self, state_manager: BusScanStateManager, rpc_client: SRPCClient):
         self._rpc_client = rpc_client
         self._state_manager = state_manager
