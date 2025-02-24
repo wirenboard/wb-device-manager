@@ -116,18 +116,13 @@ class BusScanner:
             one_by_one_scan_items_count = one_by_one_scanner.get_scan_items_count(ports)
             if scan_type == "extended":
                 self._state_manager.set_scan_items_count(fast_modbus_scan_items_count)
-                await asyncio.gather(
-                    *fast_modbus_scanner.create_scan_tasks(ports, FastModbusCommand.ACTUAL),
-                    return_exceptions=True,
-                )
-            elif scan_type == "standard":
-                self._state_manager.set_scan_items_count(
-                    fast_modbus_scan_items_count + one_by_one_scan_items_count
-                )
+                # Use 0x60 for scanning as the last device with deprecated command only was sold 18.12.24
                 await asyncio.gather(
                     *fast_modbus_scanner.create_scan_tasks(ports, FastModbusCommand.DEPRECATED),
                     return_exceptions=True,
                 )
+            elif scan_type == "standard":
+                self._state_manager.set_scan_items_count(one_by_one_scan_items_count)
                 await asyncio.gather(*one_by_one_scanner.create_scan_tasks(ports), return_exceptions=True)
             elif scan_type == "bootloader":
                 bootloader_mode_scanner = BootloaderModeScanner(
@@ -144,11 +139,7 @@ class BusScanner:
                 )
             else:
                 self._state_manager.set_scan_items_count(
-                    2 * fast_modbus_scan_items_count + one_by_one_scan_items_count
-                )
-                await asyncio.gather(
-                    *fast_modbus_scanner.create_scan_tasks(ports, FastModbusCommand.ACTUAL),
-                    return_exceptions=True,
+                    fast_modbus_scan_items_count + one_by_one_scan_items_count
                 )
                 await asyncio.gather(
                     *fast_modbus_scanner.create_scan_tasks(ports, FastModbusCommand.DEPRECATED),
