@@ -32,6 +32,7 @@ from .serial_rpc import (
     DEFAULT_BAUD_RATE,
     DEFAULT_PARITY,
     WB_DEVICE_PARAMETERS,
+    ModbusExceptionCode,
     ParameterConfig,
     SerialConfig,
     SerialExceptionBase,
@@ -39,6 +40,7 @@ from .serial_rpc import (
     SerialRPCWrapper,
     SerialTimeoutException,
     TcpConfig,
+    WBModbusException,
 )
 from .state_error import (
     DeviceResponseTimeoutError,
@@ -290,11 +292,43 @@ class UpdateStateNotifier:
             self._device_update_info.error = FileDownloadError()
         else:
             self._device_update_info.error = GenericStateError()
-            self._device_update_info.error.metadata = {exception: str(exception)}
+            self._device_update_info.error.metadata = {"exception": str(exception)}
         self._update_state.update(self._device_update_info)
 
     def delete(self, should_notify: bool = True) -> None:
         self._update_state.remove(self._device_update_info, should_notify)
+
+
+async def write_fw_data_block(serial_device: SerialDevice, chunk: bytes) -> None:
+    """
+    Writes a firmware data block to the serial device.
+    The device must be in bootloader mode.
+    Retries writing the chunk up to 3 times if there is a failure.
+    Slave device failure (0x04) Modbus exception is a successful write.
+    It means that the chunk is already written.
+
+    Args:
+        serial_device (SerialDevice): The serial device to write the firmware chunk to.
+        chunk (bytes): The firmware chunk to write.
+
+    Raises:
+        SerialExceptionBase derived exception: If there is a failure during flashing.
+    """
+    MAX_ERRORS = 3
+    exception = None
+    for _ in range(MAX_ERRORS):
+        try:
+            await serial_device.write(WB_DEVICE_PARAMETERS["fw_data_block"], chunk)
+            return
+        except WBModbusException as e:
+            # The device sends slave device failure (0x04) if the chunk is already written
+            if e.code == ModbusExceptionCode.SLAVE_DEVICE_FAILURE:
+                return
+            exception = e
+        except SerialExceptionBase as e:
+            # Could be an error during transmission, retry
+            exception = e
+    raise exception
 
 
 async def flash_fw(
@@ -322,19 +356,9 @@ async def flash_fw(
         for i in range(0, len(parsed_wbfw.data), data_chunk_length)
     ]
 
-    # Due to bootloader's behavior, actual flashing failure is current-chunk failure + next-chunk failure
-    has_previous_chunk_failed = False
-
     for index, chunk in enumerate(chunks):
-        try:
-            await serial_device.write(WB_DEVICE_PARAMETERS["fw_data_block"], chunk)
-            progress_notifier.set_progress(int((index + 1) * 100 / len(chunks)))
-            has_previous_chunk_failed = False
-        except SerialExceptionBase as e:
-            if has_previous_chunk_failed:
-                raise e
-            has_previous_chunk_failed = True
-            continue
+        await write_fw_data_block(serial_device, chunk)
+        progress_notifier.set_progress(int((index + 1) * 100 / len(chunks)))
 
 
 async def reboot_to_bootloader(
