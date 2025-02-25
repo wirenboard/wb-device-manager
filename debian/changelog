@@ -1,3 +1,10 @@
+wb-device-manager (1.17.0) stable; urgency=medium
+
+  * Fix a bug due to which some devices might not be found during scanning
+  * Add supported Fast Modbus command to scan results
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Tue, 25 Feb 2025 10:04:52 +0500
+
 wb-device-manager (1.16.3) stable; urgency=medium
 
   * Retry firmware flashing on errors

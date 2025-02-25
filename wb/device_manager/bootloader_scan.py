@@ -4,7 +4,7 @@
 import asyncio
 import random
 import time
-from typing import Iterator, Optional, Union
+from typing import Iterator, Union
 
 from . import logger
 from .bus_scan_state import (
@@ -12,6 +12,7 @@ from .bus_scan_state import (
     DeviceInfo,
     Port,
     SerialParams,
+    get_uart_params_count,
     make_uuid,
 )
 from .serial_rpc import (
@@ -126,17 +127,14 @@ class BootloaderModeScanner:
             await self._scanner_state.add_error_port(debug_str)
 
     async def _do_scan_port(
-        self,
-        port_config: Union[SerialConfig, TcpConfig],
-        slave_ids: Iterator[int],
-        progress: Optional[int] = None,
+        self, port_config: Union[SerialConfig, TcpConfig], slave_ids: Iterator[int]
     ) -> None:
         debug_str = str(port_config)
         logger.debug("Scanning %s for devices in bootloader", debug_str)
         await self._scanner_state.add_scanning_port(debug_str, is_ext_scan=False)
         for slave_id in slave_ids:
             await self._do_device_scan(slave_id, port_config)
-        await self._scanner_state.remove_scanning_port(debug_str, progress)
+        await self._scanner_state.remove_scanning_port(debug_str)
 
     async def _scan_serial_port(self, port, out_of_order_slave_ids: list[int]) -> None:
         port_config = SerialConfig(path=port)
@@ -147,15 +145,13 @@ class BootloaderModeScanner:
             port_config.stop_bits = stopbits
 
         if out_of_order_slave_ids:
-            for bd, parity, stopbits, _ in self._serial_port_configs_generator():
+            for bd, parity, stopbits in self._serial_port_configs_generator():
                 setup_port_config(bd, parity, stopbits)
                 await self._do_scan_port(port_config, out_of_order_slave_ids)
 
-        for bd, parity, stopbits, progress_percent in self._serial_port_configs_generator():
+        for bd, parity, stopbits in self._serial_port_configs_generator():
             setup_port_config(bd, parity, stopbits)
-            await self._do_scan_port(
-                port_config, allowed_modbus_slave_ids(out_of_order_slave_ids), progress_percent
-            )
+            await self._do_scan_port(port_config, allowed_modbus_slave_ids(out_of_order_slave_ids))
 
     async def _scan_tcp_port(self, ip_port, out_of_order_slave_ids: list[int]) -> None:
         components = ip_port.split(":")
@@ -180,3 +176,9 @@ class BootloaderModeScanner:
             )
 
         return tasks
+
+    def get_scan_items_count(self, ports, out_of_order_slave_ids: list[int]) -> int:
+        serial_count = len(ports.serial) * get_uart_params_count()
+        if out_of_order_slave_ids:
+            serial_count *= 2
+        return serial_count + len(ports.tcp)
