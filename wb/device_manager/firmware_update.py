@@ -607,7 +607,7 @@ class FirmwareUpdater:
         try:
             res["fw"] = await self._fw_info_reader.read_fw_version(port_config, slave_id)
         except SerialExceptionBase as err:
-            logger.debug("Can't get firmware info for %s (%s): %s", slave_id, port_config, err)
+            logger.warning("Can't get firmware info for %s (%s): %s", slave_id, port_config, err)
             raise JSONRPCDispatchException(
                 code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message=str(err)
             ) from err
@@ -619,13 +619,13 @@ class FirmwareUpdater:
         try:
             signature = await self._fw_info_reader.read_fw_signature(port_config, slave_id)
         except SerialExceptionBase as err:
-            logger.debug("Can't get firmware signature for %s (%s): %s", slave_id, port_config, err)
+            logger.warning("Can't get firmware signature for %s (%s): %s", slave_id, port_config, err)
             return res
 
         try:
             res["available_fw"] = self._fw_info_reader.read_released_fw(signature).version
         except NoReleasedFwError as err:
-            logger.debug("Can't get released firmware info for %s (%s): %s", slave_id, port_config, err)
+            logger.warning("Can't get released firmware info for %s (%s): %s", slave_id, port_config, err)
 
         bootloader = await self._fw_info_reader.read_bootloader(port_config, slave_id, signature)
         res["bootloader"] = bootloader.current_version
@@ -636,7 +636,7 @@ class FirmwareUpdater:
                 slave_id, bootloader.can_preserve_port_settings, port_config
             )
         except SerialExceptionBase as err:
-            logger.debug("Can't check if firmware for %s (%s)is updatable: %s", slave_id, port_config, err)
+            logger.warning("Can't check if firmware for %s (%s)is updatable: %s", slave_id, port_config, err)
 
         return res
 

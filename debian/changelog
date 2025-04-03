@@ -1,3 +1,9 @@
+wb-device-manager (1.17.1) stable; urgency=medium
+
+  * Improve logging of firmware update errors
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 03 Apr 2025 15:28:10 +0500
+
 wb-device-manager (1.17.0) stable; urgency=medium
 
   * Fix a bug due to which some devices might not be found during scanning

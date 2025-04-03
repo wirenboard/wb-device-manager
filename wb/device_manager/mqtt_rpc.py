@@ -60,19 +60,27 @@ class SRPCClient(rpcclient.TMQTTRPCClient):
     Stores internal future-like objs (with rpc-call result), filled from outer on_mqtt_message callback
     """
 
+    def __init__(self, client):
+        super().__init__(client)
+        self._counter = 0
+
     async def make_rpc_call(self, driver, service, method, params, timeout):
-        logger.debug("RPC Client -> %s (rpc timeout: %.2fs)", params, timeout)
+        self._counter += 1
+        call_id = self._counter
+        logger.debug("RPC Client %d -> %s (rpc timeout: %.2fs)", call_id, params, timeout)
         response_f = self.call_async(driver, service, method, params, result_future=RPCResultFuture)
         try:
             response = await asyncio.wait_for(response_f, timeout)
-            logger.debug("RPC Client <- %s", response)
+            logger.debug("RPC Client %d <- %s", call_id, response)
             return response
         except asyncio.exceptions.TimeoutError as e:
+            logger.debug("RPC Client %d <- no answer", call_id)
             raise MQTTRPCCallTimeoutError(
                 message="rpc call to %s/%s/%s -> %.2fs: no answer" % (driver, service, method, timeout),
                 data="rpc call params: %s" % str(params),
             ) from e
         except rpcclient.MQTTRPCError as e:
+            logger.debug("RPC Client %d <- error %s", call_id, e)
             if e.code == MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value:
                 raise MQTTRPCRequestTimeoutError(e.rpc_message, e.data) from e
             raise e
