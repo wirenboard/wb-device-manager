@@ -105,9 +105,7 @@ def get_released_fw(
     logger.debug("Looking to %s (suite: %s)", url, release_suite)
     try:
         contents = binary_downloader.read_text_file(url)
-        fw_endpoint = str(
-            yaml.safe_load(contents).get("releases", {}).get(fw_signature, {}).get(release_suite)
-        )
+        fw_endpoint = yaml.safe_load(contents).get("releases", {}).get(fw_signature, {}).get(release_suite)
         if fw_endpoint:
             fw_endpoint = f"{FW_RELEASES_BASE_URL}/{fw_endpoint}"
             fw_version = parse_fw_version(fw_endpoint)
