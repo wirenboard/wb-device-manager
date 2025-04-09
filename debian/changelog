@@ -1,3 +1,9 @@
+wb-device-manager (1.18.0) stable; urgency=medium
+
+  * Fix searching of WB-MAP energy meters
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Wed, 09 Apr 2025 18:17:40 +0500
+
 wb-device-manager (1.17.1) stable; urgency=medium
 
   * Improve logging of firmware update errors

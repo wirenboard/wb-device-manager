@@ -50,8 +50,8 @@ class OneByOneBusScanner:
                     first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"],
                     regs_length=reg_len,
                 )
-                device_info.device_signature = device_signature
-                device_info.title = get_human_readable_device_model(device_signature)
+                device_info.device_signature = get_human_readable_device_model(device_signature)
+                device_info.title = device_info.device_signature
                 err_ctx = None
                 device_info.sn = str(fix_sn(device_info.device_signature, int(device_info.sn)))
                 break
