@@ -12,7 +12,7 @@ Architecture: all
 Breaks: python3-wb-device-manager
 Replaces: python3-wb-device-manager
 Provides: python3-wb-device-manager
-Depends: ${python3:Depends}, ${misc:Depends}, python3-paho-mqtt, python3-wb-common (>= 2.1.0), python3-mqttrpc (>= 1.1.5), wb-mqtt-serial (>= 2.156.0~~), python3-wb-mcu-fw-updater (>= 1.6.1), python3-httplib2
+Depends: ${python3:Depends}, ${misc:Depends}, python3-paho-mqtt, python3-wb-common (>= 2.1.0), python3-mqttrpc (>= 1.1.5), wb-mqtt-serial (>= 2.158.7~~), python3-wb-mcu-fw-updater (>= 1.6.1), python3-httplib2
 Recommends: wb-mqtt-homeui (>= 2.50.0)
 Description: Wiren Board modbus devices manager
  The daemon that manages firmware update and new devices searching.
