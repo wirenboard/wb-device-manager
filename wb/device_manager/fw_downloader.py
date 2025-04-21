@@ -9,6 +9,7 @@ import yaml
 
 from . import logger
 from .releases import VersionParsingError, parse_fw_version
+from .ttl_lru_cache import ttl_lru_cache
 
 
 class WBRemoteStorageError(Exception):
@@ -83,6 +84,8 @@ class BinaryDownloader:
             raise RemoteFileDownloadingError(f"Failed to download {url}: {err}") from err
 
 
+# Cache information about released firmware for 10 minutes
+@ttl_lru_cache(seconds_to_live=600, maxsize=100)
 def get_released_fw(
     fw_signature: str, release_suite: str, binary_downloader: BinaryDownloader
 ) -> ReleasedBinary:
@@ -127,6 +130,8 @@ def get_released_fw(
     raise NoReleasedFwError(f"Released FW not found for {fw_signature}, release: {release_suite}")
 
 
+# Bootloader changes rarely, so we can cache it for a longer time
+@ttl_lru_cache(seconds_to_live=1800, maxsize=100)
 def get_bootloader_info(fw_signature: str, binary_downloader: BinaryDownloader) -> ReleasedBinary:
     bootloader_url_prefix = f"{FW_RELEASES_BASE_URL}/bootloader/by-signature/{fw_signature}/main"
     bootloader_latest_txt_url = f"{bootloader_url_prefix}/latest.txt"

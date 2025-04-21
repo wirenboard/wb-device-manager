@@ -49,6 +49,7 @@ from .state_error import (
     RPCCallTimeoutStateError,
     StateError,
 )
+from .ttl_lru_cache import ttl_lru_cache
 
 
 class SoftwareType(Enum):
@@ -172,6 +173,11 @@ def parse_wbfw(data: bytes) -> ParsedWBFW:
         )
 
     return res
+
+
+@ttl_lru_cache(seconds_to_live=7200, maxsize=30)
+def download_wbfw(binary_downloader: BinaryDownloader, url: str) -> ParsedWBFW:
+    return parse_wbfw(binary_downloader.download_file(url))
 
 
 def read_port_config(port: dict) -> Union[SerialConfig, TcpConfig]:
@@ -420,7 +426,7 @@ async def update_software(
         await reboot_to_bootloader(serial_device, bootloader_can_preserve_port_settings)
         await flash_fw(
             serial_device,
-            parse_wbfw(binary_downloader.download_file(software.available.endpoint)),
+            download_wbfw(binary_downloader, software.available.endpoint),
             update_state_notifier,
         )
     except (WBRemoteStorageError, SerialExceptionBase) as e:
@@ -468,7 +474,7 @@ async def restore_firmware(
     try:
         await flash_fw(
             serial_device,
-            parse_wbfw(binary_downloader.download_file(firmware.endpoint)),
+            download_wbfw(binary_downloader, firmware.endpoint),
             update_state_notifier,
         )
     except (WBRemoteStorageError, SerialExceptionBase) as e:

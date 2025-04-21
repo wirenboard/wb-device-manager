@@ -277,16 +277,19 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
 
     async def test_success(self):
         mock = AsyncMock()
-        mock.download_file = Mock()
-        mock.download_file.return_value = self.fw_data
+        mock.download_wbfw = Mock()
+        mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
-        with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw):
-            await restore_firmware(mock, mock, fw, mock)
+        with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
+            "wb.device_manager.firmware_update.download_wbfw", mock.download_wbfw
+        ):
+            downloader_mock = AsyncMock()
+            await restore_firmware(mock, mock, fw, downloader_mock)
             expected_calls = [
                 call.set_progress(0),
-                call.download_file(fw.endpoint),
+                call.download_wbfw(downloader_mock, fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
                 call.delete(),
             ]
@@ -295,17 +298,20 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
 
     async def test_exception(self):
         mock = AsyncMock()
-        mock.download_file = Mock()
-        mock.download_file.return_value = self.fw_data
+        mock.download_wbfw = Mock()
+        mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
         mock.set_error_from_exception = Mock()
         fw = ReleasedBinary("1.1.1", "test")
-        with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw):
+        with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
+            "wb.device_manager.firmware_update.download_wbfw", mock.download_wbfw
+        ):
             mock.flash_fw.side_effect = SerialTimeoutException("ex")
-            await restore_firmware(mock, mock, fw, mock)
+            downloader_mock = AsyncMock()
+            await restore_firmware(mock, mock, fw, downloader_mock)
             expected_calls = [
                 call.set_progress(0),
-                call.download_file(fw.endpoint),
+                call.download_wbfw(downloader_mock, fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
                 call.set_error_from_exception(mock.flash_fw.side_effect),
             ]
@@ -324,8 +330,8 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
 
     async def test_success(self):
         mock = AsyncMock()
-        mock.download_file = Mock()
-        mock.download_file.return_value = self.fw_data
+        mock.download_wbfw = Mock()
+        mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
@@ -334,12 +340,15 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
             "wb.device_manager.firmware_update.reboot_to_bootloader", mock.reboot_to_bootloader
         ), patch("wb.device_manager.firmware_update.read_sn"), patch(
             "wb.device_manager.firmware_update.read_device_model"
+        ), patch(
+            "wb.device_manager.firmware_update.download_wbfw", mock.download_wbfw
         ):
-            await update_software(mock, mock, sw, mock, True)
+            downloader_mock = AsyncMock()
+            await update_software(mock, mock, sw, downloader_mock, True)
             expected_calls = [
                 call.set_progress(0),
                 call.reboot_to_bootloader(mock, True),
-                call.download_file(fw.endpoint),
+                call.download_wbfw(downloader_mock, fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
             ]
             mock.assert_has_calls(expected_calls, False)
@@ -347,8 +356,8 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
 
     async def test_exception(self):
         mock = AsyncMock()
-        mock.download_file = Mock()
-        mock.download_file.return_value = self.fw_data
+        mock.download_wbfw = Mock()
+        mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
         mock.set_error_from_exception = Mock()
         mock.delete = Mock()
@@ -358,13 +367,16 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
             "wb.device_manager.firmware_update.reboot_to_bootloader", mock.reboot_to_bootloader
         ), patch("wb.device_manager.firmware_update.read_sn"), patch(
             "wb.device_manager.firmware_update.read_device_model"
+        ), patch(
+            "wb.device_manager.firmware_update.download_wbfw", mock.download_wbfw
         ):
             mock.flash_fw.side_effect = SerialTimeoutException("ex")
-            await update_software(mock, mock, sw, mock, True)
+            downloader_mock = AsyncMock()
+            await update_software(mock, mock, sw, downloader_mock, True)
             expected_calls = [
                 call.set_progress(0),
                 call.reboot_to_bootloader(mock, True),
-                call.download_file(fw.endpoint),
+                call.download_wbfw(downloader_mock, fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
                 call.set_error_from_exception(mock.flash_fw.side_effect),
             ]
