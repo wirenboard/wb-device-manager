@@ -1,6 +1,7 @@
 wb-device-manager (1.18.1) stable; urgency=medium
 
   * Improve getting information about released firmware versions speed
+  * Add caching of information about released firmwares, bootloaders and firmware binaries.
 
  -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Mon, 21 Apr 2025 10:50:50 +0500
 
