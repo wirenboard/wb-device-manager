@@ -1,3 +1,9 @@
+wb-device-manager (1.18.2) stable; urgency=medium
+
+  * Adopt PEP440
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 23 Apr 2025 13:10:00 +0400
+
 wb-device-manager (1.18.1) stable; urgency=medium
 
   * Improve getting information about released firmware versions speed
