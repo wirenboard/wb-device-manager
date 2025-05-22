@@ -2,29 +2,28 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
+import random
 import time
+from typing import Union
 
-from mqttrpc import client as rpcclient
-from wb_modbus import bindings, minimalmodbus
-
-from . import logger, serial_bus
+from . import logger
 from .bus_scan_state import (
     BusScanStateManager,
     DeviceInfo,
+    Firmware,
     Port,
     SerialParams,
+    StateError,
     get_all_uart_params,
     get_uart_params_count,
     make_uuid,
 )
-from .firmware_update import get_human_readable_device_model
 from .mqtt_rpc import SRPCClient
-from .serial_bus import fix_sn
-from .state_error import (
-    ReadDeviceSignatureDeviceError,
-    ReadFWSignatureDeviceError,
-    ReadFWVersionDeviceError,
-    ReadSerialParamsDeviceError,
+from .serial_rpc import (
+    DEFAULT_RPC_CALL_TIMEOUT_MS,
+    SerialConfig,
+    TcpConfig,
+    add_port_config_to_rpc_request,
 )
 
 
@@ -38,116 +37,77 @@ class OneByOneBusScanner:
         self._rpc_client = rpc_client
         self._state_manager = state_manager
 
-    async def _fill_device_info(self, device_info, mb_conn):
-        errors = []
+    async def _device_probe(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int) -> dict:
+        rpc_request = {
+            "total_timeout": DEFAULT_RPC_CALL_TIMEOUT_MS,
+            "slave_id": slave_id,
+        }
+        add_port_config_to_rpc_request(rpc_request, port_config)
 
-        err_ctx = None
-        # Actual firmwares have 20 registers for device model, old ones have only 6, try to read both
-        EXTENDED_DEVICE_MODEL_SIZE = 20
-        for reg_len in [EXTENDED_DEVICE_MODEL_SIZE, bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH]:
-            try:
-                device_signature = await mb_conn.read_string(
-                    first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["device_signature"],
-                    regs_length=reg_len,
-                )
-                device_info.device_signature = get_human_readable_device_model(device_signature)
-                device_info.title = device_info.device_signature
-                err_ctx = None
-                device_info.sn = str(fix_sn(device_info.device_signature, int(device_info.sn)))
-                break
-            except minimalmodbus.ModbusException as e:
-                err_ctx = e
-        if err_ctx:
-            logger.error("Failed to read device signature", exc_info=err_ctx)
-            errors.append(ReadDeviceSignatureDeviceError())
+        return await self._rpc_client.make_rpc_call(
+            driver="wb-mqtt-serial",
+            service="device",
+            method="Probe",
+            params=rpc_request,
+            timeout=DEFAULT_RPC_CALL_TIMEOUT_MS / 1000,
+        )
 
-        try:
-            device_info.fw_signature = await mb_conn.read_string(
-                first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_signature"],
-                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_SIGNATURE_LENGTH,
-            )
-        except minimalmodbus.ModbusException:
-            logger.exception("Failed to read fw_signature")
-            errors.append(ReadFWSignatureDeviceError())
-
-        try:
-            device_info.fw.version = await mb_conn.read_string(
-                first_addr=bindings.WBModbusDeviceBase.COMMON_REGS_MAP["fw_version"],
-                regs_length=bindings.WBModbusDeviceBase.FIRMWARE_VERSION_LENGTH,
-            )
-        except minimalmodbus.ModbusException:
-            logger.exception("Failed to read fw_version")
-            errors.append(ReadFWVersionDeviceError())
-
-        device_info.errors.extend(errors)
-
-    async def _fill_serial_params(self, device_info, scanner):
-        bd, parity, stopbits = "-", "-", "-"
-        try:
-            bd, parity, stopbits = await scanner.get_uart_params(device_info.cfg.slave_id, device_info.sn)
-        except minimalmodbus.ModbusException:
-            logger.exception("Failed to read serial params from device")
-            device_info.errors.append(ReadSerialParamsDeviceError())
-
-        device_info.cfg.baud_rate = bd
-        device_info.cfg.parity = parity
-        device_info.cfg.stop_bits = stopbits
-
-    async def _do_scan_port(self, path, scanner, **scan_kwargs) -> None:
-        debug_str = path + " " + "-".join(map(str, scan_kwargs.values()))
+    async def _do_scan_port(self, port_config: Union[SerialConfig, TcpConfig]) -> None:
+        debug_str = str(port_config)
         logger.debug("Scanning %s", debug_str)
 
         try:
             await self._state_manager.add_scanning_port(debug_str, False)
-            async for slave_id, sn in scanner.scan_bus(**scan_kwargs):
+            for slave_id in random.sample(range(1, 247), 246):
+                device = await self._device_probe(port_config, slave_id)
+                sn = device.get("sn", "")
                 if self._state_manager.is_device_found(sn):
-                    logger.debug("Device %s already scanned; skipping", str(sn))
+                    logger.debug("Device %s on %s is already scanned; skipping", sn, debug_str)
                     continue
 
+                fw = Firmware(**device.get("fw", {}))
+                fw.ext_support = False
+                fw_signature = device.get("fw_signature", "")
+                device_model = device.get("device_signature", "")
+                if not device_model:
+                    device_model = fw_signature
                 device_info = DeviceInfo(
                     uuid=make_uuid(sn),
-                    title="Unknown",
-                    sn=str(sn),
+                    port=Port(port_config),
+                    title=device_model,
+                    sn=sn,
+                    device_signature=device_model,
+                    fw_signature=fw_signature,
+                    configured_device_type=device.get("configured_device_type", ""),
                     last_seen=int(time.time()),
-                    port=Port(path),
-                    cfg=SerialParams(slave_id=slave_id),
+                    cfg=SerialParams(**device.get("cfg", {})),
+                    fw=fw,
                 )
-
-                addr = device_info.cfg.slave_id
-                mb_conn = scanner.get_mb_connection(addr, path, **scan_kwargs)
-
-                # fill_device_info can modify sn
-                # scanner searches port parameters based on cached sn
-                # and can return empty values for modified sn
-                # so need to call fill_serial_params first
-                await self._fill_serial_params(device_info, scanner)
-                await self._fill_device_info(device_info, mb_conn)
+                errors = device.get("errors", [])
+                for error in errors:
+                    device_info.errors.append(StateError(**error))
 
                 await self._state_manager.found_device(sn, device_info)
 
-        except minimalmodbus.NoResponseError:
-            logger.debug("No modbus devices on %s", debug_str)
-        except minimalmodbus.InvalidResponseError as err:
-            logger.error("Invalid response during scan %s: %s", debug_str, err)
         except Exception as err:
-            if isinstance(err, rpcclient.MQTTRPCError):
-                logger.error("MQTT RPC error during scan %s: %s", debug_str, err)
-            else:
-                logger.exception("Unhandled exception during scan %s", debug_str)
+            logger.exception("Unhandled exception during scan %s: %s", debug_str, err)
             await self._state_manager.add_error_port(debug_str)
-            raise
         finally:
             await self._state_manager.remove_scanning_port(debug_str)
 
     async def _scan_serial_port(self, port):
-        scanner = serial_bus.WBModbusScanner(port, self._rpc_client)
+        port_config = SerialConfig(path=port)
 
         for bd, parity, stopbits in get_all_uart_params():
-            await self._do_scan_port(port, scanner, baudrate=bd, parity=parity, stopbits=stopbits)
+            port_config.baud_rate = bd
+            port_config.parity = parity
+            port_config.stop_bits = stopbits
+            await self._do_scan_port(port_config)
 
     async def _scan_tcp_port(self, ip_port):
-        scanner = serial_bus.WBModbusScannerTCP(ip_port, self._rpc_client)
-        await self._do_scan_port(ip_port, scanner)
+        components = ip_port.split(":")
+        port_config = TcpConfig(address=components[0], port=int(components[1]))
+        await self._do_scan_port(port_config)
 
     def create_scan_tasks(self, ports) -> list:
         tasks = []

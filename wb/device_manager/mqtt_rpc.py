@@ -3,10 +3,9 @@
 
 import asyncio
 import atexit
-import ipaddress
 import signal
 from enum import Enum
-from functools import cache, partial
+from functools import partial
 from pathlib import PurePosixPath
 
 import paho.mqtt.client as mqtt
@@ -14,7 +13,6 @@ from jsonrpc.exceptions import JSONRPCDispatchException, JSONRPCServerError
 from mqttrpc import client as rpcclient
 from mqttrpc.manager import AMQTTRPCResponseManager
 from mqttrpc.protocol import MQTTRPC10Response
-from wb_modbus import instruments, minimalmodbus
 
 from . import TOPIC_HEADER, logger
 
@@ -84,104 +82,6 @@ class SRPCClient(rpcclient.TMQTTRPCClient):
             if e.code == MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value:
                 raise MQTTRPCRequestTimeoutError(e.rpc_message, e.data) from e
             raise e
-
-
-class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
-    """
-    Generic minimalmodbus instrument's logic with mqtt-rpc to wb-mqtt-serial as transport
-    (instead of pyserial)
-    """
-
-    def __init__(self, port, slaveaddress, rpc_client, **kwargs):
-        super().__init__(port, slaveaddress, **kwargs)
-        self.rpc_client = rpc_client
-        self.serial.timeout = kwargs.get("response_timeout", self._calculate_default_response_timeout())
-
-    @staticmethod
-    @cache
-    def calculate_minimum_silent_period_s(bd):
-        return minimalmodbus._calculate_minimum_silent_period(bd)  # 3.5 modbus chars
-
-    def _calculate_default_response_timeout(self):
-        """
-        response_timeout (on mb_master side): roundtrip + device_processing + uart_processing
-        """
-        wb_devices_response_time_s = 8e-3  # devices with old fws
-        onebyte_on_1200bd_s = 10e-3
-        linux_uart_processing_s = 50e-3  # with huge upper reserve
-        return wb_devices_response_time_s
-
-    def get_transport_params(self):
-        return {
-            "path": self.serial.port,
-            "baud_rate": self.serial.SERIAL_SETTINGS["baudrate"],
-            "parity": self.serial.SERIAL_SETTINGS["parity"],
-            "data_bits": 8,
-            "stop_bits": self.serial.SERIAL_SETTINGS["stopbits"],
-        }
-
-    async def _communicate(self, request, number_of_bytes_to_read):
-        minimalmodbus._check_string(request, minlength=1, description="request")
-        minimalmodbus._check_int(number_of_bytes_to_read)
-
-        """
-        overall rpc-request action timeout:
-            - device is supposed to be alive (small modbus response_timeout inside)
-            - depends on wb-mqtt-serial's poll scheduler => overall val is relatively huge
-        """
-        rpc_call_timeout = 10
-
-        bd = self.serial.SERIAL_SETTINGS["baudrate"]
-        rpc_request = {
-            "response_size": number_of_bytes_to_read,
-            "format": "HEX",
-            "msg": minimalmodbus._hexencode(request),
-            "response_timeout": round(self.serial.timeout * 1000),  # ms
-            "frame_timeout": round(self.calculate_minimum_silent_period_s(bd) * 1000),  # ms
-            "total_timeout": round(rpc_call_timeout * 1000),  # ms
-        }
-        rpc_request.update(self.get_transport_params())
-
-        try:
-            response = await self.rpc_client.make_rpc_call(
-                driver="wb-mqtt-serial",
-                service="port",
-                method="Load",
-                params=rpc_request,
-                timeout=rpc_call_timeout,
-            )
-
-        except rpcclient.MQTTRPCError as e:
-            reraise_err = (
-                minimalmodbus.NoResponseError(
-                    "RPC: no response with %.2fs timeout: server returned code %d; rpc call: %s"
-                    % (rpc_call_timeout, e.code, str(rpc_request))
-                )
-                if "request timed out" in e.data
-                else e
-            )  # TODO: fix rpc errcodes in wb-mqtt-serial
-            raise reraise_err from e
-
-        else:
-            return minimalmodbus._hexdecode(str(response.get("response", "")))
-
-
-class AsyncModbusInstrumentTCP(AsyncModbusInstrument):
-    def __init__(self, ip_addr_port, slaveaddress, rpc_client, **kwargs):
-        ip, _, port = ip_addr_port.partition(":")
-        try:
-            self.ip = ipaddress.ip_address(ip).exploded
-            self.tcp_port = int(port)
-        except ValueError as e:
-            raise rpcclient.MQTTRPCError('Format should be "valid_ip_addr:port"') from e
-
-        super().__init__(port=None, slaveaddress=slaveaddress, rpc_client=rpc_client, **kwargs)
-
-    def get_transport_params(self):
-        return {
-            "ip": self.ip,
-            "port": self.tcp_port,
-        }
 
 
 class MQTTRPCCallTimeoutError(rpcclient.MQTTRPCError):

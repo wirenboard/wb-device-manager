@@ -6,7 +6,7 @@ import json
 import math
 import uuid
 from dataclasses import asdict, dataclass, field, is_dataclass
-from typing import Union
+from typing import Optional, Union
 
 from .serial_rpc import SerialConfig, TcpConfig
 from .state_error import FailedScanStateError, GenericStateError, StateError
@@ -17,7 +17,7 @@ MAX_MODBUS_SLAVE_ID_TO_SCAN = 246
 
 @dataclass
 class Port:
-    path: str = None
+    path: Optional[str] = None
 
     def __init__(self, port_config: Union[SerialConfig, TcpConfig, str]):
         if isinstance(port_config, SerialConfig):
@@ -39,23 +39,24 @@ class SerialParams:
 
 @dataclass
 class Firmware:
-    version: str = None
+    version: Optional[str] = None
     ext_support: bool = False
-    fast_modbus_command: int = None
+    fast_modbus_command: Optional[int] = None
 
 
 @dataclass
 class DeviceInfo:
     uuid: str
     port: Port
-    title: str = None
-    sn: str = None
-    device_signature: str = None
-    fw_signature: str = None
-    last_seen: int = None
+    cfg: SerialParams
+    title: Optional[str] = None
+    sn: Optional[str] = None
+    device_signature: Optional[str] = None
+    fw_signature: Optional[str] = None
+    configured_device_type: Optional[str] = None
+    last_seen: Optional[int] = None
     bootloader_mode: bool = False
     errors: list[StateError] = field(default_factory=list)
-    cfg: SerialParams = field(default_factory=SerialParams)
     fw: Firmware = field(default_factory=Firmware)
 
     def __hash__(self):
@@ -71,7 +72,7 @@ class BusScanState:
     scanning: bool = False
     scanning_ports: list[str] = field(default_factory=list)
     is_ext_scan: bool = False
-    error: StateError = None
+    error: Optional[StateError] = None
     devices: list[DeviceInfo] = field(default_factory=list)
 
     def update(self, new):
@@ -84,9 +85,9 @@ class SetEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, set):
             return list(o)
-        if is_dataclass(o):
+        if is_dataclass(o) and not isinstance(o, type):
             return asdict(o)
-        super().default(o)
+        return super().default(o)
 
 
 @dataclass
@@ -173,8 +174,10 @@ class BusScanStateManager:
 
     async def remove_scanning_port(self, port: str) -> None:
         self._ports_now_scanning.discard(port)
-        update = {"scanning_ports": self._ports_now_scanning}
-        update["progress"] = self._progress_meter.increment()
+        update = {
+            "scanning_ports": self._ports_now_scanning,
+            "progress": self._progress_meter.increment(),
+        }
         await self._produce_state_update(update)
 
     async def add_error_port(self, port: str) -> None:

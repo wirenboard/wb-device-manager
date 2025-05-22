@@ -85,6 +85,7 @@ class FastModbusScanner:
                     sn=sn,
                     device_signature=device_model,
                     fw_signature=fw_signature,
+                    configured_device_type=device.get("configured_device_type"),
                     last_seen=int(time.time()),
                     cfg=SerialParams(**device.get("cfg", {})),
                     fw=fw,
