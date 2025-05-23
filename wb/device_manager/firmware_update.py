@@ -23,11 +23,6 @@ from .fw_downloader import (
 )
 from .mqtt_rpc import MQTTRPCAlreadyProcessingException, MQTTRPCErrorCode
 from .releases import parse_releases
-from .serial_bus import (
-    fix_sn,
-    get_baud_rate_from_register_value,
-    get_parity_from_register_value,
-)
 from .serial_rpc import (
     DEFAULT_BAUD_RATE,
     DEFAULT_PARITY,
@@ -41,6 +36,9 @@ from .serial_rpc import (
     SerialTimeoutException,
     TcpConfig,
     WBModbusException,
+    fix_sn,
+    get_baud_rate_from_register_value,
+    get_parity_from_register_value,
 )
 from .state_error import (
     DeviceResponseTimeoutError,
@@ -133,7 +131,7 @@ def to_dict_for_json(device_update_info: DeviceUpdateInfo) -> dict:
 class SoftwareComponent:
     type: SoftwareType = SoftwareType.FIRMWARE
     current_version: Optional[str] = None
-    available: ReleasedBinary = None
+    available: Optional[ReleasedBinary] = None
 
 
 @dataclass
@@ -234,7 +232,7 @@ class FirmwareInfoReader:
 
     def read_released_fw(self, signature: str) -> ReleasedBinary:
         return get_released_fw(
-            signature, parse_releases("/usr/lib/wb-release").get("SUITE"), self._downloader
+            signature, parse_releases("/usr/lib/wb-release").get("SUITE", ""), self._downloader
         )
 
     async def read(
@@ -334,7 +332,8 @@ async def write_fw_data_block(serial_device: SerialDevice, chunk: bytes) -> None
         except SerialExceptionBase as e:
             # Could be an error during transmission, retry
             exception = e
-    raise exception
+    if exception is not None:
+        raise exception
 
 
 async def flash_fw(
@@ -599,6 +598,10 @@ class FirmwareUpdater:
         logger.debug("Request firmware info")
         port_config = read_port_config(kwargs.get("port", {}))
         slave_id = kwargs.get("slave_id")
+        if not isinstance(slave_id, int):
+            raise JSONRPCDispatchException(
+                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message="Invalid slave_id"
+            )
         if self._state.is_updating(slave_id, Port(port_config)):
             raise MQTTRPCAlreadyProcessingException()
         res = {
@@ -669,6 +672,10 @@ class FirmwareUpdater:
         software_type = SoftwareType(kwargs.get("type", SoftwareType.FIRMWARE.value))
         logger.debug("Start %s update", software_type.value)
         slave_id = kwargs.get("slave_id")
+        if not isinstance(slave_id, int):
+            raise JSONRPCDispatchException(
+                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message="Invalid slave_id"
+            )
         port_config = read_port_config(kwargs.get("port", {}))
         fw_info = await self._fw_info_reader.read(port_config, slave_id)
         if not await self._check_updatable(
@@ -708,6 +715,10 @@ class FirmwareUpdater:
         """
 
         slave_id = kwargs.get("slave_id")
+        if not isinstance(slave_id, int):
+            raise JSONRPCDispatchException(
+                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message="Invalid slave_id"
+            )
         port = Port(kwargs.get("port", {}).get("path"))
         software_type = SoftwareType(kwargs.get("type", SoftwareType.FIRMWARE.value))
         logger.debug("Clear error: %d %s", slave_id, port.path)
@@ -734,6 +745,10 @@ class FirmwareUpdater:
             raise MQTTRPCAlreadyProcessingException()
         logger.debug("Start firmware restore")
         slave_id = kwargs.get("slave_id")
+        if not isinstance(slave_id, int):
+            raise JSONRPCDispatchException(
+                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message="Invalid slave_id"
+            )
         port_config = read_port_config(kwargs.get("port", {}))
         if not await is_in_bootloader_mode(slave_id, self._serial_rpc, port_config):
             return "Ok"
@@ -752,7 +767,7 @@ class FirmwareUpdater:
         slave_id: int,
         port_config: Union[SerialConfig, TcpConfig],
         fw_info: FirmwareInfo,
-    ) -> bool:
+    ) -> None:
         """
         Asyncio task body to update the firmware of a device.
 

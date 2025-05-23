@@ -1,3 +1,11 @@
+wb-device-manager (1.19.0) stable; urgency=medium
+
+  * Use wb-mqtt-serial's device/Probe RPC for ordinary scan.
+  * Add configured_device_type parameter to device information in /wb-device-manager/state.
+    It contains the device type from template if the device is configured in wb-mqtt-serial.conf.
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 22 May 2025 12:37:35 +0500
+
 wb-device-manager (1.18.2) stable; urgency=medium
 
   * Adopt PEP440

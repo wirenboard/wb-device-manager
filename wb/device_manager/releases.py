@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import re
-from collections import defaultdict
 
 from . import logger
 
@@ -11,7 +10,7 @@ class VersionParsingError(Exception):
     pass
 
 
-def parse_releases(fname: str) -> dict:
+def parse_releases(fname: str) -> dict[str, str]:
     """
     WirenBoard controllers have releases info, stored in file <CONFIG['RELEASES_FNAME']>
     Releases info file usually contains:
@@ -20,11 +19,9 @@ def parse_releases(fname: str) -> dict:
         TARGET
         REPO_PREFIX
     """
-    ret = defaultdict(lambda: None)
-
     logger.debug("Reading %s for releases info", fname)
     with open(fname, "r", encoding="utf-8") as fp:
-        ret.update({k.strip(): v.strip() for k, v in (l.split("=", 1) for l in fp)})
+        ret = {k.strip(): v.strip() for k, v in (l.split("=", 1) for l in fp)}
         logger.debug("Got releases info:")
         logger.debug("\t%s", str(ret))
         return ret

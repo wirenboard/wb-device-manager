@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import re
 from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Union
+from typing import Optional, Union
 
 from mqttrpc import client as rpcclient
 
 from .mqtt_rpc import MQTTRPCErrorCode, SRPCClient
+
+WBMAP_MARKER = re.compile(r"\S*MAP\d+\S*")  # *MAP%d* matches
 
 
 class ModbusExceptionCode(Enum):
@@ -110,8 +113,8 @@ class DataType(Enum):
 class ParameterConfig:
     register_address: int
     register_count: int = 1
-    read_fn: ModbusFunctionCode = ModbusFunctionCode.READ_HOLDING
-    write_fn: ModbusFunctionCode = ModbusFunctionCode.WRITE_SINGLE_REGISTER
+    read_fn: Optional[ModbusFunctionCode] = ModbusFunctionCode.READ_HOLDING
+    write_fn: Optional[ModbusFunctionCode] = ModbusFunctionCode.WRITE_SINGLE_REGISTER
     data_type: DataType = DataType.UINT
 
 
@@ -224,8 +227,6 @@ class SerialRPCWrapper:
         response_timeout (on mb_master side): roundtrip + device_processing + uart_processing
         """
         wb_devices_response_time_s = 8e-3  # devices with old fws
-        onebyte_on_1200bd_s = 10e-3
-        linux_uart_processing_s = 50e-3  # with huge upper reserve
         return wb_devices_response_time_s
 
     async def _communicate(
@@ -235,8 +236,8 @@ class SerialRPCWrapper:
         function_code: int,
         register_address: int,
         register_count: int,
-        data: bytes,
-        response_timeout_s: float = None,
+        data: Optional[bytes],
+        response_timeout_s: Optional[float] = None,
     ) -> bytes:
         if response_timeout_s is None:
             response_timeout_s = self._calculate_default_response_timeout()
@@ -282,10 +283,10 @@ class SerialRPCWrapper:
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,
         param_config: ParameterConfig,
-        response_timeout_s: float = None,
+        response_timeout_s: Optional[float] = None,
     ) -> Union[str, int, bytes]:
         if param_config.read_fn is None:
-            raise ForbiddenOperationException("Register %d is not readable" % param_config.register_address)
+            raise ForbiddenOperationException(f"Register {param_config.register_address} is not readable")
 
         response = await self._communicate(
             port_config,
@@ -297,7 +298,7 @@ class SerialRPCWrapper:
             response_timeout_s,
         )
         if param_config.data_type == DataType.STR:
-            return "".join(chr(byte) for byte in response[1::2]).strip("\x00\xFF")
+            return "".join(chr(byte) for byte in response[1::2]).strip("\x00\xff")
         if param_config.data_type == DataType.UINT:
             return int.from_bytes(response, byteorder="big")
         return response
@@ -308,10 +309,10 @@ class SerialRPCWrapper:
         slave_id: int,
         param_config: ParameterConfig,
         value: Union[int, bytes],
-        response_timeout_s: float = None,
+        response_timeout_s: Optional[float] = None,
     ) -> None:
         if param_config.write_fn is None:
-            raise ForbiddenOperationException("Register %d is not writable" % param_config.register_address)
+            raise ForbiddenOperationException(f"Register {param_config.register_address} is not writable")
 
         data = value_to_bytes(param_config.data_type, value)
 
@@ -319,9 +320,9 @@ class SerialRPCWrapper:
 
         if (
             param_config.write_fn == ModbusFunctionCode.WRITE_MULTIPLE_REGISTERS
-            and len(data) / 2 < param_config.register_count
+            and len(data) // 2 < param_config.register_count
         ):
-            register_count = len(data) / 2
+            register_count = len(data) // 2
         await self._communicate(
             port_config,
             slave_id,
@@ -331,3 +332,30 @@ class SerialRPCWrapper:
             data,
             response_timeout_s,
         )
+
+
+def fix_sn(device_model: str, raw_sn: int) -> int:
+    """
+    Raw value in registers should be adjusted to get the actual serial number.
+    For example, WB-MAP* devices use only 25 bits for serial number and higher bits are set to 1.
+
+    Args:
+        device_model (str): The model of the device.
+        raw_sn (int): Raw serial number of the device read from registers.
+
+    Returns:
+        int: The adjusted serial number.
+
+    """
+    # WB-MAP* uses 25 bit for serial number
+    if WBMAP_MARKER.match(device_model):
+        return raw_sn - 0xFE000000
+    return raw_sn
+
+
+def get_parity_from_register_value(value: int) -> str:
+    return {0: "N", 1: "O", 2: "E"}.get(value, "-")
+
+
+def get_baud_rate_from_register_value(value: int) -> int:
+    return value * 100
