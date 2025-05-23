@@ -61,6 +61,9 @@ class OneByOneBusScanner:
             for slave_id in random.sample(range(1, 247), 246):
                 device = await self._device_probe(port_config, slave_id)
                 sn = device.get("sn", "")
+                if not sn:
+                    # nothing found
+                    continue
                 if self._state_manager.is_device_found(sn):
                     logger.debug("Device %s on %s is already scanned; skipping", sn, debug_str)
                     continue
@@ -92,6 +95,7 @@ class OneByOneBusScanner:
         except Exception as err:
             logger.exception("Unhandled exception during scan %s: %s", debug_str, err)
             await self._state_manager.add_error_port(debug_str)
+            raise
         finally:
             await self._state_manager.remove_scanning_port(debug_str)
 

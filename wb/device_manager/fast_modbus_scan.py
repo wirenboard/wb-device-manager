@@ -107,9 +107,7 @@ class FastModbusScanner:
     ) -> None:
         debug_str = str(port_config)
         logger.debug("Searching %s for devices using Fast Modbus", debug_str)
-        await self._scanner_state.add_scanning_port(
-            debug_str, is_ext_scan=(fast_modbus_command == FastModbusCommand.ACTUAL)
-        )
+        await self._scanner_state.add_scanning_port(debug_str, is_ext_scan=True)
         await self._do_scan(port_config, fast_modbus_command)
         await self._scanner_state.remove_scanning_port(debug_str)
 

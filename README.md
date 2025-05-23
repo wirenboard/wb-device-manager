@@ -166,6 +166,7 @@
 | **com.wb.device_manager.device.read_fw_signature_error** | Ошибка modbus-коммуникации с устройством (чтение fw_signature) | ```null``` |
 | **com.wb.device_manager.device.read_device_signature_error** | Ошибка modbus-коммуникации с устройством (чтение device_signature) | ```null``` |
 | **com.wb.device_manager.device.read_serial_params_error** | Ошибка modbus-коммуникации с устройством (чтение serial-настроек; актуально для tcp портов) | ```null``` |
+| **com.wb.device_manager.device.read_sn_error** | Ошибка modbus-коммуникации с устройством (чтение серийного номера) | ```null``` |
 
 ### Запрос информации о прошивке 
 MQTT RPC запрос `wb-device-manager/fw-update/GetFirmwareInfo/client_id` позволяет получить данные об установленной и доступной для обновления прошивках, а так же об установленном и доступном для обновления загрузчике.
