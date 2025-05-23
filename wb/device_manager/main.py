@@ -26,10 +26,10 @@ MQTT_CLIENT_NAME = "wb-device-manager"
 class RetcodeArgParser(ArgumentParser):
     def error(self, message):
         self.print_usage(stderr)
-        self.exit(EXIT_INVALIDARGUMENT, "%s: error: %s\n" % (self.prog, message))
+        self.exit(EXIT_INVALIDARGUMENT, f"{self.prog}: error: {message}\n")
 
 
-def main(args=argv):
+def main(args=argv):  # pylint: disable=dangerous-default-value, too-many-locals
 
     parser = RetcodeArgParser(description="Wiren Board serial devices manager")
     parser.add_argument(
@@ -98,7 +98,7 @@ def main(args=argv):
     try:
         server.setup()
         fw_updater.start()
-    except Exception:
+    except Exception:  # pylint: disable=broad-exception-caught
         ec = EXIT_FAILURE
         logger.exception("Exiting with %d", ec)
         return ec

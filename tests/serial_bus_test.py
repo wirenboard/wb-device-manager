@@ -10,7 +10,7 @@ from wb.device_manager import serial_bus
 
 
 class DummyWBAsyncModbus(serial_bus.WBAsyncModbus):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs):  # pylint: disable=super-init-not-called,  unused-argument
         self.device = AsyncMock()
         self.addr = kwargs.get("addr", 1)
         self.port = kwargs.get("port", "/dev/dummyport")
@@ -24,8 +24,8 @@ class AsyncModbusTestBase(unittest.IsolatedAsyncioTestCase):
 
     @classmethod
     def mock_response(cls, response_hex_str):
-        ret = minimalmodbus._hexdecode(response_hex_str)
-        cls.mb_connection.device._communicate = AsyncMock(
+        ret = minimalmodbus._hexdecode(response_hex_str)  # pylint: disable=protected-access
+        cls.mb_connection.device._communicate = AsyncMock(  # pylint: disable=protected-access
             return_value=ret
         )  # we have no actual serial devices
 

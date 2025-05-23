@@ -9,7 +9,7 @@ from jsonrpc.exceptions import JSONRPCDispatchException
 from mqttrpc import client as rpcclient
 
 from wb.device_manager.bus_scan_state import Port
-from wb.device_manager.firmware_update import (
+from wb.device_manager.firmware_update import (  # pylint: disable=unused-import
     BootloaderInfo,
     DeviceUpdateInfo,
     FirmwareUpdater,

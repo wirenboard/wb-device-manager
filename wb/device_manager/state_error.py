@@ -8,7 +8,8 @@ from typing import Optional
 @dataclass
 class StateError:
     """
-    Represents an error published in /wb-device-manager/state or /wb-device-manager/firmware-update/state topics.
+    Represents an error published in /wb-device-manager/state
+    or /wb-device-manager/firmware-update/state topics.
 
     Attributes:
         id (str): The ID of the error.
@@ -21,7 +22,7 @@ class StateError:
     metadata: Optional[dict] = None
 
 
-class GenericStateError(StateError):
+class GenericStateError(StateError):  # pylint: disable=too-few-public-methods
     ID = "com.wb.device_manager.generic_error"
     MESSAGE = "Internal error. Check logs for more info"
 
@@ -29,12 +30,12 @@ class GenericStateError(StateError):
         super().__init__(id=self.ID, message=self.MESSAGE)
 
 
-class RPCCallTimeoutStateError(GenericStateError):
+class RPCCallTimeoutStateError(GenericStateError):  # pylint: disable=too-few-public-methods
     ID = "com.wb.device_manager.rpc_call_timeout_error"
     MESSAGE = "RPC call to wb-mqtt-serial timed out. Check, wb-mqtt-serial is running"
 
 
-class FailedScanStateError(GenericStateError):
+class FailedScanStateError(GenericStateError):  # pylint: disable=too-few-public-methods
     ID = "com.wb.device_manager.failed_to_scan_error"
     MESSAGE = "Some ports failed to scan. Check logs for more info"
 
@@ -43,31 +44,31 @@ class FailedScanStateError(GenericStateError):
         self.metadata = {"failed_ports": failed_ports}
 
 
-class ReadFWVersionDeviceError(GenericStateError):
+class ReadFWVersionDeviceError(GenericStateError):  # pylint: disable=too-few-public-methods
     ID = "com.wb.device_manager.device.read_fw_version_error"
     MESSAGE = "Failed to read FW version."
 
 
-class ReadFWSignatureDeviceError(GenericStateError):
+class ReadFWSignatureDeviceError(GenericStateError):  # pylint: disable=too-few-public-methods
     ID = "com.wb.device_manager.device.read_fw_signature_error"
     MESSAGE = "Failed to read FW signature."
 
 
-class ReadDeviceSignatureDeviceError(GenericStateError):
+class ReadDeviceSignatureDeviceError(GenericStateError):  # pylint: disable=too-few-public-methods
     ID = "com.wb.device_manager.device.read_device_signature_error"
     MESSAGE = "Failed to read device signature."
 
 
-class ReadSerialParamsDeviceError(GenericStateError):
+class ReadSerialParamsDeviceError(GenericStateError):  # pylint: disable=too-few-public-methods
     ID = "com.wb.device_manager.device.read_serial_params_error"
     MESSAGE = "Failed to read serial params from device."
 
 
-class DeviceResponseTimeoutError(GenericStateError):
+class DeviceResponseTimeoutError(GenericStateError):  # pylint: disable=too-few-public-methods
     ID = "com.wb.device_manager.device.response_timeout_error"
     MESSAGE = "Response timeout error"
 
 
-class FileDownloadError(GenericStateError):
+class FileDownloadError(GenericStateError):  # pylint: disable=too-few-public-methods
     ID = "com.wb.device_manager.download_error"
     MESSAGE = "Failed to download file."

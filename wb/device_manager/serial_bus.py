@@ -53,25 +53,27 @@ class WBModbusScanner:
 
         reg = bindings.WBModbusDeviceBase.COMMON_REGS_MAP["serial_number"]
         number_of_regs = 2
-        payload = minimalmodbus._num_to_twobyte_string(reg) + minimalmodbus._num_to_twobyte_string(
+        payload = minimalmodbus._num_to_twobyte_string(  # pylint: disable=protected-access
+            reg
+        ) + minimalmodbus._num_to_twobyte_string(  # pylint: disable=protected-access
             number_of_regs
         )
-        request = minimalmodbus._embed_payload(
+        request = minimalmodbus._embed_payload(  # pylint: disable=protected-access
             slaveaddress=slaveid, mode=minimalmodbus.MODE_RTU, functioncode=3, payloaddata=payload
         )
-        number_of_bytes_to_read = minimalmodbus._predict_response_size(
+        number_of_bytes_to_read = minimalmodbus._predict_response_size(  # pylint: disable=protected-access
             mode=minimalmodbus.MODE_RTU, functioncode=3, payload_to_slave=payload
         )
-        response = await instrument._communicate(
+        response = await instrument._communicate(  # pylint: disable=protected-access
             request=request, number_of_bytes_to_read=number_of_bytes_to_read
         )
-        payloaddata = minimalmodbus._extract_payload(
+        payloaddata = minimalmodbus._extract_payload(  # pylint: disable=protected-access
             response=response,
             slaveaddress=slaveid,
             mode=minimalmodbus.MODE_RTU,
             functioncode=3,
         )
-        sn = minimalmodbus._bytestring_to_long(
+        sn = minimalmodbus._bytestring_to_long(  # pylint: disable=protected-access
             bytestring=payloaddata[1:],
             signed=False,
             number_of_registers=2,
@@ -95,7 +97,9 @@ class WBModbusScanner:
             except minimalmodbus.ModbusException as e:
                 logger.debug("Modbus error: %s", e)
 
-    def get_mb_connection(self, addr, port, baudrate=9600, parity="N", stopbits=1):
+    def get_mb_connection(  # pylint: disable=too-many-arguments
+        self, addr, port, baudrate=9600, parity="N", stopbits=1
+    ):
         conn = self.modbus_wrapper(
             addr,
             port=port,
@@ -123,7 +127,7 @@ class WBModbusScannerTCP(WBModbusScanner):
 
 
 class WBAsyncModbus:
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self, addr, port, baudrate, parity, stopbits, rpc_client, instrument=mqtt_rpc.AsyncModbusInstrument
     ):
         self.device = instrument(port, addr, rpc_client)
@@ -132,31 +136,35 @@ class WBAsyncModbus:
         self.uart_params = {"baudrate": baudrate, "parity": parity, "stopbits": stopbits}
 
     def _make_payload(self, reg, number_of_regs):
-        return minimalmodbus._num_to_twobyte_string(reg) + minimalmodbus._num_to_twobyte_string(
+        return minimalmodbus._num_to_twobyte_string(  # pylint: disable=protected-access
+            reg
+        ) + minimalmodbus._num_to_twobyte_string(  # pylint: disable=protected-access
             number_of_regs
         )
 
     def _build_request(self, funcode, reg, number_of_regs=1):
         payload = self._make_payload(reg, number_of_regs)
-        request = minimalmodbus._embed_payload(
+        request = minimalmodbus._embed_payload(  # pylint: disable=protected-access
             slaveaddress=self.addr, mode=minimalmodbus.MODE_RTU, functioncode=funcode, payloaddata=payload
         )
         return request
 
     def _predict_response_length(self, funcode, payload):
-        return minimalmodbus._predict_response_size(
+        return minimalmodbus._predict_response_size(  # pylint: disable=protected-access
             mode=minimalmodbus.MODE_RTU, functioncode=funcode, payload_to_slave=payload
         )
 
-    def _parse_response(self, funcode, reg, number_of_regs, response_bytestr, payloadformat):
-        payloaddata = minimalmodbus._extract_payload(
+    def _parse_response(  # pylint: disable=too-many-arguments
+        self, funcode, reg, number_of_regs, response_bytestr, payloadformat
+    ):
+        payloaddata = minimalmodbus._extract_payload(  # pylint: disable=protected-access
             response=response_bytestr,
             slaveaddress=self.addr,
             mode=minimalmodbus.MODE_RTU,
             functioncode=funcode,
         )
 
-        return minimalmodbus._parse_payload(
+        return minimalmodbus._parse_payload(  # pylint: disable=protected-access
             payload=payloaddata,
             functioncode=funcode,
             registeraddress=reg,
@@ -170,7 +178,7 @@ class WBAsyncModbus:
         )
 
     def _str_to_wb(self, string):
-        ret = minimalmodbus._hexencode(string, insert_spaces=True)
+        ret = minimalmodbus._hexencode(string, insert_spaces=True)  # pylint: disable=protected-access
         for placeholder in ("00", "FF", " "):  # Clearing a string to only meaningful bytes
             ret = ret.replace(placeholder, "")  # 'A1B2C3' bytes-only string
         return str(unhexlify(ret).decode(encoding="utf-8", errors="backslashreplace")).strip()
@@ -185,7 +193,9 @@ class WBAsyncModbus:
         )
 
         self.device.serial.apply_settings(self.uart_params)  # must(!) be in the same coro as _communicate
-        response = await self.device._communicate(request, number_of_bytes_to_read)
+        response = await self.device._communicate(  # pylint: disable=protected-access
+            request, number_of_bytes_to_read
+        )
 
         ret = self._parse_response(
             funcode=funcode,
@@ -197,8 +207,14 @@ class WBAsyncModbus:
         return ret
 
     async def read_string(self, first_addr, regs_length):
-        ret = await self._do_read(minimalmodbus._PAYLOADFORMAT_STRING, first_addr, regs_length)
+        ret = await self._do_read(  # pylint: disable=protected-access
+            minimalmodbus._PAYLOADFORMAT_STRING, first_addr, regs_length  # pylint: disable=protected-access
+        )
         return self._str_to_wb(ret)
 
     async def read_u16_regs(self, first_addr, regs_length):
-        return await self._do_read(minimalmodbus._PAYLOADFORMAT_REGISTERS, first_addr, regs_length)
+        return await self._do_read(  # pylint: disable=protected-access
+            minimalmodbus._PAYLOADFORMAT_REGISTERS,  # pylint: disable=protected-access
+            first_addr,
+            regs_length,
+        )

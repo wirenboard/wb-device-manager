@@ -25,7 +25,7 @@ from wb.device_manager.state_error import (
 
 
 class DummyBusScanner(main.BusScanner):
-    def __init__(self):
+    def __init__(self):  # pylint: disable=super-init-not-called, unused-argument
         self._mqtt_connection = AsyncMock()
         self._rpc_client = AsyncMock()
         self._state_update_queue = AsyncMock()
@@ -34,7 +34,7 @@ class DummyBusScanner(main.BusScanner):
 
 
 class DummyScanner(WBModbusScanner):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs):  # pylint: disable=super-init-not-called, unused-argument
         self.port = "dummy_port"
         self.rpc_client = AsyncMock()
         self.instrument_cls = AsyncMock
@@ -98,7 +98,7 @@ class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
 
     @classmethod
     def mock_error(cls, errtype=minimalmodbus.ModbusException):
-        cls.mb_conn._do_read = AsyncMock(side_effect=errtype)
+        cls.mb_conn._do_read = AsyncMock(side_effect=errtype)  # pylint: disable=protected-access
 
     async def test_erroneous_fill_device_info(self):
         self.mock_error()
@@ -107,7 +107,9 @@ class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
             ReadFWSignatureDeviceError(),
             ReadFWVersionDeviceError(),
         ]
-        await self.one_by_one_scanner._fill_device_info(self.device_info, self.mb_conn)
+        await self.one_by_one_scanner._fill_device_info(  # pylint: disable=protected-access
+            self.device_info, self.mb_conn
+        )
         self.assertListEqual(self.device_info.errors, assumed_errors)
 
 
@@ -125,15 +127,21 @@ class TestOneByOneBusScanner(unittest.IsolatedAsyncioTestCase):
     async def test_fill_uart_params(self):
         self.scanner.get_uart_params = AsyncMock(return_value=[9600, "N", 2])
         one_by_one_scanner = OneByOneBusScanner(AsyncMock(), AsyncMock())
-        await one_by_one_scanner._fill_serial_params(self.device_info, self.scanner)
+        await one_by_one_scanner._fill_serial_params(  # pylint: disable=protected-access
+            self.device_info, self.scanner
+        )
         self.assertEqual(self.device_info.cfg.baud_rate, 9600)
         self.assertEqual(self.device_info.cfg.parity, "N")
         self.assertEqual(self.device_info.cfg.stop_bits, 2)
 
     async def test_fill_uart_params_err(self):
-        self.scanner.get_uart_params = AsyncMock(side_effect=minimalmodbus.ModbusException)
+        self.scanner.get_uart_params = AsyncMock(  # pylint: disable=protected-access
+            side_effect=minimalmodbus.ModbusException
+        )
         one_by_one_scanner = OneByOneBusScanner(AsyncMock(), AsyncMock())
-        await one_by_one_scanner._fill_serial_params(self.device_info, self.scanner)
+        await one_by_one_scanner._fill_serial_params(  # pylint: disable=protected-access
+            self.device_info, self.scanner
+        )
         self.assertEqual(self.device_info.cfg.baud_rate, "-")
         self.assertEqual(self.device_info.cfg.parity, "-")
         self.assertEqual(self.device_info.cfg.stop_bits, "-")

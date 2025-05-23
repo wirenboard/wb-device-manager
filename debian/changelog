@@ -1,3 +1,9 @@
+wb-device-manager (1.18.3) stable; urgency=medium
+
+  * Enable angry pylint. No functional changes
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Fri, 23 May 2025 18:24:36 +0300
+
 wb-device-manager (1.18.2) stable; urgency=medium
 
   * Adopt PEP440
