@@ -576,6 +576,14 @@ class FirmwareUpdater:
         except Exception as e:
             logger.exception("%s: %s", message, e)
 
+    def get_slave_id(self, **kwargs) -> int:
+        slave_id = kwargs.get("slave_id")
+        if not isinstance(slave_id, int):
+            raise JSONRPCDispatchException(
+                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message="Invalid slave_id"
+            )
+        return slave_id
+
     async def get_firmware_info(self, **kwargs) -> dict:
         """
         MQTT RPC handler. Retrieves firmware information for a device.
@@ -597,11 +605,7 @@ class FirmwareUpdater:
 
         logger.debug("Request firmware info")
         port_config = read_port_config(kwargs.get("port", {}))
-        slave_id = kwargs.get("slave_id")
-        if not isinstance(slave_id, int):
-            raise JSONRPCDispatchException(
-                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message="Invalid slave_id"
-            )
+        slave_id = self.get_slave_id(**kwargs)
         if self._state.is_updating(slave_id, Port(port_config)):
             raise MQTTRPCAlreadyProcessingException()
         res = {
@@ -671,11 +675,7 @@ class FirmwareUpdater:
             raise MQTTRPCAlreadyProcessingException()
         software_type = SoftwareType(kwargs.get("type", SoftwareType.FIRMWARE.value))
         logger.debug("Start %s update", software_type.value)
-        slave_id = kwargs.get("slave_id")
-        if not isinstance(slave_id, int):
-            raise JSONRPCDispatchException(
-                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message="Invalid slave_id"
-            )
+        slave_id = self.get_slave_id(**kwargs)
         port_config = read_port_config(kwargs.get("port", {}))
         fw_info = await self._fw_info_reader.read(port_config, slave_id)
         if not await self._check_updatable(
@@ -714,11 +714,7 @@ class FirmwareUpdater:
             str: "Ok" if the error was cleared.
         """
 
-        slave_id = kwargs.get("slave_id")
-        if not isinstance(slave_id, int):
-            raise JSONRPCDispatchException(
-                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message="Invalid slave_id"
-            )
+        slave_id = self.get_slave_id(**kwargs)
         port = Port(kwargs.get("port", {}).get("path"))
         software_type = SoftwareType(kwargs.get("type", SoftwareType.FIRMWARE.value))
         logger.debug("Clear error: %d %s", slave_id, port.path)
@@ -744,11 +740,7 @@ class FirmwareUpdater:
         if self._update_software_task and not self._update_software_task.done():
             raise MQTTRPCAlreadyProcessingException()
         logger.debug("Start firmware restore")
-        slave_id = kwargs.get("slave_id")
-        if not isinstance(slave_id, int):
-            raise JSONRPCDispatchException(
-                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message="Invalid slave_id"
-            )
+        slave_id = self.get_slave_id(**kwargs)
         port_config = read_port_config(kwargs.get("port", {}))
         if not await is_in_bootloader_mode(slave_id, self._serial_rpc, port_config):
             return "Ok"
