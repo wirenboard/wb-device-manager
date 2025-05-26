@@ -45,7 +45,7 @@ class Firmware:
 
 
 @dataclass
-class DeviceInfo:
+class DeviceInfo:  # pylint: disable=too-many-instance-attributes
     uuid: str
     port: Port
     title: str = None
@@ -81,7 +81,7 @@ class BusScanState:
 
 
 class SetEncoder(json.JSONEncoder):
-    def default(self, o):
+    def default(self, o):  # pylint: disable=inconsistent-return-statements
         if isinstance(o, set):
             return list(o)
         if is_dataclass(o):
@@ -95,11 +95,15 @@ class ParsedPorts:
     tcp: list[str] = field(default_factory=list)
 
 
-def get_uart_params_count(bds=BAUDRATES_TO_SCAN, parities=["N", "E", "O"], stopbits=[2, 1]) -> int:
+def get_uart_params_count(  # pylint: disable=dangerous-default-value
+    bds=BAUDRATES_TO_SCAN, parities=["N", "E", "O"], stopbits=[2, 1]
+) -> int:
     return len(bds) * len(parities) * len(stopbits)
 
 
-def get_all_uart_params(bds=BAUDRATES_TO_SCAN, parities=["N", "E", "O"], stopbits=[2, 1]):
+def get_all_uart_params(  # pylint: disable=dangerous-default-value
+    bds=BAUDRATES_TO_SCAN, parities=["N", "E", "O"], stopbits=[2, 1]
+):
     """There are the following assumptions:
     1. Most frequently used baudrates are 9600, 115200, 57600
     2. Most frequently used parity is "N"
@@ -146,7 +150,7 @@ class ProgressMeter:
         return math.ceil(self._current_item / self._total_items * 100)
 
 
-class BusScanStateManager:
+class BusScanStateManager:  # pylint: disable=too-many-instance-attributes
     STATE_PUBLISH_TOPIC = "/wb-device-manager/state"
 
     def __init__(self, mqtt_connection, asyncio_loop) -> None:

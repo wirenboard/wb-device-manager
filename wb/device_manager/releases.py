@@ -38,4 +38,4 @@ def parse_fw_version(endpoint_url: str) -> str:
     mat = re.match(re_str, endpoint_url)  # matches .../*.wbfw
     if mat:
         return str(mat.group(1))
-    raise VersionParsingError("Could not parse fw version from %s by regexp %s" % (endpoint_url, re_str))
+    raise VersionParsingError(f"Could not parse fw version from {endpoint_url} by regexp {re_str}")

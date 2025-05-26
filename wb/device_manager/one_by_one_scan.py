@@ -43,7 +43,7 @@ class OneByOneBusScanner:
 
         err_ctx = None
         # Actual firmwares have 20 registers for device model, old ones have only 6, try to read both
-        EXTENDED_DEVICE_MODEL_SIZE = 20
+        EXTENDED_DEVICE_MODEL_SIZE = 20  # pylint: disable=invalid-name
         for reg_len in [EXTENDED_DEVICE_MODEL_SIZE, bindings.WBModbusDeviceBase.DEVICE_SIGNATURE_LENGTH]:
             try:
                 device_signature = await mb_conn.read_string(

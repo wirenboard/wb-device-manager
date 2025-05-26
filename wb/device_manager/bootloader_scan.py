@@ -33,10 +33,8 @@ def allowed_modbus_slave_ids(forbidden_ids: list[int]) -> Iterator[int]:
 
 
 def partially_ordered_slave_ids(out_of_order_slave_ids: list[int]) -> Iterator[int]:
-    for slave_id in out_of_order_slave_ids:
-        yield slave_id
-    for slave_id in allowed_modbus_slave_ids(out_of_order_slave_ids):
-        yield slave_id
+    yield from out_of_order_slave_ids
+    yield from allowed_modbus_slave_ids(out_of_order_slave_ids)
 
 
 async def is_in_bootloader_mode(
@@ -120,7 +118,7 @@ class BootloaderModeScanner:
                 await self._scanner_state.found_device(sn, device_info)
         except SerialExceptionBase as err:
             logger.debug("Error during device %d in bootloader scan %s: %s", slave_id, debug_str, err)
-        except Exception as err:
+        except Exception as err:  # pylint: disable=broad-exception-caught
             logger.exception(
                 "Unhandled exception during device %d in bootloader scan %s: %s", slave_id, debug_str, err
             )

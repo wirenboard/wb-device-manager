@@ -224,11 +224,11 @@ class SerialRPCWrapper:
         response_timeout (on mb_master side): roundtrip + device_processing + uart_processing
         """
         wb_devices_response_time_s = 8e-3  # devices with old fws
-        onebyte_on_1200bd_s = 10e-3
-        linux_uart_processing_s = 50e-3  # with huge upper reserve
+        onebyte_on_1200bd_s = 10e-3  # pylint: disable=unused-variable
+        linux_uart_processing_s = 50e-3  # with huge upper reserve #pylint: disable=unused-variable
         return wb_devices_response_time_s
 
-    async def _communicate(
+    async def _communicate(  # pylint: disable=too-many-arguments
         self,
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,
@@ -285,7 +285,7 @@ class SerialRPCWrapper:
         response_timeout_s: float = None,
     ) -> Union[str, int, bytes]:
         if param_config.read_fn is None:
-            raise ForbiddenOperationException("Register %d is not readable" % param_config.register_address)
+            raise ForbiddenOperationException(f"Register {param_config.register_address} is not readable")
 
         response = await self._communicate(
             port_config,
@@ -297,12 +297,12 @@ class SerialRPCWrapper:
             response_timeout_s,
         )
         if param_config.data_type == DataType.STR:
-            return "".join(chr(byte) for byte in response[1::2]).strip("\x00\xFF")
+            return "".join(chr(byte) for byte in response[1::2]).strip("\x00\xff")
         if param_config.data_type == DataType.UINT:
             return int.from_bytes(response, byteorder="big")
         return response
 
-    async def write(
+    async def write(  # pylint: disable=too-many-arguments
         self,
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,
@@ -311,7 +311,7 @@ class SerialRPCWrapper:
         response_timeout_s: float = None,
     ) -> None:
         if param_config.write_fn is None:
-            raise ForbiddenOperationException("Register %d is not writable" % param_config.register_address)
+            raise ForbiddenOperationException(f"Register {param_config.register_address} is not writable")
 
         data = value_to_bytes(param_config.data_type, value)
 
