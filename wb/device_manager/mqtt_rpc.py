@@ -123,7 +123,9 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
             "stop_bits": self.serial.SERIAL_SETTINGS["stopbits"],
         }
 
-    async def _communicate(self, request, number_of_bytes_to_read):
+    async def _communicate(
+        self, request, number_of_bytes_to_read
+    ):  # pylint: disable=invalid-overridden-method
         """
         overall rpc-request action timeout:
             - device is supposed to be alive (small modbus response_timeout inside)
@@ -149,7 +151,7 @@ class AsyncModbusInstrument(instruments.SerialRPCBackendInstrument):
         rpc_request.update(self.get_transport_params())
 
         try:
-            response = await self.rpc_client.make_rpc_call(
+            response = await self.rpc_client.make_rpc_call(  # pylint: disable=duplicate-code
                 driver="wb-mqtt-serial",
                 service="port",
                 method="Load",
@@ -178,7 +180,9 @@ class AsyncModbusInstrumentTCP(AsyncModbusInstrument):
             self.ip = ipaddress.ip_address(ip).exploded
             self.tcp_port = int(port)
         except ValueError as e:
-            raise rpcclient.MQTTRPCError('Format should be "valid_ip_addr:port"') from e
+            raise rpcclient.MQTTRPCError(  # pylint: disable=no-value-for-parameter
+                'Format should be "valid_ip_addr:port"'
+            ) from e
 
         super().__init__(port=None, slaveaddress=slaveaddress, rpc_client=rpc_client, **kwargs)
 
