@@ -2,26 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-import uuid
 from unittest.mock import AsyncMock
 
-from wb_modbus import minimalmodbus
-
 from wb.device_manager import main
-from wb.device_manager.bus_scan_state import (
-    DeviceInfo,
-    ParsedPorts,
-    Port,
-    SerialParams,
-    get_all_uart_params,
-)
-from wb.device_manager.one_by_one_scan import OneByOneBusScanner
-from wb.device_manager.serial_bus import WBAsyncModbus, WBModbusScanner
-from wb.device_manager.state_error import (
-    ReadDeviceSignatureDeviceError,
-    ReadFWSignatureDeviceError,
-    ReadFWVersionDeviceError,
-)
+from wb.device_manager.bus_scan_state import ParsedPorts, get_all_uart_params
 
 
 class DummyBusScanner(main.BusScanner):
@@ -31,15 +15,6 @@ class DummyBusScanner(main.BusScanner):
         self._state_update_queue = AsyncMock()
         self._asyncio_loop = AsyncMock()
         self._is_scanning = False
-
-
-class DummyScanner(WBModbusScanner):
-    def __init__(self, *args, **kwargs):
-        self.port = "dummy_port"
-        self.rpc_client = AsyncMock()
-        self.instrument_cls = AsyncMock
-        self.modbus_wrapper = WBAsyncModbus
-        self.uart_params_mapping = {}
 
 
 class TestRPCClient(unittest.IsolatedAsyncioTestCase):
@@ -80,69 +55,7 @@ class TestRPCClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ret, assumed_response)
 
 
-class TestExternalDeviceErrors(unittest.IsolatedAsyncioTestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.one_by_one_scanner = OneByOneBusScanner(AsyncMock(), AsyncMock())
-
-        cls.device_info = DeviceInfo(
-            uuid=uuid.uuid3(namespace=uuid.NAMESPACE_OID, name="dummy_device"),
-            port=Port("/dev/ttyDUMMY"),
-            sn=12345,
-            cfg=SerialParams(slave_id=1),
-        )
-
-        cls.mb_conn = DummyScanner().get_mb_connection(
-            cls.device_info.cfg.slave_id, cls.device_info.port.path
-        )
-
-    @classmethod
-    def mock_error(cls, errtype=minimalmodbus.ModbusException):
-        cls.mb_conn._do_read = AsyncMock(side_effect=errtype)
-
-    async def test_erroneous_fill_device_info(self):
-        self.mock_error()
-        assumed_errors = [
-            ReadDeviceSignatureDeviceError(),
-            ReadFWSignatureDeviceError(),
-            ReadFWVersionDeviceError(),
-        ]
-        await self.one_by_one_scanner._fill_device_info(self.device_info, self.mb_conn)
-        self.assertListEqual(self.device_info.errors, assumed_errors)
-
-
-class TestOneByOneBusScanner(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
-        self.scanner = DummyScanner()
-
-        self.device_info = DeviceInfo(
-            uuid=uuid.uuid3(namespace=uuid.NAMESPACE_OID, name="dummy_device"),
-            port=Port("/dev/ttyDUMMY"),
-            sn=12345,
-            cfg=SerialParams(slave_id=1),
-        )
-
-    async def test_fill_uart_params(self):
-        self.scanner.get_uart_params = AsyncMock(return_value=[9600, "N", 2])
-        one_by_one_scanner = OneByOneBusScanner(AsyncMock(), AsyncMock())
-        await one_by_one_scanner._fill_serial_params(self.device_info, self.scanner)
-        self.assertEqual(self.device_info.cfg.baud_rate, 9600)
-        self.assertEqual(self.device_info.cfg.parity, "N")
-        self.assertEqual(self.device_info.cfg.stop_bits, 2)
-
-    async def test_fill_uart_params_err(self):
-        self.scanner.get_uart_params = AsyncMock(side_effect=minimalmodbus.ModbusException)
-        one_by_one_scanner = OneByOneBusScanner(AsyncMock(), AsyncMock())
-        await one_by_one_scanner._fill_serial_params(self.device_info, self.scanner)
-        self.assertEqual(self.device_info.cfg.baud_rate, "-")
-        self.assertEqual(self.device_info.cfg.parity, "-")
-        self.assertEqual(self.device_info.cfg.stop_bits, "-")
-
-
 class TestDeviceManager(unittest.TestCase):
-    def setUp(self):
-        self.device_manager = DummyBusScanner()
-
     def test_get_all_uart_params(self):
         assumed_order = [
             "9600-N2",

@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Optional, Union
@@ -23,11 +24,6 @@ from .fw_downloader import (
 )
 from .mqtt_rpc import MQTTRPCAlreadyProcessingException, MQTTRPCErrorCode
 from .releases import parse_releases
-from .serial_bus import (
-    fix_sn,
-    get_baud_rate_from_register_value,
-    get_parity_from_register_value,
-)
 from .serial_rpc import (
     DEFAULT_BAUD_RATE,
     DEFAULT_PARITY,
@@ -41,6 +37,8 @@ from .serial_rpc import (
     SerialTimeoutException,
     TcpConfig,
     WBModbusException,
+    get_baud_rate_from_register_value,
+    get_parity_from_register_value,
 )
 from .state_error import (
     DeviceResponseTimeoutError,
@@ -50,6 +48,8 @@ from .state_error import (
     StateError,
 )
 from .ttl_lru_cache import ttl_lru_cache
+
+WBMAP_MARKER = re.compile(r"\S*MAP\d+\S*")  # *MAP%d* matches
 
 
 class SoftwareType(Enum):
@@ -133,7 +133,7 @@ def to_dict_for_json(device_update_info: DeviceUpdateInfo) -> dict:
 class SoftwareComponent:
     type: SoftwareType = SoftwareType.FIRMWARE
     current_version: Optional[str] = None
-    available: ReleasedBinary = None
+    available: Optional[ReleasedBinary] = None
 
 
 @dataclass
@@ -234,7 +234,7 @@ class FirmwareInfoReader:
 
     def read_released_fw(self, signature: str) -> ReleasedBinary:
         return get_released_fw(
-            signature, parse_releases("/usr/lib/wb-release").get("SUITE"), self._downloader
+            signature, parse_releases("/usr/lib/wb-release").get("SUITE", ""), self._downloader
         )
 
     async def read(
@@ -334,7 +334,8 @@ async def write_fw_data_block(serial_device: SerialDevice, chunk: bytes) -> None
         except SerialExceptionBase as e:
             # Could be an error during transmission, retry
             exception = e
-    raise exception
+    if exception is not None:
+        raise exception
 
 
 async def flash_fw(
@@ -527,7 +528,10 @@ async def read_device_model(serial_device: SerialDevice) -> str:
 async def read_sn(serial_device: SerialDevice, device_model: str) -> int:
     try:
         sn = int.from_bytes(await serial_device.read(WB_DEVICE_PARAMETERS["sn"]), byteorder="big")
-        return fix_sn(device_model, sn)
+        # WB-MAP* uses 25 bit for serial number
+        if WBMAP_MARKER.match(device_model):
+            return sn - 0xFE000000
+        return sn
     except SerialExceptionBase as err:
         logger.debug("Can't read SN: %s", err)
     return 0
@@ -577,6 +581,14 @@ class FirmwareUpdater:
         except Exception as e:
             logger.exception("%s: %s", message, e)
 
+    def get_slave_id(self, **kwargs) -> int:
+        slave_id = kwargs.get("slave_id")
+        if not isinstance(slave_id, int):
+            raise JSONRPCDispatchException(
+                code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message="Invalid slave_id"
+            )
+        return slave_id
+
     async def get_firmware_info(self, **kwargs) -> dict:
         """
         MQTT RPC handler. Retrieves firmware information for a device.
@@ -598,7 +610,7 @@ class FirmwareUpdater:
 
         logger.debug("Request firmware info")
         port_config = read_port_config(kwargs.get("port", {}))
-        slave_id = kwargs.get("slave_id")
+        slave_id = self.get_slave_id(**kwargs)
         if self._state.is_updating(slave_id, Port(port_config)):
             raise MQTTRPCAlreadyProcessingException()
         res = {
@@ -668,7 +680,7 @@ class FirmwareUpdater:
             raise MQTTRPCAlreadyProcessingException()
         software_type = SoftwareType(kwargs.get("type", SoftwareType.FIRMWARE.value))
         logger.debug("Start %s update", software_type.value)
-        slave_id = kwargs.get("slave_id")
+        slave_id = self.get_slave_id(**kwargs)
         port_config = read_port_config(kwargs.get("port", {}))
         fw_info = await self._fw_info_reader.read(port_config, slave_id)
         if not await self._check_updatable(
@@ -707,7 +719,7 @@ class FirmwareUpdater:
             str: "Ok" if the error was cleared.
         """
 
-        slave_id = kwargs.get("slave_id")
+        slave_id = self.get_slave_id(**kwargs)
         port = Port(kwargs.get("port", {}).get("path"))
         software_type = SoftwareType(kwargs.get("type", SoftwareType.FIRMWARE.value))
         logger.debug("Clear error: %d %s", slave_id, port.path)
@@ -733,7 +745,7 @@ class FirmwareUpdater:
         if self._update_software_task and not self._update_software_task.done():
             raise MQTTRPCAlreadyProcessingException()
         logger.debug("Start firmware restore")
-        slave_id = kwargs.get("slave_id")
+        slave_id = self.get_slave_id(**kwargs)
         port_config = read_port_config(kwargs.get("port", {}))
         if not await is_in_bootloader_mode(slave_id, self._serial_rpc, port_config):
             return "Ok"
@@ -752,7 +764,7 @@ class FirmwareUpdater:
         slave_id: int,
         port_config: Union[SerialConfig, TcpConfig],
         fw_info: FirmwareInfo,
-    ) -> bool:
+    ) -> None:
         """
         Asyncio task body to update the firmware of a device.
 
