@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import re
 from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Optional, Union
@@ -9,8 +8,6 @@ from typing import Optional, Union
 from mqttrpc import client as rpcclient
 
 from .mqtt_rpc import MQTTRPCErrorCode, SRPCClient
-
-WBMAP_MARKER = re.compile(r"\S*MAP\d+\S*")  # *MAP%d* matches
 
 
 class ModbusExceptionCode(Enum):
@@ -332,25 +329,6 @@ class SerialRPCWrapper:
             data,
             response_timeout_s,
         )
-
-
-def fix_sn(device_model: str, raw_sn: int) -> int:
-    """
-    Raw value in registers should be adjusted to get the actual serial number.
-    For example, WB-MAP* devices use only 25 bits for serial number and higher bits are set to 1.
-
-    Args:
-        device_model (str): The model of the device.
-        raw_sn (int): Raw serial number of the device read from registers.
-
-    Returns:
-        int: The adjusted serial number.
-
-    """
-    # WB-MAP* uses 25 bit for serial number
-    if WBMAP_MARKER.match(device_model):
-        return raw_sn - 0xFE000000
-    return raw_sn
 
 
 def get_parity_from_register_value(value: int) -> str:

@@ -85,6 +85,7 @@ class SetEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, set):
             return list(o)
+        # https://docs.python.org/3/library/dataclasses.html#dataclasses.is_dataclass
         if is_dataclass(o) and not isinstance(o, type):
             return asdict(o)
         return super().default(o)

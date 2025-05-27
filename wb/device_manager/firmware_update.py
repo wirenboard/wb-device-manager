@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Optional, Union
@@ -36,7 +37,6 @@ from .serial_rpc import (
     SerialTimeoutException,
     TcpConfig,
     WBModbusException,
-    fix_sn,
     get_baud_rate_from_register_value,
     get_parity_from_register_value,
 )
@@ -48,6 +48,8 @@ from .state_error import (
     StateError,
 )
 from .ttl_lru_cache import ttl_lru_cache
+
+WBMAP_MARKER = re.compile(r"\S*MAP\d+\S*")  # *MAP%d* matches
 
 
 class SoftwareType(Enum):
@@ -526,7 +528,10 @@ async def read_device_model(serial_device: SerialDevice) -> str:
 async def read_sn(serial_device: SerialDevice, device_model: str) -> int:
     try:
         sn = int.from_bytes(await serial_device.read(WB_DEVICE_PARAMETERS["sn"]), byteorder="big")
-        return fix_sn(device_model, sn)
+        # WB-MAP* uses 25 bit for serial number
+        if WBMAP_MARKER.match(device_model):
+            return sn - 0xFE000000
+        return sn
     except SerialExceptionBase as err:
         logger.debug("Can't read SN: %s", err)
     return 0
