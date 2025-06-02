@@ -9,7 +9,7 @@ from wb.device_manager.bus_scan_state import ParsedPorts, get_all_uart_params
 
 
 class DummyBusScanner(main.BusScanner):
-    def __init__(self):
+    def __init__(self):  # pylint: disable=super-init-not-called
         self._mqtt_connection = AsyncMock()
         self._rpc_client = AsyncMock()
         self._state_update_queue = AsyncMock()

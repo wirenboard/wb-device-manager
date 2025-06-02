@@ -168,8 +168,7 @@ def parse_wbfw(data: bytes) -> ParsedWBFW:
     )
     if len(res.info) != info_block_length:
         raise ValueError(
-            "Info block size should be %d bytes! Got %d\nRaw: %s"
-            % (info_block_length, len(res.info), res.info)
+            f"Info block size should be {info_block_length} bytes! Got {len(res.info)}\nRaw: {res.info}"
         )
 
     return res
@@ -184,7 +183,7 @@ def read_port_config(port: dict) -> Union[SerialConfig, TcpConfig]:
     return TcpConfig(**port) if "address" in port else SerialConfig(**port)
 
 
-class UpdateNotifier:
+class UpdateNotifier:  # pylint: disable=too-few-public-methods
     def __init__(self, notifications_count: int):
         self.step = -1
         self.notification_step = max(100 / notifications_count, 1)
@@ -320,7 +319,7 @@ async def write_fw_data_block(serial_device: SerialDevice, chunk: bytes) -> None
     Raises:
         SerialExceptionBase derived exception: If there is a failure during flashing.
     """
-    MAX_ERRORS = 3
+    MAX_ERRORS = 3  # pylint: disable=invalid-name
     exception = None
     for _ in range(MAX_ERRORS):
         try:
@@ -376,7 +375,8 @@ async def reboot_to_bootloader(
 
     Args:
         serial_device (SerialDevice): The serial device to communicate with.
-        bootloader_can_preserve_port_settings (bool): Whether the bootloader can preserve port settings. Default is False.
+        bootloader_can_preserve_port_settings (bool):
+            Whether the bootloader can preserve port settings. Default is False.
 
     Raises:
         SerialExceptionBase derived exception: If there is a failure
@@ -414,7 +414,8 @@ async def update_software(
         update_state_notifier (UpdateStateNotifier): The notifier to update the state of the update process.
         software (SoftwareComponent): The software component to update.
         binary_downloader (BinaryDownloader): The downloader to download the binary file.
-        bootloader_can_preserve_port_settings (bool, optional): Whether the bootloader can preserve port settings. Defaults to False.
+        bootloader_can_preserve_port_settings (bool, optional):
+            Whether the bootloader can preserve port settings. Defaults to False.
 
     Returns:
         bool: True if the update was successful, False otherwise.
@@ -540,7 +541,7 @@ async def read_sn(serial_device: SerialDevice, device_model: str) -> int:
 class FirmwareUpdater:
     STATE_PUBLISH_TOPIC = "/wb-device-manager/firmware_update/state"
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         mqtt_connection,
         serial_rpc: SerialRPCWrapper,
@@ -578,7 +579,7 @@ class FirmwareUpdater:
     async def _catch_all_exceptions(self, task, message):
         try:
             await task
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.exception("%s: %s", message, e)
 
     def get_slave_id(self, **kwargs) -> int:

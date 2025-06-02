@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
+# pylint: disable=duplicate-code
 import asyncio
 import time
 from enum import Enum
@@ -98,7 +98,7 @@ class FastModbusScanner:
             if "error" in res:
                 logger.error("Fast Modbus search error %s: %s", debug_str, res["error"])
                 await self._scanner_state.add_error_port(debug_str)
-        except Exception as err:
+        except Exception as err:  # pylint: disable=broad-exception-caught
             logger.exception("Unhandled exception during Fast Modbus search %s: %s", debug_str, err)
             await self._scanner_state.add_error_port(debug_str)
 

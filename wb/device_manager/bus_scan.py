@@ -151,6 +151,6 @@ class BusScanner:
         except asyncio.CancelledError:
             await self._state_manager.scan_finished()
             raise
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             logger.exception("Unhandled exception during overall scan %s", e)
             await self._state_manager.scan_finished(GenericStateError())

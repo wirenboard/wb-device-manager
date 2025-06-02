@@ -53,7 +53,7 @@ class RPCResultFuture(asyncio.Future):
         self._loop.call_soon_threadsafe(partial(self._set_exception, exception))
 
 
-class SRPCClient(rpcclient.TMQTTRPCClient):
+class SRPCClient(rpcclient.TMQTTRPCClient):  # pylint:disable=too-few-public-methods
     """
     Stores internal future-like objs (with rpc-call result), filled from outer on_mqtt_message callback
     """
@@ -62,7 +62,9 @@ class SRPCClient(rpcclient.TMQTTRPCClient):
         super().__init__(client)
         self._counter = 0
 
-    async def make_rpc_call(self, driver, service, method, params, timeout):
+    async def make_rpc_call(  # pylint: disable=too-many-arguments
+        self, driver, service, method, params, timeout
+    ):
         self._counter += 1
         call_id = self._counter
         logger.debug("RPC Client %d -> %s (rpc timeout: %.2fs)", call_id, params, timeout)
@@ -74,8 +76,8 @@ class SRPCClient(rpcclient.TMQTTRPCClient):
         except asyncio.exceptions.TimeoutError as e:
             logger.debug("RPC Client %d <- no answer", call_id)
             raise MQTTRPCCallTimeoutError(
-                message="rpc call to %s/%s/%s -> %.2fs: no answer" % (driver, service, method, timeout),
-                data="rpc call params: %s" % str(params),
+                message=f"rpc call to {driver}/{service}/{method} -> {timeout:.2fs}: no answer",
+                data=f"rpc call params: {str(params)}",
             ) from e
         except rpcclient.MQTTRPCError as e:
             logger.debug("RPC Client %d <- error %s", call_id, e)
@@ -84,19 +86,19 @@ class SRPCClient(rpcclient.TMQTTRPCClient):
             raise e
 
 
-class MQTTRPCCallTimeoutError(rpcclient.MQTTRPCError):
+class MQTTRPCCallTimeoutError(rpcclient.MQTTRPCError):  # pylint:disable=too-few-public-methods
     CODE = MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value
 
     def __init__(self, message, code=None, data=""):
         super().__init__(message, code or self.CODE, data)
 
 
-class MQTTRPCRequestTimeoutError(rpcclient.MQTTRPCError):
+class MQTTRPCRequestTimeoutError(rpcclient.MQTTRPCError):  # pylint:disable=too-few-public-methods
     def __init__(self, message, data=""):
         super().__init__(message, MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value, data)
 
 
-class MQTTRPCAlreadyProcessingError(JSONRPCServerError):
+class MQTTRPCAlreadyProcessingError(JSONRPCServerError):  # pylint:disable=too-few-public-methods
     CODE = -33100
     MESSAGE = "Task is already executing."
 
@@ -108,16 +110,18 @@ class MQTTRPCAlreadyProcessingException(JSONRPCDispatchException):
 
     CODE = -33100
 
-    def __init__(self, code=None, message=None, data=None, *args, **kwargs):
+    def __init__(  # pylint:disable=keyword-arg-before-vararg, unused-argument
+        self, code=None, message=None, data=None, *args, **kwargs
+    ):
         self.error = MQTTRPCAlreadyProcessingError(code=code, data=data, message=message)
         super().__init__(code=self.error.code, message=self.error.message, data=self.error.data)
 
 
-class AsyncMQTTServer:
+class AsyncMQTTServer:  # pylint:disable=too-many-instance-attributes
     _NOW_PROCESSING = []
     _EXITCODE = 0
 
-    def __init__(
+    def __init__(  # pylint:disable=too-many-arguments
         self,
         methods_dispatcher,
         mqtt_connection,
@@ -156,7 +160,7 @@ class AsyncMQTTServer:
     def _setup_event_loop(self):
         signals = [signal.SIGINT, signal.SIGTERM]
         for sig in signals:
-            self.asyncio_loop.add_signal_handler(sig, lambda: self.asyncio_loop.stop())
+            self.asyncio_loop.add_signal_handler(sig, self.asyncio_loop.stop)
         logger.debug("Add handler for: %s; event loop: %s", str(signals), str(self.asyncio_loop))
 
     def _setup_mqtt_connection(self):
@@ -168,7 +172,7 @@ class AsyncMQTTServer:
             self.mqtt_connection.start()
         finally:
             logger.info("Registered to atexit hook: close %s", self.mqtt_url_str)
-            atexit.register(lambda: self._close_mqtt_connection())
+            atexit.register(self._close_mqtt_connection)
 
     def add_to_processing(self, mqtt_message):
         self.now_processing.append((mqtt_message.topic, mqtt_message.payload))
@@ -188,7 +192,7 @@ class AsyncMQTTServer:
             self.mqtt_connection.subscribe(topic_str)
             logger.debug("Subscribed: %s", topic_str)
 
-    def _on_mqtt_connect(self, client, userdata, flags, rc):
+    def _on_mqtt_connect(self, client, userdata, flags, rc):  # pylint:disable=unused-argument
         logger.info("Mqtt: reconnect to %s -> %d", self.mqtt_url_str, rc)
         if rc == 0:
             self.bus_scanner.publish_state()
@@ -196,22 +200,24 @@ class AsyncMQTTServer:
             self._subscribe()
         else:
             logger.warning("Got rc %d; shutting down...", rc)
-            self._EXITCODE = rc
+            self._EXITCODE = rc  # pylint: disable=invalid-name
             self.asyncio_loop.stop()
 
-    def _on_mqtt_disconnect(self, client, userdata, rc):
+    def _on_mqtt_disconnect(self, client, userdata, rc):  # pylint:disable=unused-argument
         logger.warning("Mqtt: disconnect from %s -> %d", self.mqtt_url_str, rc)
         self.rpc_client.subscribes = set()  # rpc_client re-subscribes if not subscribed
         logger.debug("Clear rpc_client subscribes")
 
     def _on_mqtt_message(self, _client, _userdata, message):
-        if mqtt.topic_matches_sub("/rpc/v1/+/+/+/%s/reply" % self.rpc_client.rpc_client_id, message.topic):
+        if mqtt.topic_matches_sub(f"/rpc/v1/+/+/+/{self.rpc_client.rpc_client_id}/reply", message.topic):
             self.rpc_client.on_mqtt_message(None, None, message)  # reply from mqtt client; filling payload
 
         else:  # requests to a server
             if self.is_processing(message):
                 logger.warning("'%s' is already processing!", message.topic)
-                response = MQTTRPC10Response(error=MQTTRPCAlreadyProcessingError()._data)
+                response = MQTTRPC10Response(
+                    error=MQTTRPCAlreadyProcessingError()._data  # pylint: disable=protected-access
+                )
                 self.reply(message, response.json)
             else:
                 self.add_to_processing(message)
@@ -222,7 +228,7 @@ class AsyncMQTTServer:
         self.mqtt_connection.publish(topic, payload, qos=2, retain=False)
 
     async def run_async(self, message):
-        parts = message.topic.split("/")  # TODO: re?
+        parts = message.topic.split("/")  # re?
         service_id, method_id = parts[4], parts[5]
 
         try:

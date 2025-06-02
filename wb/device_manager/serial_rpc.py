@@ -226,7 +226,7 @@ class SerialRPCWrapper:
         wb_devices_response_time_s = 8e-3  # devices with old fws
         return wb_devices_response_time_s
 
-    async def _communicate(
+    async def _communicate(  # pylint: disable=too-many-arguments
         self,
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,
@@ -300,7 +300,7 @@ class SerialRPCWrapper:
             return int.from_bytes(response, byteorder="big")
         return response
 
-    async def write(
+    async def write(  # pylint: disable=too-many-arguments
         self,
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,
