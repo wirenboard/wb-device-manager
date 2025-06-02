@@ -85,6 +85,7 @@ class FastModbusScanner:
                     sn=sn,
                     device_signature=device_model,
                     fw_signature=fw_signature,
+                    configured_device_type=device.get("configured_device_type"),
                     last_seen=int(time.time()),
                     cfg=SerialParams(**device.get("cfg", {})),
                     fw=fw,
@@ -106,9 +107,7 @@ class FastModbusScanner:
     ) -> None:
         debug_str = str(port_config)
         logger.debug("Searching %s for devices using Fast Modbus", debug_str)
-        await self._scanner_state.add_scanning_port(
-            debug_str, is_ext_scan=(fast_modbus_command == FastModbusCommand.ACTUAL)
-        )
+        await self._scanner_state.add_scanning_port(debug_str, is_ext_scan=True)
         await self._do_scan(port_config, fast_modbus_command)
         await self._scanner_state.remove_scanning_port(debug_str)
 

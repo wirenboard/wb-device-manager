@@ -9,7 +9,6 @@ from sys import argv, stderr, stdout
 import httplib2
 from mqttrpc import Dispatcher
 from wb_common.mqtt_client import DEFAULT_BROKER_URL, MQTTClient
-from wb_modbus import logger as mb_logger
 
 from . import logger, mqtt_rpc
 from .bus_scan import BusScanner
@@ -57,8 +56,7 @@ def main(args=argv):
     handler = logging.StreamHandler(stream=stdout)
     handler.setFormatter(formatter)
     handler.setLevel(args.log_level)
-    for lgr in (logger, mb_logger):
-        lgr.addHandler(handler)
+    logger.addHandler(handler)
 
     mqtt_connection = MQTTClient(MQTT_CLIENT_NAME, args.broker_url)
     rpc_client = mqtt_rpc.SRPCClient(mqtt_connection)
