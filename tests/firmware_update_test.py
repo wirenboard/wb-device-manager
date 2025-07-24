@@ -142,7 +142,7 @@ class TestFlashFw(unittest.IsolatedAsyncioTestCase):
         serial_device_mock = AsyncMock()
         serial_device_mock.write = AsyncMock()
         serial_device_mock.write.side_effect = WBModbusException(
-            "test", ModbusExceptionCode.SLAVE_DEVICE_FAILURE
+            "test", ModbusExceptionCode.SLAVE_DEVICE_FAILURE.value
         )
         await write_fw_data_block(serial_device_mock, self.wbfw.data[: self.chunk_size])
         serial_device_mock.write.assert_called_once_with(
@@ -154,7 +154,7 @@ class TestFlashFw(unittest.IsolatedAsyncioTestCase):
         serial_device_mock.write = AsyncMock()
         serial_device_mock.write.side_effect = [
             SerialTimeoutException("timeout"),
-            WBModbusException("test", ModbusExceptionCode.SLAVE_DEVICE_FAILURE),
+            WBModbusException("test", ModbusExceptionCode.SLAVE_DEVICE_FAILURE.value),
         ]
         await write_fw_data_block(serial_device_mock, self.wbfw.data[: self.chunk_size])
         self.assertEqual(len(serial_device_mock.mock_calls), 2)
