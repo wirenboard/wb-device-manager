@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from dataclasses import asdict, dataclass
-from enum import Enum
+from enum import Enum, IntEnum
 from typing import Optional, Union
 
 from mqttrpc import client as rpcclient
@@ -10,7 +10,7 @@ from mqttrpc import client as rpcclient
 from .mqtt_rpc import MQTTRPCErrorCode, SRPCClient
 
 
-class ModbusExceptionCode(Enum):
+class ModbusExceptionCode(IntEnum):
     ILLEGAL_FUNCTION = 1
     ILLEGAL_DATA_ADDRESS = 2
     ILLEGAL_DATA_VALUE = 3
