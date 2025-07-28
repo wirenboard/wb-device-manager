@@ -25,7 +25,6 @@ from wb.device_manager.fw_downloader import ReleasedBinary
 from wb.device_manager.mqtt_rpc import MQTTRPCErrorCode
 from wb.device_manager.serial_rpc import (
     WB_DEVICE_PARAMETERS,
-    ModbusExceptionCode,
     SerialConfig,
     SerialTimeoutException,
     TcpConfig,
@@ -141,9 +140,8 @@ class TestFlashFw(unittest.IsolatedAsyncioTestCase):
     async def test_write_fw_data_block_slave_device_failure(self):
         serial_device_mock = AsyncMock()
         serial_device_mock.write = AsyncMock()
-        serial_device_mock.write.side_effect = WBModbusException(
-            "test", ModbusExceptionCode.SLAVE_DEVICE_FAILURE.value
-        )
+        # Device sends slave device failure (0x04) if the chunk is already written
+        serial_device_mock.write.side_effect = WBModbusException("test", 4)
         await write_fw_data_block(serial_device_mock, self.wbfw.data[: self.chunk_size])
         serial_device_mock.write.assert_called_once_with(
             WB_DEVICE_PARAMETERS["fw_data_block"], self.wbfw.data[: self.chunk_size]
@@ -152,9 +150,10 @@ class TestFlashFw(unittest.IsolatedAsyncioTestCase):
     async def test_write_fw_data_block_timeout_then_slave_device_failure(self):
         serial_device_mock = AsyncMock()
         serial_device_mock.write = AsyncMock()
+        # Device sends slave device failure (0x04) if the chunk is already written
         serial_device_mock.write.side_effect = [
             SerialTimeoutException("timeout"),
-            WBModbusException("test", ModbusExceptionCode.SLAVE_DEVICE_FAILURE.value),
+            WBModbusException("test", 4),
         ]
         await write_fw_data_block(serial_device_mock, self.wbfw.data[: self.chunk_size])
         self.assertEqual(len(serial_device_mock.mock_calls), 2)

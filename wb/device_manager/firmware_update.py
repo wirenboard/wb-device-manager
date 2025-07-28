@@ -327,7 +327,7 @@ async def write_fw_data_block(serial_device: SerialDevice, chunk: bytes) -> None
             return
         except WBModbusException as e:
             # The device sends slave device failure (0x04) if the chunk is already written
-            if e.code == ModbusExceptionCode.SLAVE_DEVICE_FAILURE.value:
+            if e.code == ModbusExceptionCode.SLAVE_DEVICE_FAILURE:
                 return
             exception = e
         except SerialExceptionBase as e:
