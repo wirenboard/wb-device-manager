@@ -1,3 +1,9 @@
+wb-device-manager (1.19.3) stable; urgency=medium
+
+  * Fix timeout error message
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Mon, 04 Aug 2025 19:14:52 +0500
+
 wb-device-manager (1.19.2) stable; urgency=medium
 
   * Improve error handling during firmware update
