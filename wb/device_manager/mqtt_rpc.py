@@ -76,7 +76,7 @@ class SRPCClient(rpcclient.TMQTTRPCClient):  # pylint:disable=too-few-public-met
         except asyncio.exceptions.TimeoutError as e:
             logger.debug("RPC Client %d <- no answer", call_id)
             raise MQTTRPCCallTimeoutError(
-                message=f"rpc call to {driver}/{service}/{method} -> {timeout:.2fs}: no answer",
+                message=f"rpc call to {driver}/{service}/{method} -> {timeout:.2f}s: no answer",
                 data=f"rpc call params: {str(params)}",
             ) from e
         except rpcclient.MQTTRPCError as e:
