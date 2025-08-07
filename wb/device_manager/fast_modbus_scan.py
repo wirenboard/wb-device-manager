@@ -11,6 +11,7 @@ from .bus_scan_state import (
     BusScanStateManager,
     DeviceInfo,
     Firmware,
+    ParsedPorts,
     Port,
     SerialParams,
     get_uart_params_count,
@@ -127,7 +128,7 @@ class FastModbusScanner:
         port_config = TcpConfig(address=components[0], port=int(components[1]))
         await self._do_scan_port(port_config, fast_modbus_command)
 
-    def create_scan_tasks(self, ports, fast_modbus_command: FastModbusCommand) -> list:
+    def create_scan_tasks(self, ports: ParsedPorts, fast_modbus_command: FastModbusCommand) -> list:
         tasks = []
         name_template = "Search for devices using Fast Modbus %s"
         for serial_port in ports.serial:
@@ -143,8 +144,8 @@ class FastModbusScanner:
                     self._scan_tcp_port(tcp_port, fast_modbus_command), name=name_template % tcp_port
                 )
             )
-
+        # Fast modbus scan for modbus_tcp ports is not supported
         return tasks
 
-    def get_scan_items_count(self, ports) -> int:
+    def get_scan_items_count(self, ports: ParsedPorts) -> int:
         return len(ports.serial) * get_uart_params_count(stopbits=[2]) + len(ports.tcp)

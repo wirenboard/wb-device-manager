@@ -4,19 +4,22 @@
 import asyncio
 import random
 import time
-from typing import Iterator, Union
+from typing import Iterable, Iterator, Union, cast
 
 from . import logger
 from .bus_scan_state import (
     BusScanStateManager,
     DeviceInfo,
+    ParsedPorts,
     Port,
     SerialParams,
     get_uart_params_count,
     make_uuid,
 )
+from .serial_device import SerialDevice
 from .serial_rpc import (
     WB_DEVICE_PARAMETERS,
+    ModbusProtocol,
     SerialConfig,
     SerialExceptionBase,
     SerialRPCWrapper,
@@ -37,16 +40,14 @@ def partially_ordered_slave_ids(out_of_order_slave_ids: list[int]) -> Iterator[i
     yield from allowed_modbus_slave_ids(out_of_order_slave_ids)
 
 
-async def is_in_bootloader_mode(
-    slave_id: int, serial_rpc: SerialRPCWrapper, port_config: Union[SerialConfig, TcpConfig]
-) -> bool:
+async def is_in_bootloader_mode(serial_device: SerialDevice) -> bool:
     # Bootloader allows to read only full version, firmware - any number of registers.
     try:
-        await serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_version_full"])
+        await serial_device.read(WB_DEVICE_PARAMETERS["bootloader_version_full"])
     except SerialTimeoutException:
         return False
     try:
-        await serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_version"])
+        await serial_device.read(WB_DEVICE_PARAMETERS["bootloader_version"])
         return False
     except SerialTimeoutException:
         return True
@@ -80,12 +81,19 @@ class BootloaderModeScanner:
             device_info.cfg.data_bits = port_config.data_bits
 
     async def _fill_device_info(
-        self, device_info: DeviceInfo, port_config: Union[SerialConfig, TcpConfig], slave_id: int
+        self,
+        device_info: DeviceInfo,
+        port_config: Union[SerialConfig, TcpConfig],
+        slave_id: int,
+        protocol: ModbusProtocol,
     ) -> None:
         errors = []
         try:
-            device_info.fw_signature = await self._serial_rpc.read(
-                port_config, slave_id, WB_DEVICE_PARAMETERS["fw_signature"]
+            device_info.fw_signature = cast(
+                str,
+                await self._serial_rpc.read(
+                    port_config, slave_id, WB_DEVICE_PARAMETERS["fw_signature"], protocol
+                ),
             )
             device_info.title = device_info.fw_signature
         except SerialExceptionBase as e:
@@ -93,10 +101,13 @@ class BootloaderModeScanner:
             errors.append(ReadFWSignatureDeviceError())
         device_info.errors.extend(errors)
 
-    async def _do_device_scan(self, slave_id: int, port_config: Union[SerialConfig, TcpConfig]) -> None:
+    async def _do_device_scan(
+        self, slave_id: int, port_config: Union[SerialConfig, TcpConfig], protocol: ModbusProtocol
+    ) -> None:
         debug_str = str(port_config)
         try:
-            if await is_in_bootloader_mode(slave_id, self._serial_rpc, port_config):
+            serial_device = SerialDevice(port_config, protocol, slave_id, self._serial_rpc)
+            if await is_in_bootloader_mode(serial_device):
                 logger.info("Got device in bootloader: %d %s", slave_id, debug_str)
                 sn = make_sn_for_device_in_bootloader(slave_id, port_config)
                 if self._scanner_state.is_device_found(sn):
@@ -113,7 +124,7 @@ class BootloaderModeScanner:
                 )
 
                 self._fill_serial_params(device_info, port_config)
-                await self._fill_device_info(device_info, port_config, slave_id)
+                await self._fill_device_info(device_info, port_config, slave_id, protocol)
 
                 await self._scanner_state.found_device(sn, device_info)
         except SerialExceptionBase as err:
@@ -125,13 +136,13 @@ class BootloaderModeScanner:
             await self._scanner_state.add_error_port(debug_str)
 
     async def _do_scan_port(
-        self, port_config: Union[SerialConfig, TcpConfig], slave_ids: Iterator[int]
+        self, port_config: Union[SerialConfig, TcpConfig], slave_ids: Iterable[int], protocol: ModbusProtocol
     ) -> None:
         debug_str = str(port_config)
         logger.debug("Scanning %s for devices in bootloader", debug_str)
         await self._scanner_state.add_scanning_port(debug_str, is_ext_scan=False)
         for slave_id in slave_ids:
-            await self._do_device_scan(slave_id, port_config)
+            await self._do_device_scan(slave_id, port_config, protocol)
         await self._scanner_state.remove_scanning_port(debug_str)
 
     async def _scan_serial_port(self, port, out_of_order_slave_ids: list[int]) -> None:
@@ -145,18 +156,22 @@ class BootloaderModeScanner:
         if out_of_order_slave_ids:
             for bd, parity, stopbits in self._serial_port_configs_generator():
                 setup_port_config(bd, parity, stopbits)
-                await self._do_scan_port(port_config, out_of_order_slave_ids)
+                await self._do_scan_port(port_config, out_of_order_slave_ids, ModbusProtocol.MODBUS_RTU)
 
         for bd, parity, stopbits in self._serial_port_configs_generator():
             setup_port_config(bd, parity, stopbits)
-            await self._do_scan_port(port_config, allowed_modbus_slave_ids(out_of_order_slave_ids))
+            await self._do_scan_port(
+                port_config, allowed_modbus_slave_ids(out_of_order_slave_ids), ModbusProtocol.MODBUS_RTU
+            )
 
-    async def _scan_tcp_port(self, ip_port, out_of_order_slave_ids: list[int]) -> None:
+    async def _scan_tcp_port(
+        self, ip_port, out_of_order_slave_ids: list[int], protocol: ModbusProtocol
+    ) -> None:
         components = ip_port.split(":")
         port_config = TcpConfig(address=components[0], port=int(components[1]))
-        await self._do_scan_port(port_config, partially_ordered_slave_ids(out_of_order_slave_ids))
+        await self._do_scan_port(port_config, partially_ordered_slave_ids(out_of_order_slave_ids), protocol)
 
-    def create_scan_tasks(self, ports, out_of_order_slave_ids: list[int]) -> list:
+    def create_scan_tasks(self, ports: ParsedPorts, out_of_order_slave_ids: list[int]) -> list:
         tasks = []
         name_template = "Search for devices in bootloader %s"
         for serial_port in ports.serial:
@@ -169,14 +184,22 @@ class BootloaderModeScanner:
         for tcp_port in ports.tcp:
             tasks.append(
                 asyncio.create_task(
-                    self._scan_tcp_port(tcp_port, out_of_order_slave_ids), name=name_template % tcp_port
+                    self._scan_tcp_port(tcp_port, out_of_order_slave_ids, ModbusProtocol.MODBUS_RTU),
+                    name=name_template % tcp_port,
+                )
+            )
+        for tcp_port in ports.modbus_tcp:
+            tasks.append(
+                asyncio.create_task(
+                    self._scan_tcp_port(tcp_port, out_of_order_slave_ids, ModbusProtocol.MODBUS_TCP),
+                    name=name_template % tcp_port,
                 )
             )
 
         return tasks
 
-    def get_scan_items_count(self, ports, out_of_order_slave_ids: list[int]) -> int:
+    def get_scan_items_count(self, ports: ParsedPorts, out_of_order_slave_ids: list[int]) -> int:
         serial_count = len(ports.serial) * get_uart_params_count()
         if out_of_order_slave_ids:
             serial_count *= 2
-        return serial_count + len(ports.tcp)
+        return serial_count + len(ports.tcp) + len(ports.modbus_tcp)

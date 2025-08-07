@@ -1,3 +1,9 @@
+wb-device-manager (1.20.0) stable; urgency=medium
+
+  * Add protocol parameter to RPC requests
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 07 Aug 2025 09:56:04 +0500
+
 wb-device-manager (1.19.3) stable; urgency=medium
 
   * Fix timeout error message

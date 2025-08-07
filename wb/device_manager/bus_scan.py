@@ -43,12 +43,17 @@ class BusScanner:
         )
         serial_ports = []
         tcp_ports = []
+        modbus_tcp_ports = []
         for port_info in response:
             if "path" in port_info:
                 serial_ports.append(port_info["path"])
             elif "address" in port_info and "port" in port_info:
-                tcp_ports.append(f"{port_info['address']}:{port_info['port']}")
-        return ParsedPorts(serial=serial_ports, tcp=tcp_ports)
+                port_str = f"{port_info['address']}:{port_info['port']}"
+                if port_info.get("mode") == "modbus-tcp":
+                    modbus_tcp_ports.append(port_str)
+                else:
+                    tcp_ports.append(port_str)
+        return ParsedPorts(serial=serial_ports, tcp=tcp_ports, modbus_tcp=modbus_tcp_ports)
 
     async def launch_bus_scan(self, **kwargs):
         if self._bus_scanning_task and not self._bus_scanning_task.done():
