@@ -6,7 +6,7 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Optional, Union
+from typing import Optional, Union, cast
 
 from jsonrpc.exceptions import JSONRPCDispatchException
 
@@ -24,12 +24,13 @@ from .fw_downloader import (
 )
 from .mqtt_rpc import MQTTRPCAlreadyProcessingException, MQTTRPCErrorCode
 from .releases import parse_releases
+from .serial_device import SerialDevice
 from .serial_rpc import (
     DEFAULT_BAUD_RATE,
     DEFAULT_PARITY,
     WB_DEVICE_PARAMETERS,
     ModbusExceptionCode,
-    ParameterConfig,
+    ModbusProtocol,
     SerialConfig,
     SerialExceptionBase,
     SerialRPCTimeoutException,
@@ -199,85 +200,52 @@ class UpdateNotifier:  # pylint: disable=too-few-public-methods
 
 
 class FirmwareInfoReader:
-    def __init__(self, serial_rpc, downloader: BinaryDownloader) -> None:
-        self._serial_rpc = serial_rpc
+    def __init__(self, downloader: BinaryDownloader) -> None:
         self._downloader = downloader
 
-    async def read_bootloader(
-        self, port_config: Union[SerialConfig, TcpConfig], slave_id: int, fw_signature: str
-    ) -> BootloaderInfo:
+    async def read_bootloader(self, serial_device: SerialDevice, fw_signature: str) -> BootloaderInfo:
         res = BootloaderInfo()
         try:
             res.can_preserve_port_settings = (
-                await self._serial_rpc.read(
-                    port_config, slave_id, WB_DEVICE_PARAMETERS["reboot_to_bootloader_preserve_port_settings"]
-                )
+                await serial_device.read(WB_DEVICE_PARAMETERS["reboot_to_bootloader_preserve_port_settings"])
                 == 0
             )
         except SerialExceptionBase:
             pass
         try:
-            res.current_version = await self._serial_rpc.read(
-                port_config, slave_id, WB_DEVICE_PARAMETERS["bootloader_version"]
+            res.current_version = cast(
+                str, await serial_device.read(WB_DEVICE_PARAMETERS["bootloader_version"])
             )
             res.available = get_bootloader_info(fw_signature, self._downloader)
         except (SerialExceptionBase, WBRemoteStorageError) as err:
-            logger.debug("Can't get bootloader information for %d %s: %s", slave_id, port_config, err)
+            logger.debug(
+                "Can't get bootloader information for %d %s: %s",
+                serial_device.slave_id,
+                serial_device.port_config,
+                err,
+            )
         return res
 
-    async def read_fw_signature(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int) -> str:
-        return await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["fw_signature"])
+    async def read_fw_signature(self, serial_device: SerialDevice) -> str:
+        return cast(str, await serial_device.read(WB_DEVICE_PARAMETERS["fw_signature"]))
 
-    async def read_fw_version(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int) -> str:
-        return await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["fw_version"])
+    async def read_fw_version(self, serial_device: SerialDevice) -> str:
+        return cast(str, await serial_device.read(WB_DEVICE_PARAMETERS["fw_version"]))
 
     def read_released_fw(self, signature: str) -> ReleasedBinary:
         return get_released_fw(
             signature, parse_releases("/usr/lib/wb-release").get("SUITE", ""), self._downloader
         )
 
-    async def read(
-        self, port_config: Union[SerialConfig, TcpConfig], slave_id: int, bootloader_mode: bool = False
-    ) -> FirmwareInfo:
+    async def read(self, serial_device: SerialDevice, bootloader_mode: bool = False) -> FirmwareInfo:
         res = FirmwareInfo()
-        res.signature = await self.read_fw_signature(port_config, slave_id)
+        res.signature = await self.read_fw_signature(serial_device)
         logger.debug("Get firmware info for: %s", res.signature)
         res.available = self.read_released_fw(res.signature)
         if not bootloader_mode:
-            res.current_version = await self.read_fw_version(port_config, slave_id)
-            res.bootloader = await self.read_bootloader(port_config, slave_id, res.signature)
+            res.current_version = await self.read_fw_version(serial_device)
+            res.bootloader = await self.read_bootloader(serial_device, res.signature)
         return res
-
-
-@dataclass
-class SerialDevice:
-    _serial_rpc: SerialRPCWrapper
-    _port_config: Union[SerialConfig, TcpConfig]
-    _slave_id: int
-
-    def __post_init__(self) -> None:
-        self._description = f"slave id: {self._slave_id}, {self._port_config}"
-
-    async def set_poll(self, enabled) -> None:
-        await self._serial_rpc.set_poll(self._port_config, self._slave_id, enabled)
-
-    async def write(
-        self, param_config: ParameterConfig, value: Union[int, bytes], response_timeout_s: float = None
-    ) -> None:
-        await self._serial_rpc.write(
-            self._port_config, self._slave_id, param_config, value, response_timeout_s
-        )
-
-    async def read(self, param_config: ParameterConfig) -> Union[str, int, bytes]:
-        return await self._serial_rpc.read(self._port_config, self._slave_id, param_config)
-
-    def set_default_port_settings(self) -> None:
-        if isinstance(self._port_config, SerialConfig):
-            self._port_config.set_default_settings()
-
-    @property
-    def description(self) -> str:
-        return self._description
 
 
 @dataclass
@@ -523,13 +491,13 @@ async def read_device_model(serial_device: SerialDevice) -> str:
              Example: MAP12\x02E
     """
     try:
-        return await serial_device.read(WB_DEVICE_PARAMETERS["device_model_extended"])
+        return cast(str, await serial_device.read(WB_DEVICE_PARAMETERS["device_model_extended"]))
     except SerialExceptionBase as err:
         logger.debug("Can't read extended device model: %s", err)
 
     # Old devices have only standard model registers, try to read them
     try:
-        return await serial_device.read(WB_DEVICE_PARAMETERS["device_model"])
+        return cast(str, await serial_device.read(WB_DEVICE_PARAMETERS["device_model"]))
     except SerialExceptionBase as err2:
         logger.debug("Can't read device model: %s", err2)
     return ""
@@ -537,7 +505,9 @@ async def read_device_model(serial_device: SerialDevice) -> str:
 
 async def read_sn(serial_device: SerialDevice, device_model: str) -> int:
     try:
-        sn = int.from_bytes(await serial_device.read(WB_DEVICE_PARAMETERS["sn"]), byteorder="big")
+        sn = int.from_bytes(
+            cast(bytes, await serial_device.read(WB_DEVICE_PARAMETERS["sn"])), byteorder="big"
+        )
         # WB-MAP* uses 25 bit for serial number
         if WBMAP_MARKER.match(device_model):
             return sn - 0xFE000000
@@ -545,6 +515,19 @@ async def read_sn(serial_device: SerialDevice, device_model: str) -> int:
     except SerialExceptionBase as err:
         logger.debug("Can't read SN: %s", err)
     return 0
+
+
+def make_device_update_info(
+    serial_device: SerialDevice, software_component: SoftwareComponent
+) -> DeviceUpdateInfo:
+    to_version = software_component.available.version if software_component.available else "unknown"
+    res = DeviceUpdateInfo(
+        port=Port(serial_device.port_config),
+        slave_id=serial_device.slave_id,
+        to_version=to_version,
+        from_version=software_component.current_version,
+    )
+    return res
 
 
 class FirmwareUpdater:
@@ -566,20 +549,23 @@ class FirmwareUpdater:
         self._binary_downloader = binary_downloader
 
     async def _check_updatable(
-        self,
-        slave_id: int,
-        bootloader_can_preserve_port_settings: bool,
-        port_config: Union[SerialConfig, TcpConfig],
+        self, serial_device: SerialDevice, bootloader_can_preserve_port_settings: bool
     ) -> bool:
-        if bootloader_can_preserve_port_settings or isinstance(port_config, SerialConfig):
+        if bootloader_can_preserve_port_settings or isinstance(serial_device.port_config, SerialConfig):
             return True
 
-        if isinstance(port_config, TcpConfig):
+        if isinstance(serial_device.port_config, TcpConfig):
+            if serial_device.protocol == ModbusProtocol.MODBUS_TCP:
+                return True
+
+            # For Modbus RTU over TCP with old bootloader
+            # we need to check baud rate and parity
+            # as these bootloaders support only 9600 and None respectively
             baud_rate = get_baud_rate_from_register_value(
-                await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["baud_rate"])
+                cast(int, await serial_device.read(WB_DEVICE_PARAMETERS["baud_rate"]))
             )
             parity = get_parity_from_register_value(
-                await self._serial_rpc.read(port_config, slave_id, WB_DEVICE_PARAMETERS["parity"])
+                cast(int, await serial_device.read(WB_DEVICE_PARAMETERS["parity"]))
             )
             if baud_rate != DEFAULT_BAUD_RATE or parity != DEFAULT_PARITY:
                 return False
@@ -591,13 +577,19 @@ class FirmwareUpdater:
         except Exception as e:  # pylint: disable=broad-exception-caught
             logger.exception("%s: %s", message, e)
 
-    def get_slave_id(self, **kwargs) -> int:
+    def _get_slave_id(self, **kwargs) -> int:
         slave_id = kwargs.get("slave_id")
         if not isinstance(slave_id, int):
             raise JSONRPCDispatchException(
                 code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message="Invalid slave_id"
             )
         return slave_id
+
+    def _get_serial_device_from_request(self, **kwargs) -> SerialDevice:
+        port_config = read_port_config(kwargs.get("port", {}))
+        protocol = ModbusProtocol(kwargs.get("protocol", ModbusProtocol.MODBUS_RTU.value))
+        slave_id = self._get_slave_id(**kwargs)
+        return SerialDevice(port_config, protocol, slave_id, self._serial_rpc)
 
     async def get_firmware_info(self, **kwargs) -> dict:
         """
@@ -607,6 +599,7 @@ class FirmwareUpdater:
             **kwargs: Additional keyword arguments.
                 slave_id: Modbus slave ID.
                 port (dict): The port configuration.
+                protocol (str): The Modbus protocol to use.
 
         Returns:
             dict: A dictionary containing the firmware information.
@@ -619,9 +612,8 @@ class FirmwareUpdater:
         """
 
         logger.debug("Request firmware info")
-        port_config = read_port_config(kwargs.get("port", {}))
-        slave_id = self.get_slave_id(**kwargs)
-        if self._state.is_updating(slave_id, Port(port_config)):
+        serial_device = self._get_serial_device_from_request(**kwargs)
+        if self._state.is_updating(serial_device.slave_id, Port(serial_device.port_config)):
             raise MQTTRPCAlreadyProcessingException()
         res = {
             "fw": "",
@@ -633,38 +625,36 @@ class FirmwareUpdater:
         }
 
         try:
-            res["fw"] = await self._fw_info_reader.read_fw_version(port_config, slave_id)
+            res["fw"] = await self._fw_info_reader.read_fw_version(serial_device)
         except SerialExceptionBase as err:
-            logger.warning("Can't get firmware info for %s (%s): %s", slave_id, port_config, err)
+            logger.warning("Can't get firmware info for %s: %s", serial_device.description, err)
             raise JSONRPCDispatchException(
                 code=MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value, message=str(err)
             ) from err
 
-        res["model"] = get_human_readable_device_model(
-            await read_device_model(SerialDevice(self._serial_rpc, port_config, slave_id))
-        )
+        res["model"] = get_human_readable_device_model(await read_device_model(serial_device))
 
         try:
-            signature = await self._fw_info_reader.read_fw_signature(port_config, slave_id)
+            signature = await self._fw_info_reader.read_fw_signature(serial_device)
         except SerialExceptionBase as err:
-            logger.warning("Can't get firmware signature for %s (%s): %s", slave_id, port_config, err)
+            logger.warning("Can't get firmware signature for %s: %s", serial_device.description, err)
             return res
 
         try:
             res["available_fw"] = self._fw_info_reader.read_released_fw(signature).version
         except NoReleasedFwError as err:
-            logger.warning("Can't get released firmware info for %s (%s): %s", slave_id, port_config, err)
+            logger.warning("Can't get released firmware info for %s: %s", serial_device.description, err)
 
-        bootloader = await self._fw_info_reader.read_bootloader(port_config, slave_id, signature)
+        bootloader = await self._fw_info_reader.read_bootloader(serial_device, signature)
         res["bootloader"] = bootloader.current_version
         res["available_bootloader"] = bootloader.available.version if bootloader.available is not None else ""
 
         try:
             res["can_update"] = await self._check_updatable(
-                slave_id, bootloader.can_preserve_port_settings, port_config
+                serial_device, bootloader.can_preserve_port_settings
             )
         except SerialExceptionBase as err:
-            logger.warning("Can't check if firmware for %s (%s)is updatable: %s", slave_id, port_config, err)
+            logger.warning("Can't check if firmware for %s is updatable: %s", serial_device.description, err)
 
         return res
 
@@ -677,6 +667,7 @@ class FirmwareUpdater:
                 slave_id (int): Modbus slave ID.
                 port (dict): The port configuration.
                 type (str): The type of software to update. Can be "firmware" or "bootloader".
+                protocol (str): The Modbus protocol to use.
 
         Raises:
             MQTTRPCAlreadyProcessingException: If a software update is already in progress.
@@ -690,17 +681,14 @@ class FirmwareUpdater:
             raise MQTTRPCAlreadyProcessingException()
         software_type = SoftwareType(kwargs.get("type", SoftwareType.FIRMWARE.value))
         logger.debug("Start %s update", software_type.value)
-        slave_id = self.get_slave_id(**kwargs)
-        port_config = read_port_config(kwargs.get("port", {}))
-        fw_info = await self._fw_info_reader.read(port_config, slave_id)
-        if not await self._check_updatable(
-            slave_id, fw_info.bootloader.can_preserve_port_settings, port_config
-        ):
+        serial_device = self._get_serial_device_from_request(**kwargs)
+        fw_info = await self._fw_info_reader.read(serial_device)
+        if not await self._check_updatable(serial_device, fw_info.bootloader.can_preserve_port_settings):
             raise ValueError("Can't update firmware over TCP")
         if software_type == SoftwareType.BOOTLOADER:
             self._update_software_task = self._asyncio_loop.create_task(
                 self._catch_all_exceptions(
-                    self._update_bootloader(slave_id, port_config, fw_info),
+                    self._update_bootloader(serial_device, fw_info),
                     "Bootloader update failed",
                 ),
                 name="Update bootloader (long running)",
@@ -708,7 +696,7 @@ class FirmwareUpdater:
         else:
             self._update_software_task = self._asyncio_loop.create_task(
                 self._catch_all_exceptions(
-                    self._update_firmware(slave_id, port_config, fw_info),
+                    self._update_firmware(serial_device, fw_info),
                     "Firmware update failed",
                 ),
                 name="Update firmware (long running)",
@@ -729,7 +717,7 @@ class FirmwareUpdater:
             str: "Ok" if the error was cleared.
         """
 
-        slave_id = self.get_slave_id(**kwargs)
+        slave_id = self._get_slave_id(**kwargs)
         port = Port(kwargs.get("port", {}).get("path"))
         software_type = SoftwareType(kwargs.get("type", SoftwareType.FIRMWARE.value))
         logger.debug("Clear error: %d %s", slave_id, port.path)
@@ -755,45 +743,29 @@ class FirmwareUpdater:
         if self._update_software_task and not self._update_software_task.done():
             raise MQTTRPCAlreadyProcessingException()
         logger.debug("Start firmware restore")
-        slave_id = self.get_slave_id(**kwargs)
-        port_config = read_port_config(kwargs.get("port", {}))
-        if not await is_in_bootloader_mode(slave_id, self._serial_rpc, port_config):
+        serial_device = self._get_serial_device_from_request(**kwargs)
+        if not await is_in_bootloader_mode(serial_device):
             return "Ok"
-        fw_info = await self._fw_info_reader.read(port_config, slave_id, True)
+        fw_info = await self._fw_info_reader.read(serial_device, True)
         self._update_software_task = self._asyncio_loop.create_task(
             self._catch_all_exceptions(
-                self._restore_firmware(slave_id, port_config, fw_info),
+                self._restore_firmware(serial_device, fw_info),
                 "Firmware restore failed",
             ),
             name="Restore firmware (long running)",
         )
         return "Ok"
 
-    async def _update_firmware(
-        self,
-        slave_id: int,
-        port_config: Union[SerialConfig, TcpConfig],
-        fw_info: FirmwareInfo,
-    ) -> None:
+    async def _update_firmware(self, serial_device: SerialDevice, fw_info: FirmwareInfo) -> None:
         """
         Asyncio task body to update the firmware of a device.
 
         Args:
-            slave_id (int): The ID of the device to update.
-            port_config (Union[SerialConfig, TcpConfig]): The configuration of the device's port.
+            serial_device (SerialDevice): The serial device to update.
             fw_info (FirmwareInfo): Information about the firmware.
         """
 
-        serial_device = SerialDevice(self._serial_rpc, port_config, slave_id)
-        update_notifier = UpdateStateNotifier(
-            DeviceUpdateInfo(
-                port=Port(port_config),
-                slave_id=slave_id,
-                from_version=fw_info.current_version,
-                to_version=fw_info.available.version,
-            ),
-            self._state,
-        )
+        update_notifier = UpdateStateNotifier(make_device_update_info(serial_device, fw_info), self._state)
         if await update_software(
             serial_device,
             update_notifier,
@@ -803,31 +775,18 @@ class FirmwareUpdater:
         ):
             update_notifier.delete()
 
-    async def _update_bootloader(
-        self,
-        slave_id: int,
-        port_config: Union[SerialConfig, TcpConfig],
-        fw_info: FirmwareInfo,
-    ) -> None:
+    async def _update_bootloader(self, serial_device: SerialDevice, fw_info: FirmwareInfo) -> None:
         """
         Asyncio task body to update the bootloader of a device.
 
         Args:
-            slave_id (int): The ID of the device.
+            serial_device (SerialDevice): The serial device to update.
             port_config (Union[SerialConfig, TcpConfig]): The configuration of the device's port.
             fw_info (FirmwareInfo): Information about the firmware.
         """
 
-        serial_device = SerialDevice(self._serial_rpc, port_config, slave_id)
         bootloader_update_notifier = UpdateStateNotifier(
-            DeviceUpdateInfo(
-                port=Port(port_config),
-                slave_id=slave_id,
-                type=SoftwareType.BOOTLOADER,
-                from_version=fw_info.bootloader.current_version,
-                to_version=fw_info.bootloader.available.version,
-            ),
-            self._state,
+            make_device_update_info(serial_device, fw_info.bootloader), self._state
         )
         if await update_software(
             serial_device,
@@ -838,40 +797,23 @@ class FirmwareUpdater:
         ):
             bootloader_update_notifier.delete(False)
             fw_update_notifier = UpdateStateNotifier(
-                DeviceUpdateInfo(
-                    port=Port(port_config), slave_id=slave_id, to_version=fw_info.available.version
-                ),
-                self._state,
+                make_device_update_info(serial_device, fw_info), self._state
             )
             await asyncio.sleep(1)
             await restore_firmware(
                 serial_device, fw_update_notifier, fw_info.available, self._binary_downloader
             )
 
-    async def _restore_firmware(
-        self,
-        slave_id: int,
-        port_config: Union[SerialConfig, TcpConfig],
-        fw_info: FirmwareInfo,
-    ) -> None:
+    async def _restore_firmware(self, serial_device: SerialDevice, fw_info: FirmwareInfo) -> None:
         """
         Asyncio task body to restore the firmware of a device in bootloader mode.
 
         Args:
-            slave_id (int): The ID of the device to restore the firmware.
-            port_config (Union[SerialConfig, TcpConfig]): The configuration of the device's port.
+            serial_device (SerialDevice): The serial device to restore the firmware.
             fw_info (FirmwareInfo): Information about the firmware.
         """
 
-        serial_device = SerialDevice(self._serial_rpc, port_config, slave_id)
-        update_notifier = UpdateStateNotifier(
-            DeviceUpdateInfo(
-                port=Port(port_config),
-                slave_id=slave_id,
-                to_version=fw_info.available.version,
-            ),
-            self._state,
-        )
+        update_notifier = UpdateStateNotifier(make_device_update_info(serial_device, fw_info), self._state)
         await restore_firmware(serial_device, update_notifier, fw_info.available, self._binary_downloader)
 
     def publish_state(self):

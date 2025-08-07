@@ -43,12 +43,17 @@ class BusScanner:
         )
         serial_ports = []
         tcp_ports = []
+        modbus_tcp_ports = []
         for port_info in response:
             if "path" in port_info:
                 serial_ports.append(port_info["path"])
             elif "address" in port_info and "port" in port_info:
-                tcp_ports.append(f"{port_info['address']}:{port_info['port']}")
-        return ParsedPorts(serial=serial_ports, tcp=tcp_ports)
+                port_str = f"{port_info['address']}:{port_info['port']}"
+                if port_info.get("mode") == "modbus-tcp":
+                    modbus_tcp_ports.append(port_str)
+                else:
+                    tcp_ports.append(port_str)
+        return ParsedPorts(serial=serial_ports, tcp=tcp_ports, modbus_tcp=modbus_tcp_ports)
 
     async def launch_bus_scan(self, **kwargs):
         if self._bus_scanning_task and not self._bus_scanning_task.done():
@@ -87,9 +92,62 @@ class BusScanner:
     def _get_parsed_ports_from_request(self, port_config: dict) -> ParsedPorts:
         if "path" not in port_config:
             return ParsedPorts()
-        if ":" in port_config["path"]:
-            return ParsedPorts(serial=[], tcp=[port_config["path"]])
-        return ParsedPorts(serial=[port_config["path"]], tcp=[])
+        path = port_config["path"]
+        if ":" in path:
+            if port_config.get("protocol") == "modbus-tcp":
+                return ParsedPorts(serial=[], tcp=[], modbus_tcp=[path])
+            return ParsedPorts(serial=[], tcp=[path], modbus_tcp=[])
+        return ParsedPorts(serial=[path], tcp=[], modbus_tcp=[])
+
+    async def _run_fast_modbus_scan_tasks(self, ports: ParsedPorts, fast_modbus_scanner: FastModbusScanner):
+        fast_modbus_scan_items_count = fast_modbus_scanner.get_scan_items_count(ports)
+        if fast_modbus_scan_items_count > 0:
+            self._state_manager.set_scan_items_count(fast_modbus_scan_items_count)
+            # Use 0x60 for scanning as the last device with deprecated command only was sold 18.12.24
+            await asyncio.gather(
+                *fast_modbus_scanner.create_scan_tasks(ports, FastModbusCommand.DEPRECATED),
+                return_exceptions=True,
+            )
+
+    async def _run_standard_scan_tasks(self, ports: ParsedPorts, one_by_one_scanner: OneByOneBusScanner):
+        one_by_one_scan_items_count = one_by_one_scanner.get_scan_items_count(ports)
+        if one_by_one_scan_items_count > 0:
+            self._state_manager.set_scan_items_count(one_by_one_scan_items_count)
+            await asyncio.gather(*one_by_one_scanner.create_scan_tasks(ports), return_exceptions=True)
+
+    async def _run_fast_modbus_and_standard_can_tasks(
+        self,
+        ports: ParsedPorts,
+        fast_modbus_scanner: FastModbusScanner,
+        one_by_one_scanner: OneByOneBusScanner,
+    ):
+        fast_modbus_scan_items_count = fast_modbus_scanner.get_scan_items_count(ports)
+        one_by_one_scan_items_count = one_by_one_scanner.get_scan_items_count(ports)
+        if fast_modbus_scan_items_count + one_by_one_scan_items_count == 0:
+            return
+        self._state_manager.set_scan_items_count(fast_modbus_scan_items_count + one_by_one_scan_items_count)
+        if fast_modbus_scan_items_count > 0:
+            # Use 0x60 for scanning as the last device with deprecated command only was sold 18.12.24
+            await asyncio.gather(
+                *fast_modbus_scanner.create_scan_tasks(ports, FastModbusCommand.DEPRECATED),
+                return_exceptions=True,
+            )
+        if one_by_one_scan_items_count > 0:
+            await asyncio.gather(*one_by_one_scanner.create_scan_tasks(ports), return_exceptions=True)
+
+    async def _run_bootloader_scan_tasks(self, ports: ParsedPorts, out_of_order_slave_ids: list[int]):
+        bootloader_mode_scanner = BootloaderModeScanner(
+            SerialRPCWrapper(self.rpc_client),
+            self._state_manager,
+            get_all_uart_params,
+        )
+        self._state_manager.set_scan_items_count(
+            bootloader_mode_scanner.get_scan_items_count(ports, out_of_order_slave_ids)
+        )
+        await asyncio.gather(
+            *bootloader_mode_scanner.create_scan_tasks(ports, out_of_order_slave_ids),
+            return_exceptions=True,
+        )
 
     async def scan_serial_bus(
         self, scan_type, preserve_old_results, port_config, out_of_order_slave_ids: list[int]
@@ -111,42 +169,17 @@ class BusScanner:
                 self._state_manager,
                 get_all_uart_params,
             )
-            fast_modbus_scan_items_count = fast_modbus_scanner.get_scan_items_count(ports)
             one_by_one_scanner = OneByOneBusScanner(self._state_manager, self._rpc_client)
-            one_by_one_scan_items_count = one_by_one_scanner.get_scan_items_count(ports)
             if scan_type == "extended":
-                self._state_manager.set_scan_items_count(fast_modbus_scan_items_count)
-                # Use 0x60 for scanning as the last device with deprecated command only was sold 18.12.24
-                await asyncio.gather(
-                    *fast_modbus_scanner.create_scan_tasks(ports, FastModbusCommand.DEPRECATED),
-                    return_exceptions=True,
-                )
+                await self._run_fast_modbus_scan_tasks(ports, fast_modbus_scanner)
             elif scan_type == "standard":
-                self._state_manager.set_scan_items_count(one_by_one_scan_items_count)
-                await asyncio.gather(*one_by_one_scanner.create_scan_tasks(ports), return_exceptions=True)
+                await self._run_standard_scan_tasks(ports, one_by_one_scanner)
             elif scan_type == "bootloader":
-                bootloader_mode_scanner = BootloaderModeScanner(
-                    SerialRPCWrapper(self.rpc_client),
-                    self._state_manager,
-                    get_all_uart_params,
-                )
-                self._state_manager.set_scan_items_count(
-                    bootloader_mode_scanner.get_scan_items_count(ports, out_of_order_slave_ids)
-                )
-                await asyncio.gather(
-                    *bootloader_mode_scanner.create_scan_tasks(ports, out_of_order_slave_ids),
-                    return_exceptions=True,
-                )
+                await self._run_bootloader_scan_tasks(ports, out_of_order_slave_ids)
             else:
-                self._state_manager.set_scan_items_count(
-                    fast_modbus_scan_items_count + one_by_one_scan_items_count
+                await self._run_fast_modbus_and_standard_can_tasks(
+                    ports, fast_modbus_scanner, one_by_one_scanner
                 )
-                await asyncio.gather(
-                    *fast_modbus_scanner.create_scan_tasks(ports, FastModbusCommand.DEPRECATED),
-                    return_exceptions=True,
-                )
-                await asyncio.gather(*one_by_one_scanner.create_scan_tasks(ports), return_exceptions=True)
-
             await self._state_manager.scan_complete()
         except asyncio.CancelledError:
             await self._state_manager.scan_finished()
