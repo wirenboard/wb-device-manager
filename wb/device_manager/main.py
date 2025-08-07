@@ -69,7 +69,7 @@ def main(args=argv):  # pylint: disable=dangerous-default-value, too-many-locals
     serial_rpc = SerialRPCWrapper(rpc_client)
     httplib = httplib2.Http("/tmp/wb-device-manager/cache", timeout=10)
     binary_downloader = BinaryDownloader(httplib)
-    firmware_info_reader = FirmwareInfoReader(serial_rpc, binary_downloader)
+    firmware_info_reader = FirmwareInfoReader(binary_downloader)
     fw_updater = FirmwareUpdater(
         mqtt_connection, serial_rpc, event_loop, firmware_info_reader, binary_downloader
     )
