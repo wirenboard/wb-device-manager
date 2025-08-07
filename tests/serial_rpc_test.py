@@ -65,6 +65,7 @@ async def test_read_str_parameter():
             "response_timeout": 8,
             "total_timeout": 10000,
             "format": "HEX",
+            "protocol": "modbus",
         },
         timeout=10,
     )
@@ -106,6 +107,7 @@ async def test_read_uint_parameter():
             "response_timeout": 8,
             "total_timeout": 10000,
             "format": "HEX",
+            "protocol": "modbus",
         },
         timeout=10,
     )
@@ -188,6 +190,7 @@ async def test_read_bytes_parameter():
             "response_timeout": 8,
             "total_timeout": 10000,
             "format": "HEX",
+            "protocol": "modbus",
         },
         timeout=10,
     )

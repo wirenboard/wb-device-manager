@@ -253,15 +253,13 @@ class SerialRPCWrapper:
             "count": register_count,
             "response_timeout": response_timeout_ms,
             "total_timeout": DEFAULT_RPC_CALL_TIMEOUT_MS,
+            "protocol": "modbus-tcp" if protocol == ModbusProtocol.MODBUS_TCP else "modbus",
             "format": "HEX",
         }
         add_port_config_to_rpc_request(rpc_request, port_config)
         if data is not None:
             rpc_request["format"] = "HEX"
             rpc_request["msg"] = data.hex()
-
-        if protocol == ModbusProtocol.MODBUS_TCP:
-            rpc_request["protocol"] = "modbus-tcp"
 
         try:
             response = await self.rpc_client.make_rpc_call(
