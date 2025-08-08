@@ -19,12 +19,14 @@ from .bus_scan_state import (
 from .serial_device import SerialDevice
 from .serial_rpc import (
     WB_DEVICE_PARAMETERS,
+    ModbusExceptionCode,
     ModbusProtocol,
     SerialConfig,
     SerialExceptionBase,
     SerialRPCWrapper,
     SerialTimeoutException,
     TcpConfig,
+    WBModbusException,
 )
 from .state_error import ReadFWSignatureDeviceError
 
@@ -51,6 +53,11 @@ async def is_in_bootloader_mode(serial_device: SerialDevice) -> bool:
         return False
     except SerialTimeoutException:
         return True
+    except WBModbusException as e:
+        # Some gateways return this code if they decide that target device is not responding
+        if e.code == ModbusExceptionCode.GATEWAY_TARGET_DEVICE_FAILED_TO_RESPOND:
+            return True
+        raise e
 
 
 def make_sn_for_device_in_bootloader(slave_id: int, port_config: Union[SerialConfig, TcpConfig]) -> str:
