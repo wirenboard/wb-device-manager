@@ -93,8 +93,14 @@ class SetEncoder(json.JSONEncoder):
 
 @dataclass
 class ParsedPorts:
+    # Serial ports, Modbus RTU
     serial: list[str] = field(default_factory=list)
+
+    # Modbus RTU over TCP
     tcp: list[str] = field(default_factory=list)
+
+    # Modbus TCP
+    modbus_tcp: list[str] = field(default_factory=list)
 
 
 def get_uart_params_count(  # pylint: disable=dangerous-default-value
