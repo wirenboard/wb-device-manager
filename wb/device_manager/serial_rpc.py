@@ -118,6 +118,7 @@ class ParameterConfig:
     read_fn: Optional[ModbusFunctionCode] = ModbusFunctionCode.READ_HOLDING
     write_fn: Optional[ModbusFunctionCode] = ModbusFunctionCode.WRITE_SINGLE_REGISTER
     data_type: DataType = DataType.UINT
+    step: int = 1
 
 
 WB_DEVICE_PARAMETERS = {
@@ -195,6 +196,37 @@ WB_DEVICE_PARAMETERS = {
         read_fn=ModbusFunctionCode.READ_HOLDING,
         write_fn=None,
         data_type=DataType.STR,
+    ),
+    "components_presence": ParameterConfig(
+        register_address=65152,
+        register_count=8,
+        read_fn=ModbusFunctionCode.READ_DISCRETE,
+        write_fn=None,
+        data_type=DataType.BYTES,
+    ),
+    "component_fw_version": ParameterConfig(
+        register_address=64800,
+        register_count=16,
+        read_fn=ModbusFunctionCode.READ_INPUT,
+        write_fn=None,
+        data_type=DataType.STR,
+        step=48,
+    ),
+    "component_signature": ParameterConfig(
+        register_address=64788,
+        register_count=12,
+        read_fn=ModbusFunctionCode.READ_INPUT,
+        write_fn=None,
+        data_type=DataType.STR,
+        step=48,
+    ),
+    "component_model": ParameterConfig(
+        register_address=64768,
+        register_count=20,
+        read_fn=ModbusFunctionCode.READ_INPUT,
+        write_fn=None,
+        data_type=DataType.STR,
+        step=48,
     ),
 }
 
