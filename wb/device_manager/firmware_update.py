@@ -132,6 +132,7 @@ class SoftwareComponent:
     type: SoftwareType = SoftwareType.FIRMWARE
     current_version: Optional[str] = None
     available: Optional[ReleasedBinary] = None
+    flashing_options: dict = field(default_factory=lambda: {"reboot_to_bl": True})
 
 
 @dataclass
@@ -152,6 +153,7 @@ class ComponentInfo(SoftwareComponent):
 
     COMPONENTS_COUNT: int = 8
     type: SoftwareType = SoftwareType.COMPONENT
+    flashing_options: dict = field(default_factory=lambda: {"reboot_to_bl": False})
 
 
 @dataclass
@@ -250,12 +252,16 @@ class FirmwareInfoReader:
         components_presence = []
         while time.time() - start < timeout and not components_presence:
             try:
-                components_presence = await self._serial_rpc.read(
+                bytestring = await self._serial_rpc.read(
                     port_config, slave_id, WB_DEVICE_PARAMETERS["components_presence"]
                 )
+                for byte in bytestring:
+                    for bitposition in range(8):  # bits in byte
+                        bitvalue = (byte & (1 << bitposition)) > 0
+                        components_presence.append(int(bitvalue))
             except WBModbusException as e:
                 if e.code != ModbusExceptionCode.SLAVE_DEVICE_BUSY:
-                    raise e
+                    return []
                 await asyncio.sleep(0.1)
 
         res = []
@@ -434,7 +440,7 @@ async def update_software(
 
     try:
         await serial_device.set_poll(False)  # suspend device poll
-        if software.type != SoftwareType.COMPONENT:
+        if software.flashing_options.get("reboot_to_bl"):
             await reboot_to_bootloader(serial_device, bootloader_can_preserve_port_settings)
 
         await flash_fw(
