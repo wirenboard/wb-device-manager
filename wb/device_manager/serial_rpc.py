@@ -276,9 +276,9 @@ class SerialRPCWrapper:
             rpc_request["format"] = "HEX"
             rpc_request["msg"] = data.hex()
 
-        return self._make_request("port", "Load", rpc_request)
+        return await self._make_request("port", "Load", rpc_request)
 
-    async def _set_poll(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int, poll: bool) -> None:
+    async def set_poll(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int, poll: bool) -> None:
         rpc_request = {"slave_id": slave_id, "poll": poll}
         if isinstance(port_config, SerialConfig):
             rpc_request["path"] = port_config.path
@@ -286,7 +286,7 @@ class SerialRPCWrapper:
             rpc_request["ip"] = port_config.address
             rpc_request["port"] = port_config.port
 
-        self._make_request("device", "SetPoll", rpc_request)
+        await self._make_request("device", "SetPoll", rpc_request)
 
     async def read(
         self,
