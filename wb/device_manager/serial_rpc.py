@@ -279,10 +279,7 @@ class SerialRPCWrapper:
         return self._make_request("port", "Load", rpc_request)
 
     async def _set_poll(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int, poll: bool) -> None:
-        rpc_request = {
-            "slave_id": slave_id,
-            "poll": poll
-        }
+        rpc_request = {"slave_id": slave_id, "poll": poll}
         if isinstance(port_config, SerialConfig):
             rpc_request["path"] = port_config.path
         else:

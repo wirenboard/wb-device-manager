@@ -428,14 +428,14 @@ async def update_software(
     device_model = get_human_readable_device_model(await read_device_model(serial_device))
     sn = await read_sn(serial_device, device_model)
     try:
-        await serial_device.set_poll(False) # suspend device poll
+        await serial_device.set_poll(False)  # suspend device poll
         await reboot_to_bootloader(serial_device, bootloader_can_preserve_port_settings)
         await flash_fw(
             serial_device,
             download_wbfw(binary_downloader, software.available.endpoint),
             update_state_notifier,
         )
-        await serial_device.set_poll(True) # resume device poll
+        await serial_device.set_poll(True)  # resume device poll
     except (WBRemoteStorageError, SerialExceptionBase) as e:
         update_state_notifier.set_error_from_exception(e)
         logger.error(
@@ -479,13 +479,13 @@ async def restore_firmware(
 
     update_state_notifier.set_progress(0)
     try:
-        await serial_device.set_poll(False) # suspend device poll
+        await serial_device.set_poll(False)  # suspend device poll
         await flash_fw(
             serial_device,
             download_wbfw(binary_downloader, firmware.endpoint),
             update_state_notifier,
         )
-        await serial_device.set_poll(True) # resume device poll
+        await serial_device.set_poll(True)  # resume device poll
     except (WBRemoteStorageError, SerialExceptionBase) as e:
         update_state_notifier.set_error_from_exception(e)
         logger.error("Firmware restore of %s failed: %s", serial_device.description, e)
