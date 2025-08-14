@@ -277,7 +277,7 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
         mock.download_wbfw = Mock()
         mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
-        mock.set_poll = Mock()
+        mock.set_poll = AsyncMock()
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
@@ -301,7 +301,7 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
         mock.download_wbfw = Mock()
         mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
-        mock.set_poll = Mock()
+        mock.set_poll = AsyncMock()
         mock.set_error_from_exception = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
@@ -336,7 +336,7 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.download_wbfw = Mock()
         mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
-        mock.set_poll = Mock()
+        mock.set_poll = AsyncMock()
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         sw = SoftwareComponent(available=fw)
@@ -365,7 +365,7 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.download_wbfw = Mock()
         mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
-        mock.set_poll = Mock()
+        mock.set_poll = AsyncMock()
         mock.set_error_from_exception = Mock()
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
