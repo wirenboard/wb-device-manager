@@ -287,8 +287,8 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
             await restore_firmware(mock, mock, fw, downloader_mock)
             expected_calls = [
                 call.set_progress(0),
-                call.download_wbfw(downloader_mock, fw.endpoint),
                 call.set_poll(False),
+                call.download_wbfw(downloader_mock, fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
                 call.set_poll(True),
                 call.delete(),
@@ -312,10 +312,9 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
             await restore_firmware(mock, mock, fw, downloader_mock)
             expected_calls = [
                 call.set_progress(0),
-                call.download_wbfw(downloader_mock, fw.endpoint),
                 call.set_poll(False),
+                call.download_wbfw(downloader_mock, fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
-                call.set_poll(True),
                 call.set_error_from_exception(mock.flash_fw.side_effect),
             ]
             mock.assert_has_calls(expected_calls, False)
@@ -351,9 +350,9 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
             await update_software(mock, mock, sw, downloader_mock, True)
             expected_calls = [
                 call.set_progress(0),
+                call.set_poll(False),
                 call.reboot_to_bootloader(mock, True),
                 call.download_wbfw(downloader_mock, fw.endpoint),
-                call.set_poll(False),
                 call.flash_fw(mock, self.wbfw, mock),
                 call.set_poll(True),
             ]
@@ -382,11 +381,10 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
             await update_software(mock, mock, sw, downloader_mock, True)
             expected_calls = [
                 call.set_progress(0),
+                call.set_poll(False),
                 call.reboot_to_bootloader(mock, True),
                 call.download_wbfw(downloader_mock, fw.endpoint),
-                call.set_poll(False),
                 call.flash_fw(mock, self.wbfw, mock),
-                call.set_poll(True),
                 call.set_error_from_exception(mock.flash_fw.side_effect),
             ]
             mock.assert_has_calls(expected_calls, False)
