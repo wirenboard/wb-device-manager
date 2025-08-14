@@ -1,3 +1,9 @@
+wb-device-manager (1.20.0) stable; urgency=medium
+
+  * Add device/SetPoll RPC calls before and after device firmware update routines
+
+ -- Ilya Titiov <ilya.titov@wirenboard.com>  Thu, 14 Aug 2025 11:09:52 +0300
+
 wb-device-manager (1.19.3) stable; urgency=medium
 
   * Fix timeout error message
