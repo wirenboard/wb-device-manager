@@ -19,7 +19,6 @@ from wb.device_manager.firmware_update import (
     FirmwareInfoReader,
     FirmwareUpdater,
     SoftwareComponent,
-    SoftwareType,
     flash_fw,
     parse_wbfw,
     reboot_to_bootloader,
