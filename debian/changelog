@@ -1,3 +1,9 @@
+wb-device-manager (1.21.0) stable; urgency=medium
+
+  * Add components firmware update
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Wed, 15 Aug 2025 14:02:05 +0300
+
 wb-device-manager (1.20.0) stable; urgency=medium
 
   * Add device/SetPoll RPC calls before and after device firmware update routines

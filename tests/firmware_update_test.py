@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import copy
 import random
 import unittest
+from typing import Optional, Union
 from unittest.mock import AsyncMock, Mock, call, patch
 
 from jsonrpc.exceptions import JSONRPCDispatchException
 from mqttrpc import client as rpcclient
+from parameterized import parameterized
 
 from wb.device_manager.bus_scan_state import Port
 from wb.device_manager.firmware_update import (
     BootloaderInfo,
+    ComponentInfo,
     DeviceUpdateInfo,
+    FirmwareInfoReader,
     FirmwareUpdater,
     SoftwareComponent,
     flash_fw,
@@ -25,6 +30,7 @@ from wb.device_manager.fw_downloader import ReleasedBinary
 from wb.device_manager.mqtt_rpc import MQTTRPCErrorCode
 from wb.device_manager.serial_rpc import (
     WB_DEVICE_PARAMETERS,
+    ParameterConfig,
     SerialConfig,
     SerialTimeoutException,
     TcpConfig,
@@ -97,6 +103,43 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(cm.exception, reader_mock.read_fw_version.side_effect)
 
+    @parameterized.expand(
+        [
+            (WBModbusException("test msg", 6), lambda x: x > 1, []),
+            (WBModbusException("test msg", 2), lambda x: x == 1, []),
+            (b"\x00", lambda x: x == 1, []),
+            (b"\x88", lambda x: x == 1, [3, 7]),
+        ]
+    )
+    async def test_read_components_presence(self, reading_result, count_of_readings_func, result):
+
+        count_of_readings = 0
+
+        def read_components_presence(
+            _port_config: Union[SerialConfig, TcpConfig], _slave_id: int, param_config: ParameterConfig
+        ):
+            nonlocal count_of_readings
+            count_of_readings += 1
+            if param_config == WB_DEVICE_PARAMETERS["components_presence"]:
+                if isinstance(reading_result, Exception):
+                    raise reading_result
+                return reading_result
+
+        serial_rpc = AsyncMock()
+        serial_rpc.read = AsyncMock()
+        serial_rpc.read.side_effect = read_components_presence
+        mock = Mock()
+        mock.get = Mock()
+
+        with patch("wb.device_manager.firmware_update.parse_releases", mock.parse_releases):
+            reader_mock = FirmwareInfoReader(serial_rpc, None)
+            components = await reader_mock.read_components_presence(
+                slave_id=1, port_config=SerialConfig(path="test")
+            )
+
+        self.assertTrue(count_of_readings_func(count_of_readings))
+        self.assertEqual(components, result)
+
     async def test_successful_read(self):
         reader_mock = AsyncMock()
         reader_mock.read_fw_version = AsyncMock()
@@ -105,11 +148,32 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         reader_mock.read_fw_signature.return_value = "sig"
         reader_mock.read_released_fw = Mock()
         reader_mock.read_released_fw.return_value = ReleasedBinary("2", "endpoint")
-        reader_mock.read_bootloader = AsyncMock()
-        reader_mock.read_bootloader.return_value = BootloaderInfo(can_preserve_port_settings=True)
+        reader_mock.read_bootloader_info = AsyncMock()
+        reader_mock.read_bootloader_info.return_value = BootloaderInfo(can_preserve_port_settings=True)
+        reader_mock.read_components_info = AsyncMock()
+        reader_mock.read_components_info.return_value = {
+            3: ComponentInfo(current_version="3", available=ReleasedBinary("4", "endpoint")),
+            7: ComponentInfo(current_version="5", available=ReleasedBinary("6", "endpoint")),
+        }
+
+        def read_model(
+            _port_config: Union[SerialConfig, TcpConfig], _slave_id: int, param_config: ParameterConfig
+        ):
+            if param_config == WB_DEVICE_PARAMETERS["device_model_extended"]:
+                return "MAP12\x02E"
+            sensor_model_3 = copy.copy(WB_DEVICE_PARAMETERS["component_model"])
+            sensor_model_7 = copy.copy(sensor_model_3)
+            sensor_model_3.register_address += 3 * sensor_model_3.step
+            sensor_model_7.register_address += 7 * sensor_model_7.step
+            if param_config == sensor_model_3:
+                return "Component1"
+            if param_config == sensor_model_7:
+                return "Component2"
+            return None
+
         serial_rpc = AsyncMock()
         serial_rpc.read = AsyncMock()
-        serial_rpc.read.return_value = "MAP12\x02E"
+        serial_rpc.read.side_effect = read_model
         updater = FirmwareUpdater(AsyncMock(), serial_rpc, None, reader_mock, None)
         res = await updater.get_firmware_info(slave_id=1, port={"path": "test"})
 
@@ -117,6 +181,13 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.get("available_fw"), "2")
         self.assertEqual(res.get("can_update"), True)
         self.assertEqual(res.get("model"), "MAP12E")
+        self.assertEqual(
+            res.get("components_info"),
+            {
+                3: {"model": "Component1", "fw": "3", "available_fw": "4"},
+                7: {"model": "Component2", "fw": "5", "available_fw": "6"},
+            },
+        )
 
 
 class TestFlashFw(unittest.IsolatedAsyncioTestCase):
@@ -330,7 +401,13 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         )
         self.wbfw = parse_wbfw(self.fw_data)
 
-    async def test_success(self):
+    @parameterized.expand(
+        [
+            (SoftwareComponent(), True),
+            (ComponentInfo(), False),
+        ]
+    )
+    async def test_success(self, sw, expected_reboot_to_bl):
         mock = AsyncMock()
         mock.download_wbfw = Mock()
         mock.download_wbfw.return_value = self.wbfw
@@ -338,7 +415,7 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.set_poll = AsyncMock()
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
-        sw = SoftwareComponent(available=fw)
+        sw.available = fw
         with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
             "wb.device_manager.firmware_update.reboot_to_bootloader", mock.reboot_to_bootloader
         ), patch("wb.device_manager.firmware_update.read_sn"), patch(
@@ -351,15 +428,27 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
             expected_calls = [
                 call.set_progress(0),
                 call.set_poll(False),
-                call.reboot_to_bootloader(mock, True),
-                call.download_wbfw(downloader_mock, fw.endpoint),
-                call.flash_fw(mock, self.wbfw, mock),
-                call.set_poll(True),
             ]
+            if expected_reboot_to_bl:
+                expected_calls.append(call.reboot_to_bootloader(mock, True))
+            expected_calls.extend(
+                [
+                    call.download_wbfw(downloader_mock, fw.endpoint),
+                    call.flash_fw(mock, self.wbfw, mock),
+                    call.set_poll(True),
+                ]
+            )
+
             mock.assert_has_calls(expected_calls, False)
             self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))
 
-    async def test_exception(self):
+    @parameterized.expand(
+        [
+            (SoftwareComponent(), True),
+            (ComponentInfo(), False),
+        ]
+    )
+    async def test_exception(self, sw, expected_reboot_to_bl):
         mock = AsyncMock()
         mock.download_wbfw = Mock()
         mock.download_wbfw.return_value = self.wbfw
@@ -368,7 +457,7 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.set_error_from_exception = Mock()
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
-        sw = SoftwareComponent(available=fw)
+        sw.available = fw
         with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
             "wb.device_manager.firmware_update.reboot_to_bootloader", mock.reboot_to_bootloader
         ), patch("wb.device_manager.firmware_update.read_sn"), patch(
@@ -382,11 +471,17 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
             expected_calls = [
                 call.set_progress(0),
                 call.set_poll(False),
-                call.reboot_to_bootloader(mock, True),
-                call.download_wbfw(downloader_mock, fw.endpoint),
-                call.flash_fw(mock, self.wbfw, mock),
-                call.set_error_from_exception(mock.flash_fw.side_effect),
             ]
+            if expected_reboot_to_bl:
+                expected_calls.append(call.reboot_to_bootloader(mock, True))
+            expected_calls.extend(
+                [
+                    call.download_wbfw(downloader_mock, fw.endpoint),
+                    call.flash_fw(mock, self.wbfw, mock),
+                    call.set_error_from_exception(mock.flash_fw.side_effect),
+                ]
+            )
+
             mock.assert_has_calls(expected_calls, False)
             self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))
 

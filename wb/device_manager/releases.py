@@ -31,8 +31,8 @@ def parse_fw_version(endpoint_url: str) -> str:
     """
     Parsing fw version from endpoint url, stored in releases file
     """
-    re_str = r".+/(.+)\.wbfw"
-    mat = re.match(re_str, endpoint_url)  # matches .../*.wbfw
+    re_str = r".+/(?P<wbfw_version>.+)\.wbfw|.+/(?P<compfw_version>.+)\.compfw"
+    mat = re.match(re_str, endpoint_url)  # matches .../*.wbfw  *.compfw
     if mat:
-        return str(mat.group(1))
+        return str(mat.groupdict().get("wbfw_version") or mat.groupdict().get("compfw_version"))
     raise VersionParsingError(f"Could not parse fw version from {endpoint_url} by regexp {re_str}")
