@@ -258,8 +258,8 @@ class SerialDevice:
     def __post_init__(self) -> None:
         self._description = f"slave id: {self._slave_id}, {self._port_config}"
 
-    async def set_poll(self, poll) -> None:
-        await self._serial_rpc.set_poll(self._port_config, self._slave_id, poll)
+    async def set_poll(self, enabled) -> None:
+        await self._serial_rpc.set_poll(self._port_config, self._slave_id, enabled)
 
     async def write(
         self, param_config: ParameterConfig, value: Union[int, bytes], response_timeout_s: float = None
