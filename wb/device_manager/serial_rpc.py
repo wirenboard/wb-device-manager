@@ -226,7 +226,28 @@ class SerialRPCWrapper:
         wb_devices_response_time_s = 8e-3  # devices with old fws
         return wb_devices_response_time_s
 
-    async def _communicate(  # pylint: disable=too-many-arguments
+    async def _communicate(self, service: str, method: str, parms: dict) -> bytes:
+        try:
+            response = await self.rpc_client.make_rpc_call(
+                driver="wb-mqtt-serial",
+                service=service,
+                method=method,
+                params=parms,
+                timeout=DEFAULT_RPC_CALL_TIMEOUT_MS / 1000,
+            )
+        except rpcclient.MQTTRPCError as err:
+            if err.code == MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value:
+                raise SerialTimeoutException(str(err)) from err
+            if err.code == MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value:
+                raise SerialRPCTimeoutException(str(err)) from err
+            raise SerialCommunicationException(str(err)) from err
+
+        if "exception" in response:
+            raise WBModbusException(response["exception"]["msg"], response["exception"]["code"])
+
+        return bytes.fromhex(str(response.get("response", "")))
+
+    async def _send_request_to_port(  # pylint: disable=too-many-arguments
         self,
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,
@@ -255,25 +276,19 @@ class SerialRPCWrapper:
             rpc_request["format"] = "HEX"
             rpc_request["msg"] = data.hex()
 
-        try:
-            response = await self.rpc_client.make_rpc_call(
-                driver="wb-mqtt-serial",
-                service="port",
-                method="Load",
-                params=rpc_request,
-                timeout=DEFAULT_RPC_CALL_TIMEOUT_MS / 1000,
-            )
-        except rpcclient.MQTTRPCError as err:
-            if err.code == MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value:
-                raise SerialTimeoutException(str(err)) from err
-            if err.code == MQTTRPCErrorCode.RPC_CALL_TIMEOUT.value:
-                raise SerialRPCTimeoutException(str(err)) from err
-            raise SerialCommunicationException(str(err)) from err
+        return await self._communicate("port", "Load", rpc_request)
 
-        if "exception" in response:
-            raise WBModbusException(response["exception"]["msg"], response["exception"]["code"])
+    async def set_poll(
+        self, port_config: Union[SerialConfig, TcpConfig], slave_id: int, enabled: bool
+    ) -> None:
+        rpc_request = {"slave_id": slave_id, "poll": enabled}
+        if isinstance(port_config, SerialConfig):
+            rpc_request["path"] = port_config.path
+        else:
+            rpc_request["ip"] = port_config.address
+            rpc_request["port"] = port_config.port
 
-        return bytes.fromhex(str(response.get("response", "")))
+        await self._communicate("device", "SetPoll", rpc_request)
 
     async def read(
         self,
@@ -285,7 +300,7 @@ class SerialRPCWrapper:
         if param_config.read_fn is None:
             raise ForbiddenOperationException(f"Register {param_config.register_address} is not readable")
 
-        response = await self._communicate(
+        response = await self._send_request_to_port(
             port_config,
             slave_id,
             param_config.read_fn.value,
@@ -320,7 +335,7 @@ class SerialRPCWrapper:
             and len(data) // 2 < param_config.register_count
         ):
             register_count = len(data) // 2
-        await self._communicate(
+        await self._send_request_to_port(
             port_config,
             slave_id,
             param_config.write_fn.value,
