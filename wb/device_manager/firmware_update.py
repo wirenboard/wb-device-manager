@@ -648,7 +648,7 @@ class FirmwareUpdater:
             "can_update": False,
             "bootloader": "",
             "available_bootloader": "",
-            "components_info": {},
+            "components": {},
             "model": "",
         }
 
@@ -685,7 +685,7 @@ class FirmwareUpdater:
         try:
             components_info = await self._fw_info_reader.read_components_info(port_config, slave_id)
             for number, component in components_info.items():
-                res["components_info"][number] = {
+                res["components"][number] = {
                     "model": await read_component_model(serial_device, number),
                     "fw": component.current_version,
                     "available_fw": component.available.version,
