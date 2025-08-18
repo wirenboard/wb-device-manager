@@ -4,7 +4,7 @@
 import copy
 import random
 import unittest
-from typing import Optional, Union
+from typing import Union
 from unittest.mock import AsyncMock, Mock, call, patch
 
 from jsonrpc.exceptions import JSONRPCDispatchException
@@ -124,6 +124,7 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
                 if isinstance(reading_result, Exception):
                     raise reading_result
                 return reading_result
+            return None
 
         serial_rpc = AsyncMock()
         serial_rpc.read = AsyncMock()
