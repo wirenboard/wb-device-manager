@@ -151,7 +151,6 @@ class FirmwareInfo(SoftwareComponent):
 class ComponentInfo(SoftwareComponent):
     """Information about inner hardware components firmware (sensors for example)"""
 
-    COMPONENTS_COUNT: int = 8
     type: SoftwareType = SoftwareType.COMPONENT
     flashing_options: dict = field(default_factory=lambda: {"reboot_to_bl": False})
 
@@ -630,7 +629,8 @@ class FirmwareUpdater:
                 can_update (bool): Indicates if the firmware can be updated.
                 bootloader (str): The current bootloader version.
                 available_bootloader (str): The available bootloader version.
-                components_info (dict[int, dict]): A dictionary containing the current firmware versions for the components.
+                components_info (dict[int, dict]): A dictionary containing the current
+                  firmware versions for the components.
                     number (int): The component number.
                         model (str): The human-readable component model.
                         fw (str): The current firmware version.
