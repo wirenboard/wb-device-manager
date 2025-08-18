@@ -183,7 +183,7 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.get("can_update"), True)
         self.assertEqual(res.get("model"), "MAP12E")
         self.assertEqual(
-            res.get("components_info"),
+            res.get("components"),
             {
                 3: {"model": "Component1", "fw": "3", "available_fw": "4"},
                 7: {"model": "Component2", "fw": "5", "available_fw": "6"},
