@@ -303,6 +303,7 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
         mock.set_progress = Mock()
         mock.set_poll = AsyncMock()
         mock.set_error_from_exception = Mock()
+        mock.description = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
             "wb.device_manager.firmware_update.download_wbfw", mock.download_wbfw
@@ -316,6 +317,7 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
                 call.download_wbfw(downloader_mock, fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
                 call.set_error_from_exception(mock.flash_fw.side_effect),
+                call.set_poll(True),
             ]
             mock.assert_has_calls(expected_calls, False)
             self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))
@@ -366,6 +368,7 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.set_progress = Mock()
         mock.set_poll = AsyncMock()
         mock.set_error_from_exception = Mock()
+        mock.description = Mock()
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         sw = SoftwareComponent(available=fw)
@@ -386,6 +389,7 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
                 call.download_wbfw(downloader_mock, fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
                 call.set_error_from_exception(mock.flash_fw.side_effect),
+                call.set_poll(True),
             ]
             mock.assert_has_calls(expected_calls, False)
             self.assertEqual(len(mock.mock_calls) - len(mock.description.mock_calls), len(expected_calls))

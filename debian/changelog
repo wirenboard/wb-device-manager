@@ -1,8 +1,14 @@
+wb-device-manager (1.20.1) stable; urgency=medium
+
+  * Add device/SetPoll RPC call on device firmware update failure
+
+ -- Ilya Titov <ilya.titov@wirenboard.com>  Thu, 21 Aug 2025 11:14:52 +0300
+
 wb-device-manager (1.20.0) stable; urgency=medium
 
   * Add device/SetPoll RPC calls before and after device firmware update routines
 
- -- Ilya Titiov <ilya.titov@wirenboard.com>  Thu, 14 Aug 2025 11:09:52 +0300
+ -- Ilya Titov <ilya.titov@wirenboard.com>  Thu, 14 Aug 2025 11:09:52 +0300
 
 wb-device-manager (1.19.3) stable; urgency=medium
 
