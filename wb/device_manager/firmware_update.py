@@ -465,8 +465,6 @@ async def update_software(
             e,
         )
         return False
-    finally:
-        await serial_device.set_poll(True)  # resume device poll
     logger.info(
         "%s (sn: %d, %s) %s update from %s to %s completed",
         device_model,
@@ -506,8 +504,6 @@ async def restore_firmware(
         update_state_notifier.set_error_from_exception(e)
         logger.error("Firmware restore of %s failed: %s", serial_device.description, e)
         return
-    finally:
-        await serial_device.set_poll(True)  # resume device poll
     update_state_notifier.delete()
     logger.info("Firmware of device %s is restored to %s", serial_device.description, firmware.version)
     return True
