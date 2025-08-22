@@ -16,6 +16,7 @@ from wb.device_manager.firmware_update import (
     BootloaderInfo,
     ComponentInfo,
     DeviceUpdateInfo,
+    FirmwareInfo,
     FirmwareInfoReader,
     FirmwareUpdater,
     SoftwareComponent,
@@ -153,8 +154,12 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         reader_mock.read_bootloader_info.return_value = BootloaderInfo(can_preserve_port_settings=True)
         reader_mock.read_components_info = AsyncMock()
         reader_mock.read_components_info.return_value = {
-            3: ComponentInfo(current_version="3", available=ReleasedBinary("4", "endpoint")),
-            7: ComponentInfo(current_version="5", available=ReleasedBinary("6", "endpoint")),
+            3: ComponentInfo(
+                current_version="3", available=ReleasedBinary("4", "endpoint"), model="Component1"
+            ),
+            7: ComponentInfo(
+                current_version="5", available=ReleasedBinary("6", "endpoint"), model="Component2"
+            ),
         }
 
         def read_model(
@@ -162,14 +167,6 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         ):
             if param_config == WB_DEVICE_PARAMETERS["device_model_extended"]:
                 return "MAP12\x02E"
-            sensor_model_3 = copy.copy(WB_DEVICE_PARAMETERS["component_model"])
-            sensor_model_7 = copy.copy(sensor_model_3)
-            sensor_model_3.register_address += 3 * sensor_model_3.step
-            sensor_model_7.register_address += 7 * sensor_model_7.step
-            if param_config == sensor_model_3:
-                return "Component1"
-            if param_config == sensor_model_7:
-                return "Component2"
             return None
 
         serial_rpc = AsyncMock()
@@ -349,7 +346,6 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
         mock.download_wbfw = Mock()
         mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
-        mock.set_poll = AsyncMock()
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
@@ -359,10 +355,8 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
             await restore_firmware(mock, mock, fw, downloader_mock)
             expected_calls = [
                 call.set_progress(0),
-                call.set_poll(False),
                 call.download_wbfw(downloader_mock, fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
-                call.set_poll(True),
                 call.delete(),
             ]
             mock.assert_has_calls(expected_calls, False)
@@ -373,7 +367,6 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
         mock.download_wbfw = Mock()
         mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
-        mock.set_poll = AsyncMock()
         mock.set_error_from_exception = Mock()
         mock.description = Mock()
         fw = ReleasedBinary("1.1.1", "test")
@@ -385,7 +378,6 @@ class TestRestoreFirmware(unittest.IsolatedAsyncioTestCase):
             await restore_firmware(mock, mock, fw, downloader_mock)
             expected_calls = [
                 call.set_progress(0),
-                call.set_poll(False),
                 call.download_wbfw(downloader_mock, fw.endpoint),
                 call.flash_fw(mock, self.wbfw, mock),
                 call.set_error_from_exception(mock.flash_fw.side_effect),
@@ -415,7 +407,6 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.download_wbfw = Mock()
         mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
-        mock.set_poll = AsyncMock()
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         sw.available = fw
@@ -430,7 +421,6 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
             await update_software(mock, mock, sw, downloader_mock, True)
             expected_calls = [
                 call.set_progress(0),
-                call.set_poll(False),
             ]
             if expected_reboot_to_bl:
                 expected_calls.append(call.reboot_to_bootloader(mock, True))
@@ -438,7 +428,6 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
                 [
                     call.download_wbfw(downloader_mock, fw.endpoint),
                     call.flash_fw(mock, self.wbfw, mock),
-                    call.set_poll(True),
                 ]
             )
 
@@ -456,7 +445,6 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.download_wbfw = Mock()
         mock.download_wbfw.return_value = self.wbfw
         mock.set_progress = Mock()
-        mock.set_poll = AsyncMock()
         mock.set_error_from_exception = Mock()
         mock.description = Mock()
         mock.delete = Mock()
@@ -474,7 +462,6 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
             await update_software(mock, mock, sw, downloader_mock, True)
             expected_calls = [
                 call.set_progress(0),
-                call.set_poll(False),
             ]
             if expected_reboot_to_bl:
                 expected_calls.append(call.reboot_to_bootloader(mock, True))
@@ -512,3 +499,286 @@ class TestParseWbfw(unittest.TestCase):
         data = random.randbytes(2)
         with self.assertRaises(ValueError):
             parse_wbfw(data)
+
+
+class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
+
+    @parameterized.expand(
+        [
+            (
+                {
+                    "slave_id": 23,
+                    "port": {"address": "192.168.1.100", "port": 1000},
+                    "type": "bootloader",
+                    "components_numbers": [],
+                },
+                False,
+            ),
+            (
+                {
+                    "slave_id": 23,
+                    "port": {"address": "192.168.1.100", "port": 1000},
+                    "type": "bootloader",
+                    "components_numbers": [10],
+                },
+                True,
+            ),
+        ]
+    )
+    async def test_start_update_exception(self, kwargs, preserve_settings):
+        reader_mock = AsyncMock()
+        reader_mock.read_components_presence = AsyncMock()
+        reader_mock.read = AsyncMock()
+        bootloader = BootloaderInfo(
+            current_version="1.1.0",
+            available=ReleasedBinary("1.1.1", "test"),
+            can_preserve_port_settings=preserve_settings,
+        )
+        reader_mock.read.return_value = FirmwareInfo(
+            current_version="1.1.0", available=ReleasedBinary("1.1.1", "test"), bootloader=bootloader
+        )
+
+        def read_component_info(
+            port_config: Union[SerialConfig, TcpConfig], slave_id: int, component_number: int
+        ):
+            if component_number == 3:
+                return ComponentInfo(
+                    current_version="3", available=ReleasedBinary("4", "endpoint"), model="Component1"
+                )
+            if component_number == 7:
+                return ComponentInfo(
+                    current_version="5", available=ReleasedBinary("6", "endpoint"), model="Component2"
+                )
+            return None
+
+        reader_mock.read_component_info = AsyncMock()
+        reader_mock.read_component_info.side_effect = read_component_info
+
+        serial_rpc = AsyncMock()
+        serial_rpc.read = AsyncMock()
+        updater = FirmwareUpdater(AsyncMock(), serial_rpc, None, reader_mock, None)
+        with self.assertRaises(ValueError):
+            await updater.update_software(**kwargs)
+
+    @parameterized.expand(
+        [
+            (
+                {
+                    "slave_id": 23,
+                    "port": {"path": "/dev/ttyRS485-1", "baud_rate": 9600, "parity": "N", "stop_bits": 2},
+                    "type": "component",
+                    "components_numbers": [3, 7],
+                },
+                False,
+                "_update_components",
+            ),
+            (
+                {
+                    "slave_id": 23,
+                    "port": {"path": "/dev/ttyRS485-1", "baud_rate": 9600, "parity": "N", "stop_bits": 2},
+                    "type": "firmware",
+                    "components_numbers": [],
+                },
+                False,
+                "_update_firmware",
+            ),
+            (
+                {
+                    "slave_id": 23,
+                    "port": {"path": "/dev/ttyRS485-1", "baud_rate": 9600, "parity": "N", "stop_bits": 2},
+                    "type": "bootloader",
+                },
+                True,
+                "_update_bootloader",
+            ),
+            (
+                {
+                    "slave_id": 23,
+                    "port": {"address": "192.168.1.100", "port": 1000},
+                    "type": "firmware",
+                    "components_numbers": [],
+                },
+                True,
+                "_update_firmware",
+            ),
+        ]
+    )
+    async def test_start_update_success(
+        self,
+        kwargs,
+        preserve_settings,
+        expected_method_name,
+    ):
+        reader_mock = AsyncMock()
+        reader_mock.read_components_presence = AsyncMock()
+        reader_mock.read_components_presence.return_value = [3, 7]
+        reader_mock.read = AsyncMock()
+        bootloader = BootloaderInfo(
+            current_version="1.1.0",
+            available=ReleasedBinary("1.1.1", "test"),
+            can_preserve_port_settings=preserve_settings,
+        )
+        reader_mock.read.return_value = FirmwareInfo(
+            current_version="1.1.0", available=ReleasedBinary("1.1.1", "test"), bootloader=bootloader
+        )
+
+        def read_component_info(
+            port_config: Union[SerialConfig, TcpConfig], slave_id: int, component_number: int
+        ):
+            if component_number == 3:
+                return ComponentInfo(
+                    current_version="3", available=ReleasedBinary("4", "endpoint"), model="Component1"
+                )
+            if component_number == 7:
+                return ComponentInfo(
+                    current_version="5", available=ReleasedBinary("6", "endpoint"), model="Component2"
+                )
+            return None
+
+        reader_mock.read_component_info = AsyncMock()
+        reader_mock.read_component_info.side_effect = read_component_info
+
+        callable_function = None
+
+        def create_task(coro, name):
+            nonlocal callable_function
+            callable_function = coro.cr_frame.f_locals.get("task")
+            return Mock()
+
+        asyncio_loop = AsyncMock()
+        asyncio_loop.create_task = Mock()
+        asyncio_loop.create_task.side_effect = create_task
+
+        serial_rpc = AsyncMock()
+        serial_rpc.read = AsyncMock()
+        updater = FirmwareUpdater(AsyncMock(), serial_rpc, asyncio_loop, reader_mock, None)
+        await updater.update_software(**kwargs)
+        self.assertIsInstance(callable_function.cr_frame.f_locals.get("self"), FirmwareUpdater)
+        self.assertEqual(callable_function.cr_code.co_name, expected_method_name)
+
+    async def test_update_bootloader(self):
+        bootloader = BootloaderInfo(current_version="1.1.10", available=ReleasedBinary("1.1.11", "test"))
+        fw_info = FirmwareInfo(
+            current_version="1.1.0", available=ReleasedBinary("1.1.1", "test"), bootloader=bootloader
+        )
+        components_info = {
+            3: ComponentInfo(
+                current_version="3", available=ReleasedBinary("4", "endpoint"), model="Component1"
+            ),
+            7: ComponentInfo(
+                current_version="5", available=ReleasedBinary("6", "endpoint"), model="Component2"
+            ),
+        }
+        updater = FirmwareUpdater(AsyncMock(), None, None, None, None)
+
+        mock = AsyncMock()
+        updater._update_components = mock._update_components
+        serial_device_instance = Mock()
+        serial_device_instance.set_poll = mock.set_poll
+        update_notifier_instance = Mock()
+        not_needed_mock = Mock()
+        not_needed_mock.SerialDevice = Mock(return_value=serial_device_instance)
+        not_needed_mock.UpdateStateNotifier = Mock(return_value=update_notifier_instance)
+
+        with patch("wb.device_manager.firmware_update.SerialDevice", not_needed_mock.SerialDevice), patch(
+            "wb.device_manager.firmware_update.UpdateStateNotifier", not_needed_mock.UpdateStateNotifier
+        ), patch("wb.device_manager.firmware_update.update_software", mock.update_software), patch(
+            "wb.device_manager.firmware_update.restore_firmware", mock.restore_firmware
+        ):
+            await updater._update_bootloader(1, SerialConfig("/dev/ttyRS485-1"), fw_info, components_info)
+            expected_calls = [
+                call.set_poll(False),
+                call.update_software(
+                    serial_device_instance, update_notifier_instance, bootloader, None, False
+                ),
+                call.update_software().__bool__(),
+                call.restore_firmware(
+                    serial_device_instance, update_notifier_instance, fw_info.available, None
+                ),
+                call.restore_firmware().__bool__(),
+                call._update_components(
+                    1, SerialConfig("/dev/ttyRS485-1"), components_info, manage_polling=False
+                ),
+                call.set_poll(True),
+            ]
+            mock.assert_has_calls(expected_calls, any_order=False)
+
+    async def test_update_firmware(self):
+        bootloader = BootloaderInfo(current_version="1.1.10", available=ReleasedBinary("1.1.11", "test"))
+        fw_info = FirmwareInfo(
+            current_version="1.1.0", available=ReleasedBinary("1.1.1", "test"), bootloader=bootloader
+        )
+        components_info = {
+            3: ComponentInfo(
+                current_version="3", available=ReleasedBinary("4", "endpoint"), model="Component1"
+            ),
+            7: ComponentInfo(
+                current_version="5", available=ReleasedBinary("6", "endpoint"), model="Component2"
+            ),
+        }
+        updater = FirmwareUpdater(AsyncMock(), None, None, None, None)
+
+        mock = AsyncMock()
+        updater._update_components = mock._update_components
+        serial_device_instance = Mock()
+        serial_device_instance.set_poll = mock.set_poll
+        update_notifier_instance = Mock()
+        not_needed_mock = Mock()
+        not_needed_mock.SerialDevice = Mock(return_value=serial_device_instance)
+        not_needed_mock.UpdateStateNotifier = Mock(return_value=update_notifier_instance)
+
+        with patch("wb.device_manager.firmware_update.SerialDevice", not_needed_mock.SerialDevice), patch(
+            "wb.device_manager.firmware_update.UpdateStateNotifier", not_needed_mock.UpdateStateNotifier
+        ), patch("wb.device_manager.firmware_update.update_software", mock.update_software), patch(
+            "wb.device_manager.firmware_update.restore_firmware", mock.restore_firmware
+        ):
+            await updater._update_firmware(1, SerialConfig("/dev/ttyRS485-1"), fw_info, components_info)
+            expected_calls = [
+                call.set_poll(False),
+                call.update_software(serial_device_instance, update_notifier_instance, fw_info, None, False),
+                call.update_software().__bool__(),
+                call._update_components(
+                    1, SerialConfig("/dev/ttyRS485-1"), components_info, manage_polling=False
+                ),
+                call.set_poll(True),
+            ]
+            mock.assert_has_calls(expected_calls, any_order=False)
+
+    async def test_update_components(self):
+        components_info = {
+            3: ComponentInfo(
+                current_version="3", available=ReleasedBinary("4", "endpoint"), model="Component1"
+            ),
+            7: ComponentInfo(
+                current_version="5", available=ReleasedBinary("6", "endpoint"), model="Component2"
+            ),
+        }
+        updater = FirmwareUpdater(AsyncMock(), None, None, None, None)
+
+        mock = AsyncMock()
+        serial_device_instance = Mock()
+        serial_device_instance.set_poll = mock.set_poll
+        update_notifier_instance = Mock()
+        not_needed_mock = Mock()
+        not_needed_mock.SerialDevice = Mock(return_value=serial_device_instance)
+        not_needed_mock.UpdateStateNotifier = Mock(return_value=update_notifier_instance)
+
+        with patch("wb.device_manager.firmware_update.SerialDevice", not_needed_mock.SerialDevice), patch(
+            "wb.device_manager.firmware_update.UpdateStateNotifier", not_needed_mock.UpdateStateNotifier
+        ), patch("wb.device_manager.firmware_update.update_software", mock.update_software), patch(
+            "wb.device_manager.firmware_update.restore_firmware", mock.restore_firmware
+        ):
+            await updater._update_components(1, SerialConfig("/dev/ttyRS485-1"), components_info)
+            expected_calls = [
+                call.set_poll(False),
+                call.update_software(
+                    serial_device_instance, update_notifier_instance, components_info[3], None
+                ),
+                call.update_software().__bool__(),
+                call.update_software(
+                    serial_device_instance, update_notifier_instance, components_info[7], None
+                ),
+                call.update_software().__bool__(),
+                call.set_poll(True),
+            ]
+            mock.assert_has_calls(expected_calls, any_order=False)
