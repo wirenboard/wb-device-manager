@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-import copy
 import json
 import re
 import time
@@ -29,6 +28,7 @@ from .releases import parse_releases
 from .serial_device import Device, create_device, create_device_from_json
 from .serial_rpc import (
     WB_DEVICE_PARAMETERS,
+    WB_DEVICE_STEP_PARAMETERS,
     ModbusExceptionCode,
     ModbusProtocol,
     SerialExceptionBase,
@@ -36,6 +36,7 @@ from .serial_rpc import (
     SerialRPCWrapper,
     SerialTimeoutException,
     WBModbusException,
+    get_parameter_with_step,
 )
 from .state_error import (
     DeviceResponseTimeoutError,
@@ -130,11 +131,16 @@ def to_dict_for_json(device_update_info: DeviceUpdateInfo) -> dict:
 
 
 @dataclass
+class FlashingOptions:
+    reboot_to_bl: bool = True
+
+
+@dataclass
 class SoftwareComponent:
     type: SoftwareType = SoftwareType.FIRMWARE
     current_version: Optional[str] = None
     available: Optional[ReleasedBinary] = None
-    flashing_options: dict = field(default_factory=lambda: {"reboot_to_bl": True})
+    flashing_options: FlashingOptions = FlashingOptions(reboot_to_bl=True)
 
 
 @dataclass
@@ -155,7 +161,7 @@ class ComponentInfo(SoftwareComponent):
 
     type: SoftwareType = SoftwareType.COMPONENT
     model: Optional[str] = None
-    flashing_options: dict = field(default_factory=lambda: {"reboot_to_bl": False})
+    flashing_options: FlashingOptions = FlashingOptions(reboot_to_bl=False)
 
 
 @dataclass
@@ -236,12 +242,13 @@ class FirmwareInfoReader:
         self, port_config: Union[SerialConfig, TcpConfig], slave_id: int, component_number: int
     ) -> ComponentInfo:
 
-        signature_conf = copy.copy(WB_DEVICE_PARAMETERS["component_signature"])
-        fw_version_conf = copy.copy(WB_DEVICE_PARAMETERS["component_fw_version"])
-        model_conf = copy.copy(WB_DEVICE_PARAMETERS["component_model"])
-        signature_conf.register_address += component_number * signature_conf.step
-        fw_version_conf.register_address += component_number * fw_version_conf.step
-        model_conf.register_address += component_number * model_conf.step
+        signature_conf = get_parameter_with_step(
+            WB_DEVICE_STEP_PARAMETERS["component_signature"], component_number
+        )
+        fw_version_conf = get_parameter_with_step(
+            WB_DEVICE_STEP_PARAMETERS["component_fw_version"], component_number
+        )
+        model_conf = get_parameter_with_step(WB_DEVICE_STEP_PARAMETERS["component_model"], component_number)
 
         signature = await self._serial_rpc.read(port_config, slave_id, signature_conf)
         current_version = await self._serial_rpc.read(port_config, slave_id, fw_version_conf)
@@ -275,7 +282,9 @@ class FirmwareInfoReader:
                 res.append(component_number)
         return res
 
-    async def read_components_info(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int) -> dict:
+    async def read_components_info(
+        self, port_config: Union[SerialConfig, TcpConfig], slave_id: int
+    ) -> dict[int, ComponentInfo]:
         res = {}
         for component_number in await self.read_components_presence(port_config, slave_id):
             res[component_number] = await self.read_component_info(port_config, slave_id, component_number)
@@ -444,7 +453,7 @@ async def update_software(
     sn = await read_sn(serial_device, device_model)
 
     try:
-        if software.flashing_options.get("reboot_to_bl"):
+        if software.flashing_options.reboot_to_bl:
             await reboot_to_bootloader(serial_device, bootloader_can_preserve_port_settings)
 
         await flash_fw(
@@ -565,13 +574,15 @@ async def read_sn(serial_device: Device, device_model: str) -> int:
 class PollingManager:
     def __init__(self, serial_device: SerialDevice, enable_managing: bool = True) -> None:
         self._serial_device = serial_device
-        self._enabled = enable_managing
+        self._enable_managing = enable_managing
 
     async def __aenter__(self):
-        await self._serial_device.set_poll(False)
+        if self._enable_managing:
+            await self._serial_device.set_poll(False)
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self._serial_device.set_poll(True)
+        if self._enable_managing:
+            await self._serial_device.set_poll(True)
 
 
 def make_device_update_info(serial_device: Device, software_component: SoftwareComponent) -> DeviceUpdateInfo:
@@ -707,7 +718,7 @@ class FirmwareUpdater:
             **kwargs: Additional keyword arguments.
                 slave_id (int): Modbus slave ID.
                 port (dict): The port configuration.
-                type (str): The type of software to update. Can be "firmware" or "bootloader".
+                type (str): The type of software to update. Can be "firmware"/"bootloader"/"components".
                 protocol (str): The Modbus protocol to use.
 
         Raises:
@@ -728,17 +739,12 @@ class FirmwareUpdater:
         if software_type != SoftwareType.COMPONENT and not await serial_device.check_updatable(fw_info.bootloader.can_preserve_port_settings):
             raise ValueError("Can't update firmware over TCP")
 
-        available_components = await self._fw_info_reader.read_components_presence(port_config, slave_id)
-        components_info = {}
-        for component_number in components_numbers:
-            if component_number not in available_components:
-                raise ValueError(
-                    "No such component number available: %d. Available components numbers: %s"
-                    % (component_number, available_components)
-                )
-            components_info[component_number] = await self._fw_info_reader.read_component_info(
-                port_config, slave_id, component_number
-            )
+        components_info = await self._fw_info_reader.read_components_info(port_config, slave_id)
+        components_to_update = {
+            n: c
+            for n, c in components_info.items()
+            if (c.available.version and c.current_version != c.available.version)
+        }
 
         if software_type == SoftwareType.BOOTLOADER:
             self._update_software_task = self._asyncio_loop.create_task(
@@ -759,7 +765,7 @@ class FirmwareUpdater:
         else:
             self._update_software_task = self._asyncio_loop.create_task(
                 self._catch_all_exceptions(
-                    self._update_components(slave_id, port_config, components_info),
+                    self._update_components(slave_id, port_config, components_to_update),
                     "Component update failed",
                 ),
                 name="Update component (long running)",
@@ -859,8 +865,7 @@ class FirmwareUpdater:
             bootloader_update_notifier = UpdateStateNotifier(
                 make_device_update_info(serial_device, fw_info.bootloader), self._state
             )
-            logger.info("Start bootloader update for %d %s", serial_device.slave_id, serial_device.port_config)
-            
+            logger.debug("Start bootloader update for %d %s", serial_device.slave_id, serial_device.port_config)
             update_result = await update_software(
                 serial_device,
                 bootloader_update_notifier,
@@ -876,7 +881,7 @@ class FirmwareUpdater:
                 make_device_update_info(serial_device, fw_info), self._state
             )
             await asyncio.sleep(1)
-            logger.info("Start firmware update for %d %s", slave_id, port_config)
+            logger.debug("Start firmware update for %d %s", slave_id, port_config)
             restore_result = await restore_firmware(
                 serial_device, fw_update_notifier, fw_info.available, self._binary_downloader
             )

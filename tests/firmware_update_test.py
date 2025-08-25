@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import copy
 import random
 import unittest
 from typing import Union
@@ -509,18 +508,8 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
                     "slave_id": 23,
                     "port": {"address": "192.168.1.100", "port": 1000},
                     "type": "bootloader",
-                    "components_numbers": [],
                 },
                 False,
-            ),
-            (
-                {
-                    "slave_id": 23,
-                    "port": {"address": "192.168.1.100", "port": 1000},
-                    "type": "bootloader",
-                    "components_numbers": [10],
-                },
-                True,
             ),
         ]
     )
@@ -566,7 +555,6 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
                     "slave_id": 23,
                     "port": {"path": "/dev/ttyRS485-1", "baud_rate": 9600, "parity": "N", "stop_bits": 2},
                     "type": "component",
-                    "components_numbers": [3, 7],
                 },
                 False,
                 "_update_components",
@@ -576,7 +564,6 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
                     "slave_id": 23,
                     "port": {"path": "/dev/ttyRS485-1", "baud_rate": 9600, "parity": "N", "stop_bits": 2},
                     "type": "firmware",
-                    "components_numbers": [],
                 },
                 False,
                 "_update_firmware",
@@ -595,7 +582,6 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
                     "slave_id": 23,
                     "port": {"address": "192.168.1.100", "port": 1000},
                     "type": "firmware",
-                    "components_numbers": [],
                 },
                 True,
                 "_update_firmware",
@@ -621,21 +607,15 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
             current_version="1.1.0", available=ReleasedBinary("1.1.1", "test"), bootloader=bootloader
         )
 
-        def read_component_info(
-            port_config: Union[SerialConfig, TcpConfig], slave_id: int, component_number: int
-        ):
-            if component_number == 3:
-                return ComponentInfo(
-                    current_version="3", available=ReleasedBinary("4", "endpoint"), model="Component1"
-                )
-            if component_number == 7:
-                return ComponentInfo(
-                    current_version="5", available=ReleasedBinary("6", "endpoint"), model="Component2"
-                )
-            return None
-
-        reader_mock.read_component_info = AsyncMock()
-        reader_mock.read_component_info.side_effect = read_component_info
+        reader_mock.read_components_info = AsyncMock()
+        reader_mock.read_components_info.return_value = {
+            3: ComponentInfo(
+                current_version="3", available=ReleasedBinary("4", "endpoint"), model="Component1"
+            ),
+            7: ComponentInfo(
+                current_version="5", available=ReleasedBinary("5", "endpoint"), model="Component2"
+            ),
+        }
 
         callable_function = None
 

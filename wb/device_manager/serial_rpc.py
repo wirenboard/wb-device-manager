@@ -118,6 +118,10 @@ class ParameterConfig:
     read_fn: Optional[ModbusFunctionCode] = ModbusFunctionCode.READ_HOLDING
     write_fn: Optional[ModbusFunctionCode] = ModbusFunctionCode.WRITE_SINGLE_REGISTER
     data_type: DataType = DataType.UINT
+
+
+@dataclass
+class StepParameterConfig(ParameterConfig):
     step: int = 1
 
 
@@ -204,7 +208,10 @@ WB_DEVICE_PARAMETERS = {
         write_fn=None,
         data_type=DataType.BYTES,
     ),
-    "component_fw_version": ParameterConfig(
+}
+
+WB_DEVICE_STEP_PARAMETERS = {
+    "component_fw_version": StepParameterConfig(
         register_address=64800,
         register_count=16,
         read_fn=ModbusFunctionCode.READ_INPUT,
@@ -212,7 +219,7 @@ WB_DEVICE_PARAMETERS = {
         data_type=DataType.STR,
         step=48,
     ),
-    "component_signature": ParameterConfig(
+    "component_signature": StepParameterConfig(
         register_address=64788,
         register_count=12,
         read_fn=ModbusFunctionCode.READ_INPUT,
@@ -220,7 +227,7 @@ WB_DEVICE_PARAMETERS = {
         data_type=DataType.STR,
         step=48,
     ),
-    "component_model": ParameterConfig(
+    "component_model": StepParameterConfig(
         register_address=64768,
         register_count=20,
         read_fn=ModbusFunctionCode.READ_INPUT,
@@ -229,6 +236,16 @@ WB_DEVICE_PARAMETERS = {
         step=48,
     ),
 }
+
+
+def get_parameter_with_step(parameter: StepParameterConfig, step_number: int) -> ParameterConfig:
+    return ParameterConfig(
+        register_address=parameter.register_address + parameter.step * step_number,
+        register_count=parameter.register_count,
+        read_fn=parameter.read_fn,
+        write_fn=parameter.write_fn,
+        data_type=parameter.data_type,
+    )
 
 
 def value_to_bytes(register_data_type: DataType, value: Union[int, bytes]) -> bytes:
