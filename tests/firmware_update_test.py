@@ -19,6 +19,8 @@ from wb.device_manager.firmware_update import (
     FirmwareInfoReader,
     FirmwareUpdater,
     SoftwareComponent,
+    component_firmware_is_newer,
+    firmware_is_newer,
     flash_fw,
     parse_wbfw,
     reboot_to_bootloader,
@@ -177,12 +179,13 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.get("fw"), "1")
         self.assertEqual(res.get("available_fw"), "2")
         self.assertEqual(res.get("can_update"), True)
+        self.assertEqual(res.get("fw_has_update"), True)
         self.assertEqual(res.get("model"), "MAP12E")
         self.assertEqual(
             res.get("components"),
             {
-                3: {"model": "Component1", "fw": "3", "available_fw": "4"},
-                7: {"model": "Component2", "fw": "5", "available_fw": "6"},
+                3: {"model": "Component1", "fw": "3", "available_fw": "4", "has_update": True},
+                7: {"model": "Component2", "fw": "5", "available_fw": "6", "has_update": True},
             },
         )
 
@@ -651,7 +654,6 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         updater = FirmwareUpdater(AsyncMock(), None, None, None, None)
 
         mock = AsyncMock()
-        updater._update_components = mock._update_components
         serial_device_instance = Mock()
         serial_device_instance.set_poll = mock.set_poll
         update_notifier_instance = Mock()
@@ -675,9 +677,14 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
                     serial_device_instance, update_notifier_instance, fw_info.available, None
                 ),
                 call.restore_firmware().__bool__(),
-                call._update_components(
-                    1, SerialConfig("/dev/ttyRS485-1"), components_info, manage_polling=False
+                call.update_software(
+                    serial_device_instance, update_notifier_instance, components_info[3], None
                 ),
+                call.update_software().__bool__(),
+                call.update_software(
+                    serial_device_instance, update_notifier_instance, components_info[7], None
+                ),
+                call.update_software().__bool__(),
                 call.set_poll(True),
             ]
             mock.assert_has_calls(expected_calls, any_order=False)
@@ -698,7 +705,6 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         updater = FirmwareUpdater(AsyncMock(), None, None, None, None)
 
         mock = AsyncMock()
-        updater._update_components = mock._update_components
         serial_device_instance = Mock()
         serial_device_instance.set_poll = mock.set_poll
         update_notifier_instance = Mock()
@@ -716,9 +722,14 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
                 call.set_poll(False),
                 call.update_software(serial_device_instance, update_notifier_instance, fw_info, None, False),
                 call.update_software().__bool__(),
-                call._update_components(
-                    1, SerialConfig("/dev/ttyRS485-1"), components_info, manage_polling=False
+                call.update_software(
+                    serial_device_instance, update_notifier_instance, components_info[3], None
                 ),
+                call.update_software().__bool__(),
+                call.update_software(
+                    serial_device_instance, update_notifier_instance, components_info[7], None
+                ),
+                call.update_software().__bool__(),
                 call.set_poll(True),
             ]
             mock.assert_has_calls(expected_calls, any_order=False)
@@ -761,3 +772,30 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
                 call.set_poll(True),
             ]
             mock.assert_has_calls(expected_calls, any_order=False)
+
+
+class TestVersionComparsion(unittest.TestCase):
+    @parameterized.expand(
+        [
+            ("", "M1.01D", True),
+            ("M1.03D", "M1.01D", True),
+        ]
+    )
+    def test_component_comparsion(self, current_version, available_version, result):
+        assert component_firmware_is_newer(current_version, available_version) == result
+
+    @parameterized.expand(
+        [
+            ("", "1.2.3", False),
+            ("1.2.3", "", False),
+            ("1.2.3-rc1", "1.2.3-rc10", True),
+            ("1.2.3-rc10", "1.2.3", True),
+            ("1.2.3", "1.2.3+wb1", True),
+            ("1.2.3+wb1", "1.2.3+wb10", True),
+            ("1.2.3-rc1", "1.2.3-rc1", False),
+            ("1.2.3+wb10", "1.2.3-rc1", False),
+            ("1.2.3", "1.2.4", True),
+        ]
+    )
+    def test_firmware_comparsion(self, current_version, available_version, result):
+        assert firmware_is_newer(current_version, available_version) == result

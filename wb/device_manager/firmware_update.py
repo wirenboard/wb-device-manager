@@ -10,6 +10,7 @@ from enum import Enum
 from typing import Optional, cast
 
 from jsonrpc.exceptions import JSONRPCDispatchException
+from packaging.version import Version
 
 from . import logger
 from .bootloader_scan import is_in_bootloader_mode
@@ -585,6 +586,35 @@ class PollingManager:
             await self._serial_device.set_poll(True)
 
 
+def component_firmware_is_newer(current_version, available_version):
+    return available_version and current_version != available_version
+
+
+def split_version(version):
+    pos = version.find("-rc")
+    if pos != -1:
+        return {"base": version[:pos], "suffix": -int(version[pos + 3 :])}
+
+    pos = version.find("+wb")
+    if pos != -1:
+        return {"base": version[:pos], "suffix": int(version[pos + 3 :])}
+    return {"base": version, "suffix": 0}
+
+
+def firmware_is_newer(current_version, available_version):
+    if not current_version or not available_version:
+        return False
+
+    v1 = split_version(current_version)
+    v2 = split_version(available_version)
+    if Version(v1["base"]) == Version(v2["base"]):
+        if v1["suffix"] < 0 and v2["suffix"] < 0:
+            return v1["suffix"] > v2["suffix"]
+        return v1["suffix"] < v2["suffix"]
+
+    return Version(v2["base"]) > Version(v1["base"])
+
+
 def make_device_update_info(serial_device: Device, software_component: SoftwareComponent) -> DeviceUpdateInfo:
     res = DeviceUpdateInfo(
         port=Port(serial_device.get_port_config()),
@@ -642,14 +672,17 @@ class FirmwareUpdater:
                 fw (str): The current firmware version.
                 available_fw (str): The available firmware version.
                 can_update (bool): Indicates if the firmware can be updated.
+                fw_has_update (bool): Indicates if available firmware is newer than current
                 bootloader (str): The current bootloader version.
                 available_bootloader (str): The available bootloader version.
-                components_info (dict[int, dict]): A dictionary containing the current
+                bootloader_has_update (bool): Indicates if available bootloader is newer than current
+                components_info (dict[int, dict]): A dictionary containing the components info
                   firmware versions for the components.
                     number (int): The component order number.
                         model (str): The human-readable component model.
                         fw (str): The current firmware version.
                         available_fw (str): The available firmware version.
+                        has_update (bool): Indicates if available firmware is newer than current
                 model (str): The device model.
         """
 
@@ -661,8 +694,10 @@ class FirmwareUpdater:
             "fw": "",
             "available_fw": "",
             "can_update": False,
+            "fw_has_update": False,
             "bootloader": "",
             "available_bootloader": "",
+            "bootloader_has_update": False,
             "components": {},
             "model": "",
         }
@@ -688,9 +723,12 @@ class FirmwareUpdater:
         except NoReleasedFwError as err:
             logger.warning("Can't get released firmware info for %s: %s", serial_device.description, err)
 
+        res["fw_has_update"] = firmware_is_newer(res["fw"], res["available_fw"])
+
         bootloader = await self._fw_info_reader.read_bootloader_info(serial_device, signature)
         res["bootloader"] = bootloader.current_version
         res["available_bootloader"] = bootloader.available.version if bootloader.available is not None else ""
+        res["bootloader_has_update"] = firmware_is_newer(res["bootloader"], res["available_bootloader"])
 
         try:
             res["can_update"] = await serial_device.check_updatable(bootloader.can_preserve_port_settings)
@@ -704,6 +742,9 @@ class FirmwareUpdater:
                     "model": component.model,
                     "fw": component.current_version,
                     "available_fw": component.available.version,
+                    "has_update": component_firmware_is_newer(
+                        component.current_version, component.available.version
+                    ),
                 }
         except (NoReleasedFwError, SerialExceptionBase) as err:
             logger.warning("Can't get components info for %s (%s): %s", slave_id, port_config, err)
@@ -743,7 +784,7 @@ class FirmwareUpdater:
         components_to_update = {
             n: c
             for n, c in components_info.items()
-            if (c.available.version and c.current_version != c.available.version)
+            if component_firmware_is_newer(c.current_version, c.available.version)
         }
 
         if software_type == SoftwareType.BOOTLOADER:
