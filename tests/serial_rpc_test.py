@@ -363,3 +363,85 @@ def test_get_parity_from_register_value():
 
 def test_get_baud_rate_from_register_value():
     assert get_baud_rate_from_register_value(96) == 9600
+
+
+@pytest.mark.asyncio
+async def test_set_poll_enabled_serial():
+    client = DummySRPCClient()
+    client.make_rpc_call.return_value = {"response": ""}
+    wrapper = SerialRPCWrapper(cast(mqtt_rpc.SRPCClient, client))
+    cfg = SerialConfig("/dev/ttyUSB0")
+    await wrapper.set_poll(cfg, 5, True)
+    client.make_rpc_call.assert_called_once_with(
+        driver="wb-mqtt-serial",
+        service="device",
+        method="SetPoll",
+        params={
+            "slave_id": 5,
+            "poll": True,
+            "path": "/dev/ttyUSB0",
+        },
+        timeout=10,
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_poll_disabled_serial():
+    client = DummySRPCClient()
+    client.make_rpc_call.return_value = {"response": ""}
+    wrapper = SerialRPCWrapper(cast(mqtt_rpc.SRPCClient, client))
+    cfg = SerialConfig("/dev/ttyUSB0")
+    await wrapper.set_poll(cfg, 7, False)
+    client.make_rpc_call.assert_called_once_with(
+        driver="wb-mqtt-serial",
+        service="device",
+        method="SetPoll",
+        params={
+            "slave_id": 7,
+            "poll": False,
+            "path": "/dev/ttyUSB0",
+        },
+        timeout=10,
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_poll_enabled_tcp():
+    client = DummySRPCClient()
+    client.make_rpc_call.return_value = {"response": ""}
+    wrapper = SerialRPCWrapper(cast(mqtt_rpc.SRPCClient, client))
+    cfg = TcpConfig("192.168.1.100", 502)
+    await wrapper.set_poll(cfg, 10, True)
+    client.make_rpc_call.assert_called_once_with(
+        driver="wb-mqtt-serial",
+        service="device",
+        method="SetPoll",
+        params={
+            "slave_id": 10,
+            "poll": True,
+            "ip": "192.168.1.100",
+            "port": 502,
+        },
+        timeout=10,
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_poll_disabled_tcp():
+    client = DummySRPCClient()
+    client.make_rpc_call.return_value = {"response": ""}
+    wrapper = SerialRPCWrapper(cast(mqtt_rpc.SRPCClient, client))
+    cfg = TcpConfig("10.0.0.1", 1502)
+    await wrapper.set_poll(cfg, 20, False)
+    client.make_rpc_call.assert_called_once_with(
+        driver="wb-mqtt-serial",
+        service="device",
+        method="SetPoll",
+        params={
+            "slave_id": 20,
+            "poll": False,
+            "ip": "10.0.0.1",
+            "port": 1502,
+        },
+        timeout=10,
+    )
