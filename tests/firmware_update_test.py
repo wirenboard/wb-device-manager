@@ -19,8 +19,6 @@ from wb.device_manager.firmware_update import (
     FirmwareInfoReader,
     FirmwareUpdater,
     SoftwareComponent,
-    component_firmware_is_newer,
-    firmware_is_newer,
     flash_fw,
     parse_wbfw,
     reboot_to_bootloader,
@@ -34,6 +32,7 @@ from wb.device_manager.serial_rpc import (
     WB_DEVICE_PARAMETERS,
     ParameterConfig,
     SerialConfig,
+    SerialExceptionBase,
     SerialTimeoutException,
     TcpConfig,
     WBModbusException,
@@ -773,29 +772,32 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
             ]
             mock.assert_has_calls(expected_calls, any_order=False)
 
+    async def test_update_components_exception(self):
+        components_info = {
+            3: ComponentInfo(
+                current_version="3", available=ReleasedBinary("4", "endpoint"), model="Component1"
+            )
+        }
+        updater = FirmwareUpdater(AsyncMock(), None, None, None, None)
 
-class TestVersionComparsion(unittest.TestCase):
-    @parameterized.expand(
-        [
-            ("", "M1.01D", True),
-            ("M1.03D", "M1.01D", True),
-        ]
-    )
-    def test_component_comparsion(self, current_version, available_version, result):
-        assert component_firmware_is_newer(current_version, available_version) == result
+        mock = AsyncMock()
+        serial_device_instance = Mock()
+        serial_device_instance.set_poll = mock.set_poll
+        serial_device_instance.set_poll.side_effect = SerialTimeoutException("ex")
+        update_notifier_instance = Mock()
+        update_notifier_instance.set_error_from_exception = mock.set_error_from_exception
+        update_notifier_instance.delete = mock.delete
+        not_needed_mock = Mock()
+        not_needed_mock.SerialDevice = Mock(return_value=serial_device_instance)
+        not_needed_mock.UpdateStateNotifier = Mock(return_value=update_notifier_instance)
 
-    @parameterized.expand(
-        [
-            ("", "1.2.3", False),
-            ("1.2.3", "", False),
-            ("1.2.3-rc1", "1.2.3-rc10", True),
-            ("1.2.3-rc10", "1.2.3", True),
-            ("1.2.3", "1.2.3+wb1", True),
-            ("1.2.3+wb1", "1.2.3+wb10", True),
-            ("1.2.3-rc1", "1.2.3-rc1", False),
-            ("1.2.3+wb10", "1.2.3-rc1", False),
-            ("1.2.3", "1.2.4", True),
+        with patch("wb.device_manager.firmware_update.SerialDevice", not_needed_mock.SerialDevice), patch(
+            "wb.device_manager.firmware_update.UpdateStateNotifier", not_needed_mock.UpdateStateNotifier
+        ), self.assertRaises(SerialExceptionBase):
+            await updater._update_components(1, SerialConfig("/dev/ttyRS485-1"), components_info)
+        expected_calls = [
+            call.set_poll(False),
+            call.set_error_from_exception(mock.set_poll.side_effect),
+            call.delete(),
         ]
-    )
-    def test_firmware_comparsion(self, current_version, available_version, result):
-        assert firmware_is_newer(current_version, available_version) == result
+        mock.assert_has_calls(expected_calls, any_order=False)
