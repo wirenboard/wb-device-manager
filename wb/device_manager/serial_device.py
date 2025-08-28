@@ -130,3 +130,29 @@ def create_device(
     if isinstance(port_config, SerialConfig):
         return SerialDevice(port_config, protocol, slave_id, serial_rpc)
     return TcpDevice(port_config, protocol, slave_id, serial_rpc)
+
+
+def create_device_from_json(data: dict, serial_rpc: SerialRPCWrapper) -> Device:
+    """
+    Creates a Device instance from a JSON-like dictionary.
+
+    Depending on the presence of the "address" key in the "port" dictionary, this function
+    returns either a TcpDevice or a SerialDevice. The device is configured using the provided
+    data and serial_rpc wrapper.
+
+    Args:
+        data (dict): Dictionary containing device configuration. Expected keys include
+            slave_id (int): Modbus slave ID.
+            port (dict): The port configuration.
+            protocol (str): The Modbus protocol to use.
+        serial_rpc (SerialRPCWrapper): Wrapper for serial RPC communication.
+
+    Returns:
+        Device: An instance of TcpDevice or SerialDevice configured according to the input data.
+    """
+    slave_id = data.get("slave_id", 0)
+    protocol = ModbusProtocol(data.get("protocol", ModbusProtocol.MODBUS_RTU.value))
+    port = data.get("port", {})
+    if "address" in port:
+        return TcpDevice(TcpConfig(**port), protocol, slave_id, serial_rpc)
+    return SerialDevice(SerialConfig(**port), protocol, slave_id, serial_rpc)

@@ -6,7 +6,7 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Optional, Union, cast
+from typing import Optional, cast
 
 from jsonrpc.exceptions import JSONRPCDispatchException
 
@@ -24,17 +24,15 @@ from .fw_downloader import (
 )
 from .mqtt_rpc import MQTTRPCAlreadyProcessingException, MQTTRPCErrorCode
 from .releases import parse_releases
-from .serial_device import Device, create_device
+from .serial_device import Device, create_device, create_device_from_json
 from .serial_rpc import (
     WB_DEVICE_PARAMETERS,
     ModbusExceptionCode,
     ModbusProtocol,
-    SerialConfig,
     SerialExceptionBase,
     SerialRPCTimeoutException,
     SerialRPCWrapper,
     SerialTimeoutException,
-    TcpConfig,
     WBModbusException,
 )
 from .state_error import (
@@ -174,10 +172,6 @@ def parse_wbfw(data: bytes) -> ParsedWBFW:
 @ttl_lru_cache(seconds_to_live=7200, maxsize=30)
 def download_wbfw(binary_downloader: BinaryDownloader, url: str) -> ParsedWBFW:
     return parse_wbfw(binary_downloader.download_file(url))
-
-
-def read_port_config(port: dict) -> Union[SerialConfig, TcpConfig]:
-    return TcpConfig(**port) if "address" in port else SerialConfig(**port)
 
 
 class UpdateNotifier:  # pylint: disable=too-few-public-methods
@@ -550,12 +544,6 @@ class FirmwareUpdater:
             )
         return slave_id
 
-    def _get_serial_device_from_request(self, **kwargs) -> Device:
-        port_config = read_port_config(kwargs.get("port", {}))
-        protocol = ModbusProtocol(kwargs.get("protocol", ModbusProtocol.MODBUS_RTU.value))
-        slave_id = self._get_slave_id(**kwargs)
-        return create_device(port_config, protocol, slave_id, self._serial_rpc)
-
     async def get_firmware_info(self, **kwargs) -> dict:
         """
         MQTT RPC handler. Retrieves firmware information for a device.
@@ -577,7 +565,7 @@ class FirmwareUpdater:
         """
 
         logger.debug("Request firmware info")
-        serial_device = self._get_serial_device_from_request(**kwargs)
+        serial_device = create_device_from_json(kwargs, self._serial_rpc)
         if self._state.is_updating(serial_device.slave_id, Port(serial_device.get_port_config())):
             raise MQTTRPCAlreadyProcessingException()
         res = {
@@ -644,7 +632,7 @@ class FirmwareUpdater:
             raise MQTTRPCAlreadyProcessingException()
         software_type = SoftwareType(kwargs.get("type", SoftwareType.FIRMWARE.value))
         logger.debug("Start %s update", software_type.value)
-        serial_device = self._get_serial_device_from_request(**kwargs)
+        serial_device = create_device_from_json(kwargs, self._serial_rpc)
         fw_info = await self._fw_info_reader.read(serial_device)
         if not await serial_device.check_updatable(fw_info.bootloader.can_preserve_port_settings):
             raise ValueError("Can't update firmware over TCP")
@@ -706,7 +694,7 @@ class FirmwareUpdater:
         if self._update_software_task and not self._update_software_task.done():
             raise MQTTRPCAlreadyProcessingException()
         logger.debug("Start firmware restore")
-        serial_device = self._get_serial_device_from_request(**kwargs)
+        serial_device = create_device_from_json(kwargs, self._serial_rpc)
         if not await is_in_bootloader_mode(serial_device):
             return "Ok"
         fw_info = await self._fw_info_reader.read(serial_device, True)
