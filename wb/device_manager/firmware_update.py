@@ -509,11 +509,10 @@ async def read_sn(serial_device: Device, device_model: str) -> int:
 
 
 def make_device_update_info(serial_device: Device, software_component: SoftwareComponent) -> DeviceUpdateInfo:
-    to_version = software_component.available.version if software_component.available else "unknown"
     res = DeviceUpdateInfo(
         port=Port(serial_device.get_port_config()),
         slave_id=serial_device.slave_id,
-        to_version=to_version,
+        to_version=software_component.available.version,
         from_version=software_component.current_version,
     )
     return res
