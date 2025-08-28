@@ -16,7 +16,7 @@ from .bus_scan_state import (
     get_uart_params_count,
     make_uuid,
 )
-from .serial_device import SerialDevice
+from .serial_device import Device, create_device
 from .serial_rpc import (
     WB_DEVICE_PARAMETERS,
     ModbusExceptionCode,
@@ -42,7 +42,7 @@ def partially_ordered_slave_ids(out_of_order_slave_ids: list[int]) -> Iterator[i
     yield from allowed_modbus_slave_ids(out_of_order_slave_ids)
 
 
-async def is_in_bootloader_mode(serial_device: SerialDevice) -> bool:
+async def is_in_bootloader_mode(serial_device: Device) -> bool:
     # Bootloader allows to read only full version, firmware - any number of registers.
     try:
         await serial_device.read(WB_DEVICE_PARAMETERS["bootloader_version_full"])
@@ -61,10 +61,7 @@ async def is_in_bootloader_mode(serial_device: SerialDevice) -> bool:
 
 
 def make_sn_for_device_in_bootloader(slave_id: int, port_config: Union[SerialConfig, TcpConfig]) -> str:
-    seed = f"bl{slave_id}"
-    if isinstance(port_config, TcpConfig):
-        return seed + str(port_config)
-    return seed + f"{port_config.path}{port_config.baud_rate}{port_config.data_bits}{port_config.parity}"
+    return f"bl{slave_id}{port_config}"
 
 
 class BootloaderModeScanner:
@@ -113,7 +110,7 @@ class BootloaderModeScanner:
     ) -> None:
         debug_str = str(port_config)
         try:
-            serial_device = SerialDevice(port_config, protocol, slave_id, self._serial_rpc)
+            serial_device = create_device(port_config, protocol, slave_id, self._serial_rpc)
             if await is_in_bootloader_mode(serial_device):
                 logger.info("Got device in bootloader: %d %s", slave_id, debug_str)
                 sn = make_sn_for_device_in_bootloader(slave_id, port_config)
