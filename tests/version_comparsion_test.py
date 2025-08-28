@@ -2,7 +2,10 @@ import unittest
 
 from parameterized import parameterized
 
-from wb.device_manager.version_comparison import component_firmware_is_newer, firmware_is_newer
+from wb.device_manager.version_comparison import (
+    component_firmware_is_newer,
+    firmware_is_newer,
+)
 
 
 class TestVersionComparsion(unittest.TestCase):
