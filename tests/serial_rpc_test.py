@@ -318,8 +318,8 @@ async def test_communicate_modbus_exception():
             param,
             ModbusProtocol.MODBUS_RTU,
         )
-        assert exc.value.code == 2
-        assert str(exc.value) == "Modbus error"
+    assert exc.value.code == 2
+    assert str(exc.value) == "Modbus error"
 
 
 def test_value_to_bytes_uint():

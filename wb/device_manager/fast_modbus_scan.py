@@ -37,10 +37,12 @@ async def port_scan(
     rpc_client: SRPCClient,
     port_config: Union[SerialConfig, TcpConfig],
     fast_modbus_command: FastModbusCommand,
+    start: bool = True,
 ) -> dict:
     rpc_request = {
         "total_timeout": DEFAULT_RPC_CALL_TIMEOUT_MS,
         "command": fast_modbus_command.value,
+        "mode": "start" if start else "next",
     }
     add_port_config_to_rpc_request(rpc_request, port_config)
 
@@ -69,36 +71,43 @@ class FastModbusScanner:
     ) -> None:
         debug_str = str(port_config)
         try:
-            res = await port_scan(self._rpc_client, port_config, fast_modbus_command)
-            for device in res.get("devices", []):
-                sn = device.get("sn")
-                fw = Firmware(**device.get("fw", {}))
-                fw.ext_support = True
-                fw.fast_modbus_command = fast_modbus_command.value
-                fw_signature = device.get("fw_signature", "")
-                device_model = device.get("device_signature", "")
-                if not device_model:
-                    device_model = fw_signature
-                device_info = DeviceInfo(
-                    uuid=make_uuid(sn),
-                    port=Port(port_config),
-                    title=get_human_readable_device_model(device_model),
-                    sn=sn,
-                    device_signature=device_model,
-                    fw_signature=fw_signature,
-                    configured_device_type=device.get("configured_device_type"),
-                    last_seen=int(time.time()),
-                    cfg=SerialParams(**device.get("cfg", {})),
-                    fw=fw,
-                )
-                errors = device.get("errors", [])
-                for error in errors:
-                    device_info.errors.append(StateError(**error))
+            start = True
+            while True:
+                res = await port_scan(self._rpc_client, port_config, fast_modbus_command, start)
+                devices = res.get("devices", [])
+                if not devices:
+                    break
+                for device in devices:
+                    sn = device.get("sn")
+                    fw = Firmware(**device.get("fw", {}))
+                    fw.ext_support = True
+                    fw.fast_modbus_command = fast_modbus_command.value
+                    fw_signature = device.get("fw_signature", "")
+                    device_model = device.get("device_signature", "")
+                    if not device_model:
+                        device_model = fw_signature
+                    device_info = DeviceInfo(
+                        uuid=make_uuid(sn),
+                        port=Port(port_config),
+                        title=get_human_readable_device_model(device_model),
+                        sn=sn,
+                        device_signature=device_model,
+                        fw_signature=fw_signature,
+                        configured_device_type=device.get("configured_device_type"),
+                        last_seen=int(time.time()),
+                        cfg=SerialParams(**device.get("cfg", {})),
+                        fw=fw,
+                    )
+                    errors = device.get("errors", [])
+                    for error in errors:
+                        device_info.errors.append(StateError(**error))
 
-                await self._scanner_state.found_device(sn, device_info)
-            if "error" in res:
-                logger.error("Fast Modbus search error %s: %s", debug_str, res["error"])
-                await self._scanner_state.add_error_port(debug_str)
+                    await self._scanner_state.found_device(sn, device_info)
+                if "error" in res:
+                    logger.error("Fast Modbus search error %s: %s", debug_str, res["error"])
+                    await self._scanner_state.add_error_port(debug_str)
+                    break
+                start = False
         except Exception as err:  # pylint: disable=broad-exception-caught
             logger.exception("Unhandled exception during Fast Modbus search %s: %s", debug_str, err)
             await self._scanner_state.add_error_port(debug_str)
