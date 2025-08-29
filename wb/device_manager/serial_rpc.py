@@ -23,6 +23,11 @@ class ModbusExceptionCode(IntEnum):
     GATEWAY_TARGET_DEVICE_FAILED_TO_RESPOND = 11
 
 
+class ModbusProtocol(Enum):
+    MODBUS_RTU = "modbus"
+    MODBUS_TCP = "modbus-tcp"
+
+
 class SerialExceptionBase(Exception):
     pass
 
@@ -255,6 +260,7 @@ class SerialRPCWrapper:
         register_address: int,
         register_count: int,
         data: Optional[bytes],
+        protocol: ModbusProtocol,
         response_timeout_s: Optional[float] = None,
     ) -> bytes:
         if response_timeout_s is None:
@@ -268,7 +274,7 @@ class SerialRPCWrapper:
             "count": register_count,
             "response_timeout": response_timeout_ms,
             "total_timeout": DEFAULT_RPC_CALL_TIMEOUT_MS,
-            "protocol": "modbus",
+            "protocol": "modbus-tcp" if protocol == ModbusProtocol.MODBUS_TCP else "modbus",
             "format": "HEX",
         }
         add_port_config_to_rpc_request(rpc_request, port_config)
@@ -295,6 +301,7 @@ class SerialRPCWrapper:
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,
         param_config: ParameterConfig,
+        protocol: ModbusProtocol,
         response_timeout_s: Optional[float] = None,
     ) -> Union[str, int, bytes]:
         if param_config.read_fn is None:
@@ -307,6 +314,7 @@ class SerialRPCWrapper:
             param_config.register_address,
             param_config.register_count,
             None,
+            protocol,
             response_timeout_s,
         )
         if param_config.data_type == DataType.STR:
@@ -321,6 +329,7 @@ class SerialRPCWrapper:
         slave_id: int,
         param_config: ParameterConfig,
         value: Union[int, bytes],
+        protocol: ModbusProtocol,
         response_timeout_s: Optional[float] = None,
     ) -> None:
         if param_config.write_fn is None:
@@ -342,6 +351,7 @@ class SerialRPCWrapper:
             param_config.register_address,
             register_count,
             data,
+            protocol,
             response_timeout_s,
         )
 

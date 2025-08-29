@@ -10,6 +10,7 @@ Build-Depends: dh-python,
                python3-wb-common (>= 2.1.0),
                python3-mqttrpc (>= 1.1.5),
                python3-pytest,
+               python3-pytest-asyncio,
                python3-httplib2
 Standards-Version: 4.5.1
 X-Python3-Version: >= 3.9

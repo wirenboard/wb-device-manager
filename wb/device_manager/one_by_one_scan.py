@@ -11,6 +11,7 @@ from .bus_scan_state import (
     BusScanStateManager,
     DeviceInfo,
     Firmware,
+    ParsedPorts,
     Port,
     SerialParams,
     StateError,
@@ -21,6 +22,7 @@ from .bus_scan_state import (
 from .mqtt_rpc import SRPCClient
 from .serial_rpc import (
     DEFAULT_RPC_CALL_TIMEOUT_MS,
+    ModbusProtocol,
     SerialConfig,
     TcpConfig,
     add_port_config_to_rpc_request,
@@ -37,12 +39,16 @@ class OneByOneBusScanner:
         self._rpc_client = rpc_client
         self._state_manager = state_manager
 
-    async def _device_probe(self, port_config: Union[SerialConfig, TcpConfig], slave_id: int) -> dict:
-        rpc_request = {
+    async def _device_probe(
+        self, port_config: Union[SerialConfig, TcpConfig], slave_id: int, protocol: ModbusProtocol
+    ) -> dict:
+        rpc_request: dict[str, Union[int, str]] = {
             "total_timeout": DEFAULT_RPC_CALL_TIMEOUT_MS,
             "slave_id": slave_id,
         }
         add_port_config_to_rpc_request(rpc_request, port_config)
+        if protocol == ModbusProtocol.MODBUS_TCP:
+            rpc_request["protocol"] = "modbus-tcp"
 
         return await self._rpc_client.make_rpc_call(
             driver="wb-mqtt-serial",
@@ -52,14 +58,16 @@ class OneByOneBusScanner:
             timeout=DEFAULT_RPC_CALL_TIMEOUT_MS / 1000,
         )
 
-    async def _do_scan_port(self, port_config: Union[SerialConfig, TcpConfig]) -> None:
+    async def _do_scan_port(
+        self, port_config: Union[SerialConfig, TcpConfig], protocol: ModbusProtocol
+    ) -> None:
         debug_str = str(port_config)
         logger.debug("Scanning %s", debug_str)
 
         try:
             await self._state_manager.add_scanning_port(debug_str, False)
             for slave_id in random.sample(range(1, 247), 246):
-                device = await self._device_probe(port_config, slave_id)
+                device = await self._device_probe(port_config, slave_id, protocol)
                 sn = device.get("sn", "")
                 if not sn:
                     # nothing found
@@ -106,14 +114,14 @@ class OneByOneBusScanner:
             port_config.baud_rate = bd
             port_config.parity = parity
             port_config.stop_bits = stopbits
-            await self._do_scan_port(port_config)
+            await self._do_scan_port(port_config, ModbusProtocol.MODBUS_RTU)
 
-    async def _scan_tcp_port(self, ip_port):
+    async def _scan_tcp_port(self, ip_port: str, protocol: ModbusProtocol):
         components = ip_port.split(":")
         port_config = TcpConfig(address=components[0], port=int(components[1]))
-        await self._do_scan_port(port_config)
+        await self._do_scan_port(port_config, protocol)
 
-    def create_scan_tasks(self, ports) -> list:
+    def create_scan_tasks(self, ports: ParsedPorts) -> list:
         tasks = []
         name_template = "Ordinary scan %s %s"
         for serial_port in ports.serial:
@@ -126,12 +134,20 @@ class OneByOneBusScanner:
         for tcp_port in ports.tcp:
             tasks.append(
                 asyncio.create_task(
-                    self._scan_tcp_port(tcp_port),
+                    self._scan_tcp_port(tcp_port, ModbusProtocol.MODBUS_RTU),
                     name=name_template % (tcp_port, "tcp"),
+                )
+            )
+
+        for tcp_port in ports.modbus_tcp:
+            tasks.append(
+                asyncio.create_task(
+                    self._scan_tcp_port(tcp_port, ModbusProtocol.MODBUS_TCP),
+                    name=name_template % (tcp_port, "modbus_tcp"),
                 )
             )
 
         return tasks
 
-    def get_scan_items_count(self, ports) -> int:
-        return len(ports.serial) * get_uart_params_count() + len(ports.tcp)
+    def get_scan_items_count(self, ports: ParsedPorts) -> int:
+        return len(ports.serial) * get_uart_params_count() + len(ports.tcp) + len(ports.modbus_tcp)
