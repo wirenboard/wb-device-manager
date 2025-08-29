@@ -345,7 +345,7 @@ class SerialRPCWrapper:
 
         await self._communicate("device", "SetPoll", rpc_request)
 
-    async def read(
+    async def read(  # pylint: disable=too-many-arguments
         self,
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,

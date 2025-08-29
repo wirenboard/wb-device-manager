@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
+# pylint: disable=protected-access, unnecessary-dunder-call, unused-argument
 import random
 import unittest
 from typing import Union
@@ -28,7 +28,6 @@ from wb.device_manager.firmware_update import (
 )
 from wb.device_manager.fw_downloader import ReleasedBinary
 from wb.device_manager.mqtt_rpc import MQTTRPCErrorCode
-from wb.device_manager.serial_device import Device
 from wb.device_manager.serial_rpc import (
     WB_DEVICE_PARAMETERS,
     ModbusProtocol,
@@ -164,7 +163,7 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
             _port_config: Union[SerialConfig, TcpConfig],
             _slave_id: int,
             param_config: ParameterConfig,
-            protocol: ModbusProtocol,
+            _protocol: ModbusProtocol,
         ):
             if param_config == WB_DEVICE_PARAMETERS["device_model_extended"]:
                 return "MAP12\x02E"
@@ -530,7 +529,7 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         )
 
         def read_component_info(
-            port_config: Union[SerialConfig, TcpConfig], slave_id: int, component_number: int
+            _port_config: Union[SerialConfig, TcpConfig], _slave_id: int, component_number: int
         ):
             if component_number == 3:
                 return ComponentInfo(
