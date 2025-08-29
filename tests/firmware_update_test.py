@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
+# pylint: disable=protected-access, unnecessary-dunder-call
 import random
 import unittest
 from typing import Union
