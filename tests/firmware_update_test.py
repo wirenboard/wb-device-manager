@@ -36,7 +36,9 @@ from wb.device_manager.serial_rpc import (
     SerialTimeoutException,
     TcpConfig,
     WBModbusException,
+    ModbusProtocol
 )
+from wb.device_manager.serial_device import Device
 
 
 class PortTest(unittest.TestCase):
@@ -116,9 +118,7 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
 
         count_of_readings = 0
 
-        def read_components_presence(
-            _port_config: Union[SerialConfig, TcpConfig], _slave_id: int, param_config: ParameterConfig
-        ):
+        def read_components_presence(param_config: ParameterConfig):
             nonlocal count_of_readings
             count_of_readings += 1
             if param_config == WB_DEVICE_PARAMETERS["components_presence"]:
@@ -127,17 +127,15 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
                 return reading_result
             return None
 
-        serial_rpc = AsyncMock()
-        serial_rpc.read = AsyncMock()
-        serial_rpc.read.side_effect = read_components_presence
+        serial_device = AsyncMock()
+        serial_device.read = AsyncMock()
+        serial_device.read.side_effect = read_components_presence
         mock = Mock()
         mock.get = Mock()
 
         with patch("wb.device_manager.firmware_update.parse_releases", mock.parse_releases):
-            reader_mock = FirmwareInfoReader(serial_rpc, None)
-            components = await reader_mock.read_components_presence(
-                slave_id=1, port_config=SerialConfig(path="test")
-            )
+            reader_mock = FirmwareInfoReader(None)
+            components = await reader_mock.read_components_presence(serial_device)
 
         self.assertTrue(count_of_readings_func(count_of_readings))
         self.assertEqual(components, result)
@@ -163,7 +161,7 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         }
 
         def read_model(
-            _port_config: Union[SerialConfig, TcpConfig], _slave_id: int, param_config: ParameterConfig
+            _port_config: Union[SerialConfig, TcpConfig], _slave_id: int, param_config: ParameterConfig, protocol: ModbusProtocol
         ):
             if param_config == WB_DEVICE_PARAMETERS["device_model_extended"]:
                 return "MAP12\x02E"
@@ -655,17 +653,19 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         mock = AsyncMock()
         serial_device_instance = Mock()
         serial_device_instance.set_poll = mock.set_poll
+        serial_device_instance.slave_id = 1
+        serial_device_instance.port_config = ""
         update_notifier_instance = Mock()
         not_needed_mock = Mock()
-        not_needed_mock.SerialDevice = Mock(return_value=serial_device_instance)
+        not_needed_mock.Device = Mock(return_value=serial_device_instance)
         not_needed_mock.UpdateStateNotifier = Mock(return_value=update_notifier_instance)
 
-        with patch("wb.device_manager.firmware_update.SerialDevice", not_needed_mock.SerialDevice), patch(
+        with patch("wb.device_manager.firmware_update.Device", not_needed_mock.Device), patch(
             "wb.device_manager.firmware_update.UpdateStateNotifier", not_needed_mock.UpdateStateNotifier
         ), patch("wb.device_manager.firmware_update.update_software", mock.update_software), patch(
             "wb.device_manager.firmware_update.restore_firmware", mock.restore_firmware
         ):
-            await updater._update_bootloader(1, SerialConfig("/dev/ttyRS485-1"), fw_info, components_info)
+            await updater._update_bootloader(serial_device_instance, fw_info, components_info)
             expected_calls = [
                 call.set_poll(False),
                 call.update_software(
@@ -706,17 +706,19 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         mock = AsyncMock()
         serial_device_instance = Mock()
         serial_device_instance.set_poll = mock.set_poll
+        serial_device_instance.slave_id = 1
+        serial_device_instance.port_config = ""
         update_notifier_instance = Mock()
         not_needed_mock = Mock()
         not_needed_mock.SerialDevice = Mock(return_value=serial_device_instance)
         not_needed_mock.UpdateStateNotifier = Mock(return_value=update_notifier_instance)
 
-        with patch("wb.device_manager.firmware_update.SerialDevice", not_needed_mock.SerialDevice), patch(
+        with patch("wb.device_manager.firmware_update.Device", not_needed_mock.Device), patch(
             "wb.device_manager.firmware_update.UpdateStateNotifier", not_needed_mock.UpdateStateNotifier
         ), patch("wb.device_manager.firmware_update.update_software", mock.update_software), patch(
             "wb.device_manager.firmware_update.restore_firmware", mock.restore_firmware
         ):
-            await updater._update_firmware(1, SerialConfig("/dev/ttyRS485-1"), fw_info, components_info)
+            await updater._update_firmware(serial_device_instance, fw_info, components_info)
             expected_calls = [
                 call.set_poll(False),
                 call.update_software(serial_device_instance, update_notifier_instance, fw_info, None, False),
@@ -747,17 +749,19 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         mock = AsyncMock()
         serial_device_instance = Mock()
         serial_device_instance.set_poll = mock.set_poll
+        serial_device_instance.slave_id = 1
+        serial_device_instance.port_config = ""
         update_notifier_instance = Mock()
         not_needed_mock = Mock()
         not_needed_mock.SerialDevice = Mock(return_value=serial_device_instance)
         not_needed_mock.UpdateStateNotifier = Mock(return_value=update_notifier_instance)
 
-        with patch("wb.device_manager.firmware_update.SerialDevice", not_needed_mock.SerialDevice), patch(
+        with patch("wb.device_manager.firmware_update.Device", not_needed_mock.Device), patch(
             "wb.device_manager.firmware_update.UpdateStateNotifier", not_needed_mock.UpdateStateNotifier
         ), patch("wb.device_manager.firmware_update.update_software", mock.update_software), patch(
             "wb.device_manager.firmware_update.restore_firmware", mock.restore_firmware
         ):
-            await updater._update_components(1, SerialConfig("/dev/ttyRS485-1"), components_info)
+            await updater._update_components(serial_device_instance, components_info)
             expected_calls = [
                 call.set_poll(False),
                 call.update_software(
@@ -791,10 +795,10 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         not_needed_mock.SerialDevice = Mock(return_value=serial_device_instance)
         not_needed_mock.UpdateStateNotifier = Mock(return_value=update_notifier_instance)
 
-        with patch("wb.device_manager.firmware_update.SerialDevice", not_needed_mock.SerialDevice), patch(
+        with patch("wb.device_manager.firmware_update.Device", not_needed_mock.Device), patch(
             "wb.device_manager.firmware_update.UpdateStateNotifier", not_needed_mock.UpdateStateNotifier
         ), self.assertRaises(SerialExceptionBase):
-            await updater._update_components(1, SerialConfig("/dev/ttyRS485-1"), components_info)
+            await updater._update_components(serial_device_instance, components_info)
         expected_calls = [
             call.set_poll(False),
             call.set_error_from_exception(mock.set_poll.side_effect),
