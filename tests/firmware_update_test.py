@@ -28,17 +28,17 @@ from wb.device_manager.firmware_update import (
 )
 from wb.device_manager.fw_downloader import ReleasedBinary
 from wb.device_manager.mqtt_rpc import MQTTRPCErrorCode
+from wb.device_manager.serial_device import Device
 from wb.device_manager.serial_rpc import (
     WB_DEVICE_PARAMETERS,
+    ModbusProtocol,
     ParameterConfig,
     SerialConfig,
     SerialExceptionBase,
     SerialTimeoutException,
     TcpConfig,
     WBModbusException,
-    ModbusProtocol
 )
-from wb.device_manager.serial_device import Device
 
 
 class PortTest(unittest.TestCase):
@@ -161,7 +161,10 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
         }
 
         def read_model(
-            _port_config: Union[SerialConfig, TcpConfig], _slave_id: int, param_config: ParameterConfig, protocol: ModbusProtocol
+            _port_config: Union[SerialConfig, TcpConfig],
+            _slave_id: int,
+            param_config: ParameterConfig,
+            protocol: ModbusProtocol,
         ):
             if param_config == WB_DEVICE_PARAMETERS["device_model_extended"]:
                 return "MAP12\x02E"

@@ -526,7 +526,9 @@ async def update_components(
     for component_number, component_info in components_info.items():
         logger.debug("Update component %d: %s", component_number, component_info)
 
-        update_notifier = UpdateStateNotifier(make_device_update_info(serial_device, component_info, component_number))
+        update_notifier = UpdateStateNotifier(
+            make_device_update_info(serial_device, component_info, component_number)
+        )
         if await update_software(
             serial_device,
             update_notifier,
@@ -605,7 +607,10 @@ class PollingManager:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self._serial_device.set_poll(True)
 
-def make_device_update_info(serial_device: Device, software_component: SoftwareComponent, component_number: int = None) -> DeviceUpdateInfo:
+
+def make_device_update_info(
+    serial_device: Device, software_component: SoftwareComponent, component_number: int = None
+) -> DeviceUpdateInfo:
     res = DeviceUpdateInfo(
         port=Port(serial_device.get_port_config()),
         slave_id=serial_device.slave_id,
@@ -740,7 +745,12 @@ class FirmwareUpdater:
                     ),
                 }
         except (NoReleasedFwError, SerialExceptionBase) as err:
-            logger.warning("Can't get components info for %s (%s): %s", serial_device.slave_id, serial_device.port_config, err)
+            logger.warning(
+                "Can't get components info for %s (%s): %s",
+                serial_device.slave_id,
+                serial_device.port_config,
+                err,
+            )
 
         return res
 
@@ -770,7 +780,9 @@ class FirmwareUpdater:
         logger.debug("Start %s update", software_type.value)
         serial_device = create_device_from_json(kwargs, self._serial_rpc)
         fw_info = await self._fw_info_reader.read(serial_device)
-        if software_type != SoftwareType.COMPONENT and not await serial_device.check_updatable(fw_info.bootloader.can_preserve_port_settings):
+        if software_type != SoftwareType.COMPONENT and not await serial_device.check_updatable(
+            fw_info.bootloader.can_preserve_port_settings
+        ):
             raise ValueError("Can't update firmware over TCP")
 
         components_info = await self._fw_info_reader.read_components_info(serial_device)
@@ -860,7 +872,9 @@ class FirmwareUpdater:
         )
         return "Ok"
 
-    async def _update_firmware(self, serial_device: Device, fw_info: FirmwareInfo, components_info: dict[int,ComponentInfo]) -> None:
+    async def _update_firmware(
+        self, serial_device: Device, fw_info: FirmwareInfo, components_info: dict[int, ComponentInfo]
+    ) -> None:
         """
         Asyncio task body to update the firmware of a device.
 
@@ -868,7 +882,9 @@ class FirmwareUpdater:
             serial_device (Device): The serial device to update.
             fw_info (FirmwareInfo): Information about the firmware.
         """
-        first_update_notifier =  UpdateStateNotifier(make_device_update_info(serial_device, fw_info), self._state)
+        first_update_notifier = UpdateStateNotifier(
+            make_device_update_info(serial_device, fw_info), self._state
+        )
         async with PollingManager(serial_device, first_update_notifier):
             logger.debug("Start firmware update for %d %s", serial_device.slave_id, serial_device.port_config)
             update_result = await update_software(
@@ -876,7 +892,8 @@ class FirmwareUpdater:
                 first_update_notifier,
                 fw_info,
                 self._binary_downloader,
-                fw_info.bootloader.can_preserve_port_settings)            
+                fw_info.bootloader.can_preserve_port_settings,
+            )
             if not update_result:
                 return
 
@@ -888,8 +905,9 @@ class FirmwareUpdater:
                 components_info,
             )
 
-    async def _update_bootloader(self, serial_device: Device, fw_info: FirmwareInfo, components_info: dict[int, ComponentInfo]) -> None:
-        
+    async def _update_bootloader(
+        self, serial_device: Device, fw_info: FirmwareInfo, components_info: dict[int, ComponentInfo]
+    ) -> None:
         """
         Asyncio task body to update the bootloader of a device.
 
@@ -900,17 +918,20 @@ class FirmwareUpdater:
         """
 
         first_update_notifier = UpdateStateNotifier(
-                make_device_update_info(serial_device, fw_info.bootloader), self._state
+            make_device_update_info(serial_device, fw_info.bootloader), self._state
+        )
+        async with PollingManager(serial_device, first_update_notifier):
+            logger.debug(
+                "Start bootloader update for %d %s", serial_device.slave_id, serial_device.port_config
             )
-        async with PollingManager(serial_device, first_update_notifier):            
-            logger.debug("Start bootloader update for %d %s", serial_device.slave_id, serial_device.port_config)
             update_result = await update_software(
                 serial_device,
                 first_update_notifier,
                 fw_info.bootloader,
                 self._binary_downloader,
-                fw_info.bootloader.can_preserve_port_settings)
-            
+                fw_info.bootloader.can_preserve_port_settings,
+            )
+
             if not update_result:
                 return
 
@@ -940,7 +961,7 @@ class FirmwareUpdater:
     ) -> None:
         """
         Asyncio task body to update the components of a device.
-        
+
         Args:
             slave_id (int): The ID of the device to update.
             port_config (Union[SerialConfig, TcpConfig]): The configuration of the device's port.
@@ -951,8 +972,8 @@ class FirmwareUpdater:
             return
         number, component = list(components_info.items())[0]
         first_update_notifier = UpdateStateNotifier(
-                make_device_update_info(serial_device, component, number), self._state
-            )
+            make_device_update_info(serial_device, component, number), self._state
+        )
         async with PollingManager(serial_device, first_update_notifier):
             await update_components(
                 serial_device,
@@ -969,9 +990,13 @@ class FirmwareUpdater:
             fw_info (FirmwareInfo): Information about the firmware.
         """
 
-        first_update_notifier = UpdateStateNotifier(make_device_update_info(serial_device, fw_info), self._state)
+        first_update_notifier = UpdateStateNotifier(
+            make_device_update_info(serial_device, fw_info), self._state
+        )
         async with PollingManager(serial_device, first_update_notifier):
-            await restore_firmware(serial_device, first_update_notifier, fw_info.available, self._binary_downloader)
+            await restore_firmware(
+                serial_device, first_update_notifier, fw_info.available, self._binary_downloader
+            )
 
     def publish_state(self):
         return self._state.publish_state()
