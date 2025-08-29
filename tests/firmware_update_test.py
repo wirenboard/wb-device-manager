@@ -657,7 +657,7 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         serial_device_instance = Mock()
         serial_device_instance.set_poll = mock.set_poll
         serial_device_instance.slave_id = 1
-        serial_device_instance.port_config = ""
+        serial_device_instance._port_config = ""
         update_notifier_instance = Mock()
         not_needed_mock = Mock()
         not_needed_mock.Device = Mock(return_value=serial_device_instance)
@@ -710,7 +710,7 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         serial_device_instance = Mock()
         serial_device_instance.set_poll = mock.set_poll
         serial_device_instance.slave_id = 1
-        serial_device_instance.port_config = ""
+        serial_device_instance._port_config = ""
         update_notifier_instance = Mock()
         not_needed_mock = Mock()
         not_needed_mock.SerialDevice = Mock(return_value=serial_device_instance)
@@ -753,7 +753,7 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         serial_device_instance = Mock()
         serial_device_instance.set_poll = mock.set_poll
         serial_device_instance.slave_id = 1
-        serial_device_instance.port_config = ""
+        serial_device_instance._port_config = ""
         update_notifier_instance = Mock()
         not_needed_mock = Mock()
         not_needed_mock.SerialDevice = Mock(return_value=serial_device_instance)
