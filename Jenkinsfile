@@ -2,5 +2,6 @@ buildDebSbuild defaultTargets: 'bullseye-armhf',
                defaultRunLintian: true,
                defaultRunPythonChecks: true,
                defaultRunCoverage: true,
-               defaultCoverageMin: "56",
+               defaultAngryPylint: true,
+               defaultCoverageMin: "61",
                defaultDoCoverallsReporting: true

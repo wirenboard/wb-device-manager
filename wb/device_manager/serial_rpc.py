@@ -120,6 +120,11 @@ class ParameterConfig:
     data_type: DataType = DataType.UINT
 
 
+@dataclass
+class StepParameterConfig(ParameterConfig):
+    step: int = 1
+
+
 WB_DEVICE_PARAMETERS = {
     "fw_signature": ParameterConfig(
         register_address=290,
@@ -196,7 +201,51 @@ WB_DEVICE_PARAMETERS = {
         write_fn=None,
         data_type=DataType.STR,
     ),
+    "components_presence": ParameterConfig(
+        register_address=65152,
+        register_count=8,
+        read_fn=ModbusFunctionCode.READ_DISCRETE,
+        write_fn=None,
+        data_type=DataType.BYTES,
+    ),
 }
+
+WB_DEVICE_STEP_PARAMETERS = {
+    "component_fw_version": StepParameterConfig(
+        register_address=64800,
+        register_count=16,
+        read_fn=ModbusFunctionCode.READ_INPUT,
+        write_fn=None,
+        data_type=DataType.STR,
+        step=48,
+    ),
+    "component_signature": StepParameterConfig(
+        register_address=64788,
+        register_count=12,
+        read_fn=ModbusFunctionCode.READ_INPUT,
+        write_fn=None,
+        data_type=DataType.STR,
+        step=48,
+    ),
+    "component_model": StepParameterConfig(
+        register_address=64768,
+        register_count=20,
+        read_fn=ModbusFunctionCode.READ_INPUT,
+        write_fn=None,
+        data_type=DataType.STR,
+        step=48,
+    ),
+}
+
+
+def get_parameter_with_step(parameter: StepParameterConfig, step_number: int) -> ParameterConfig:
+    return ParameterConfig(
+        register_address=parameter.register_address + parameter.step * step_number,
+        register_count=parameter.register_count,
+        read_fn=parameter.read_fn,
+        write_fn=parameter.write_fn,
+        data_type=parameter.data_type,
+    )
 
 
 def value_to_bytes(register_data_type: DataType, value: Union[int, bytes]) -> bytes:
@@ -296,7 +345,7 @@ class SerialRPCWrapper:
 
         await self._communicate("device", "SetPoll", rpc_request)
 
-    async def read(
+    async def read(  # pylint: disable=too-many-arguments
         self,
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,

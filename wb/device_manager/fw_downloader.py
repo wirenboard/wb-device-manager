@@ -132,7 +132,7 @@ def get_released_fw(
 
 # Bootloader changes rarely, so we can cache it for a longer time
 @ttl_lru_cache(seconds_to_live=1800, maxsize=100)
-def get_bootloader_info(fw_signature: str, binary_downloader: BinaryDownloader) -> ReleasedBinary:
+def get_latest_bootloader(fw_signature: str, binary_downloader: BinaryDownloader) -> ReleasedBinary:
     bootloader_url_prefix = f"{FW_RELEASES_BASE_URL}/bootloader/by-signature/{fw_signature}/main"
     bootloader_latest_txt_url = f"{bootloader_url_prefix}/latest.txt"
     version = binary_downloader.read_text_file(bootloader_latest_txt_url)

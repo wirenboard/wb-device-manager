@@ -24,7 +24,7 @@ from wb.device_manager.serial_rpc import (
 )
 
 
-class DummySRPCClient:
+class DummySRPCClient:  # pylint: disable=too-few-public-methods
     def __init__(self):
         self.make_rpc_call = AsyncMock()
 
@@ -254,7 +254,7 @@ async def test_write_multiple_registers_short_data():
         b"\x01\x02",
         ModbusProtocol.MODBUS_RTU,
     )
-    args, kwargs = client.make_rpc_call.call_args
+    _args, kwargs = client.make_rpc_call.call_args
     assert kwargs["params"]["count"] == 1
 
 
