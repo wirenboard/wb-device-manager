@@ -68,7 +68,7 @@ class FastModbusScanner:
 
     async def _do_scan(
         self, port_config: Union[SerialConfig, TcpConfig], fast_modbus_command: FastModbusCommand
-    ) -> None:
+    ) -> None: # pylint: too-many-locals
         debug_str = str(port_config)
         try:
             start = True
