@@ -24,6 +24,7 @@ Replaces: python3-wb-device-manager
 Provides: python3-wb-device-manager
 Depends: ${python3:Depends},
          ${misc:Depends},
+         python3-packaging,
          python3-paho-mqtt,
          python3-wb-common (>= 2.1.0),
          python3-mqttrpc (>= 1.1.5),
