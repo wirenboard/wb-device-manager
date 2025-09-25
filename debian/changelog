@@ -1,3 +1,9 @@
+wb-device-manager (1.23.2) stable; urgency=medium
+
+  * Don't check new firmware for WB-MSW-LORA devices
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 25 Sep 2025 17:31:49 +0500
+
 wb-device-manager (1.23.1) stable; urgency=medium
 
   * Add missed dependency

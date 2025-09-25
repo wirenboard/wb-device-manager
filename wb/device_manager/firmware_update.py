@@ -717,6 +717,10 @@ class FirmwareUpdater:
             logger.warning("Can't get firmware signature for %s: %s", serial_device.description, err)
             return res
 
+        # Can't update WB-MSW-LORA devices, so don't check new firmware
+        if signature in ["msw5GL", "msw3G419L"]:
+            return res
+
         try:
             res["available_fw"] = self._fw_info_reader.read_released_fw(signature).version
         except NoReleasedFwError as err:
