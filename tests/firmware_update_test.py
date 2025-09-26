@@ -58,10 +58,18 @@ class PortTest(unittest.TestCase):
 
 class DeviceUpdateInfoTest(unittest.TestCase):
     def test_eq(self):
-        d1 = DeviceUpdateInfo(port=Port("test"), slave_id=1, to_version="1")
-        d2 = DeviceUpdateInfo(port=Port("test"), slave_id=1, to_version="1")
-        d3 = DeviceUpdateInfo(port=Port("test"), slave_id=2, to_version="1")
-        d4 = DeviceUpdateInfo(port=Port("test1"), slave_id=1, to_version="1")
+        d1 = DeviceUpdateInfo(
+            port=Port("test"), protocol=ModbusProtocol.MODBUS_RTU, slave_id=1, to_version="1"
+        )
+        d2 = DeviceUpdateInfo(
+            port=Port("test"), protocol=ModbusProtocol.MODBUS_RTU, slave_id=1, to_version="1"
+        )
+        d3 = DeviceUpdateInfo(
+            port=Port("test"), protocol=ModbusProtocol.MODBUS_RTU, slave_id=2, to_version="1"
+        )
+        d4 = DeviceUpdateInfo(
+            port=Port("test1"), protocol=ModbusProtocol.MODBUS_RTU, slave_id=1, to_version="1"
+        )
         self.assertEqual(d1, d2)
         self.assertNotEqual(d1, d3)
         self.assertNotEqual(d1, d4)
