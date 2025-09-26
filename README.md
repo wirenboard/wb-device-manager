@@ -344,6 +344,9 @@ MQTT RPC запрос `wb-device-manager/fw-update/GetFirmwareInfo/client_id` п
             // Адрес
             "slave_id": 100,
 
+            // Протокол обмена с устройством. Либо "modbus", либо "modbus-tcp".
+            "protocol": "modbus",
+
             // Процент завершения процесса обновления
             "progress": 50,
 
