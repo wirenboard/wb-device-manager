@@ -30,6 +30,7 @@ from .serial_rpc import (
     WB_DEVICE_PARAMETERS,
     WB_DEVICE_STEP_PARAMETERS,
     ModbusExceptionCode,
+    ModbusProtocol,
     SerialExceptionBase,
     SerialRPCTimeoutException,
     SerialRPCWrapper,
@@ -59,6 +60,7 @@ class SoftwareType(Enum):
 @dataclass
 class DeviceUpdateInfo:  # pylint: disable=too-many-instance-attributes
     port: Port
+    protocol: ModbusProtocol
     slave_id: int
     to_version: str
     progress: int = 0
@@ -489,7 +491,7 @@ async def restore_firmware(
     update_state_notifier: UpdateStateNotifier,
     firmware: ReleasedBinary,
     binary_downloader: BinaryDownloader,
-) -> None:
+) -> bool:
     """
     Restores the firmware of a serial device. The device must be in bootloader mode.
 
@@ -510,7 +512,7 @@ async def restore_firmware(
     except (WBRemoteStorageError, SerialExceptionBase) as e:
         update_state_notifier.set_error_from_exception(e)
         logger.error("Firmware restore of %s failed: %s", serial_device.description, e)
-        return
+        return False
     update_state_notifier.delete()
     logger.info("Firmware of device %s is restored to %s", serial_device.description, firmware.version)
     return True
@@ -521,7 +523,7 @@ async def update_components(
     state: UpdateState,
     binary_downloader: BinaryDownloader,
     components_info: dict[int, ComponentInfo],
-) -> bool:
+) -> None:
     logger.debug("Start components update for %d %s", serial_device.slave_id, serial_device.get_port_config())
     for component_number, component_info in components_info.items():
         logger.debug("Update component %d: %s", component_number, component_info)
@@ -613,6 +615,7 @@ def make_device_update_info(
 ) -> DeviceUpdateInfo:
     res = DeviceUpdateInfo(
         port=Port(serial_device.get_port_config()),
+        protocol=serial_device.protocol,
         slave_id=serial_device.slave_id,
         to_version=software_component.available.version,
         from_version=software_component.current_version,
