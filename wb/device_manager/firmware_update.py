@@ -71,7 +71,12 @@ class DeviceUpdateInfo:  # pylint: disable=too-many-instance-attributes
     component_model: Optional[str] = None
 
     def __eq__(self, o):
-        return self.slave_id == o.slave_id and self.port == o.port and self.type == o.type
+        return (
+            self.slave_id == o.slave_id
+            and self.port == o.port
+            and self.type == o.type
+            and self.protocol == o.protocol
+        )
 
 
 class UpdateState:
