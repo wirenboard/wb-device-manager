@@ -1,3 +1,9 @@
+wb-device-manager (1.24.1) stable; urgency=medium
+
+  * Don't check new firmware for WB-MSW-LORA devices
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Fri, 26 Sep 2025 17:02:34 +0500
+
 wb-device-manager (1.24.0) stable; urgency=medium
 
   * Add protocol to firmware update status
