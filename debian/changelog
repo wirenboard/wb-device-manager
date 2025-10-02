@@ -1,3 +1,9 @@
+wb-device-manager (1.25.0) stable; urgency=medium
+
+  * Add Fast Modbus scanning support for Modbus TCP
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 02 Oct 2025 15:26:01 +0500
+
 wb-device-manager (1.24.1) stable; urgency=medium
 
   * Don't check new firmware for WB-MSW-LORA devices
