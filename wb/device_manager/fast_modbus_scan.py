@@ -176,4 +176,6 @@ class FastModbusScanner:
         return tasks
 
     def get_scan_items_count(self, ports: ParsedPorts) -> int:
-        return len(ports.serial) * get_uart_params_count(stopbits=[2]) + len(ports.tcp) + len(ports.modbus_tcp)
+        return (
+            len(ports.serial) * get_uart_params_count(stopbits=[2]) + len(ports.tcp) + len(ports.modbus_tcp)
+        )
