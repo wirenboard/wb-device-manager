@@ -21,6 +21,7 @@ from .firmware_update import get_human_readable_device_model
 from .mqtt_rpc import SRPCClient
 from .serial_rpc import (
     DEFAULT_RPC_CALL_TIMEOUT_MS,
+    ModbusProtocol,
     SerialConfig,
     TcpConfig,
     add_port_config_to_rpc_request,
@@ -37,6 +38,7 @@ async def port_scan(
     rpc_client: SRPCClient,
     port_config: Union[SerialConfig, TcpConfig],
     fast_modbus_command: FastModbusCommand,
+    protocol: ModbusProtocol,
     start: bool = True,
 ) -> dict:
     rpc_request = {
@@ -44,6 +46,8 @@ async def port_scan(
         "command": fast_modbus_command.value,
         "mode": "start" if start else "next",
     }
+    if protocol == ModbusProtocol.MODBUS_TCP:
+        rpc_request["protocol"] = "modbus-tcp"
     add_port_config_to_rpc_request(rpc_request, port_config)
 
     return await rpc_client.make_rpc_call(
@@ -67,13 +71,16 @@ class FastModbusScanner:
         self._serial_port_configs_generator = serial_port_configs_generator
 
     async def _do_scan(  # pylint: disable=too-many-locals
-        self, port_config: Union[SerialConfig, TcpConfig], fast_modbus_command: FastModbusCommand
+        self,
+        port_config: Union[SerialConfig, TcpConfig],
+        fast_modbus_command: FastModbusCommand,
+        protocol: ModbusProtocol,
     ) -> None:
         debug_str = str(port_config)
         try:
             start = True
             while True:
-                res = await port_scan(self._rpc_client, port_config, fast_modbus_command, start)
+                res = await port_scan(self._rpc_client, port_config, fast_modbus_command, protocol, start)
                 devices = res.get("devices", [])
                 if not devices:
                     break
@@ -113,12 +120,15 @@ class FastModbusScanner:
             await self._scanner_state.add_error_port(debug_str)
 
     async def _do_scan_port(
-        self, port_config: Union[SerialConfig, TcpConfig], fast_modbus_command: FastModbusCommand
+        self,
+        port_config: Union[SerialConfig, TcpConfig],
+        fast_modbus_command: FastModbusCommand,
+        protocol: ModbusProtocol,
     ) -> None:
         debug_str = str(port_config)
         logger.debug("Searching %s for devices using Fast Modbus", debug_str)
         await self._scanner_state.add_scanning_port(debug_str, is_ext_scan=True)
-        await self._do_scan(port_config, fast_modbus_command)
+        await self._do_scan(port_config, fast_modbus_command, protocol)
         await self._scanner_state.remove_scanning_port(debug_str)
 
     async def _scan_serial_port(self, port, fast_modbus_command: FastModbusCommand) -> None:
@@ -130,12 +140,14 @@ class FastModbusScanner:
             port_config.baud_rate = bd
             port_config.parity = parity
             port_config.stop_bits = stopbits
-            await self._do_scan_port(port_config, fast_modbus_command)
+            await self._do_scan_port(port_config, fast_modbus_command, ModbusProtocol.MODBUS_RTU)
 
-    async def _scan_tcp_port(self, ip_port, fast_modbus_command: FastModbusCommand) -> None:
+    async def _scan_tcp_port(
+        self, ip_port, fast_modbus_command: FastModbusCommand, protocol: ModbusProtocol
+    ) -> None:
         components = ip_port.split(":")
         port_config = TcpConfig(address=components[0], port=int(components[1]))
-        await self._do_scan_port(port_config, fast_modbus_command)
+        await self._do_scan_port(port_config, fast_modbus_command, protocol)
 
     def create_scan_tasks(self, ports: ParsedPorts, fast_modbus_command: FastModbusCommand) -> list:
         tasks = []
@@ -150,11 +162,20 @@ class FastModbusScanner:
         for tcp_port in ports.tcp:
             tasks.append(
                 asyncio.create_task(
-                    self._scan_tcp_port(tcp_port, fast_modbus_command), name=name_template % tcp_port
+                    self._scan_tcp_port(tcp_port, fast_modbus_command, ModbusProtocol.MODBUS_RTU),
+                    name=name_template % tcp_port,
                 )
             )
-        # Fast modbus scan for modbus_tcp ports is not supported
+        for tcp_port in ports.modbus_tcp:
+            tasks.append(
+                asyncio.create_task(
+                    self._scan_tcp_port(tcp_port, fast_modbus_command, ModbusProtocol.MODBUS_TCP),
+                    name=name_template % tcp_port,
+                )
+            )
         return tasks
 
     def get_scan_items_count(self, ports: ParsedPorts) -> int:
-        return len(ports.serial) * get_uart_params_count(stopbits=[2]) + len(ports.tcp)
+        return (
+            len(ports.serial) * get_uart_params_count(stopbits=[2]) + len(ports.tcp) + len(ports.modbus_tcp)
+        )
