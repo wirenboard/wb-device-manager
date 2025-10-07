@@ -134,6 +134,7 @@ class UpdateState:
 def to_dict_for_json(device_update_info: DeviceUpdateInfo) -> dict:
     d = asdict(device_update_info)
     d["type"] = device_update_info.type.value
+    d["protocol"] = device_update_info.protocol.value
     return d
 
 
