@@ -225,6 +225,11 @@ class FirmwareInfoReader:
     def __init__(self, downloader: BinaryDownloader) -> None:
         self._downloader = downloader
         self._release = parse_releases("/usr/lib/wb-release").get("SUITE", "")
+        # When continuous read mode is enabled and a register is not available,
+        # reading returns 0xFFFE for each register
+        self._unavailable_component_signature = bytes(
+            [0xFE for _ in range(WB_DEVICE_STEP_PARAMETERS["component_signature"].register_count)]
+        ).decode("latin-1")
 
     async def read_bootloader_info(self, serial_device: Device, fw_signature: str) -> BootloaderInfo:
         res = BootloaderInfo()
@@ -250,7 +255,9 @@ class FirmwareInfoReader:
     async def read_fw_version(self, serial_device: Device) -> str:
         return cast(str, await serial_device.read(WB_DEVICE_PARAMETERS["fw_version"]))
 
-    async def read_component_info(self, serial_device: Device, component_number: int) -> ComponentInfo:
+    async def read_component_info(
+        self, serial_device: Device, component_number: int
+    ) -> Optional[ComponentInfo]:
 
         signature_conf = get_parameter_with_step(
             WB_DEVICE_STEP_PARAMETERS["component_signature"], component_number
@@ -261,6 +268,8 @@ class FirmwareInfoReader:
         model_conf = get_parameter_with_step(WB_DEVICE_STEP_PARAMETERS["component_model"], component_number)
 
         signature = await serial_device.read(signature_conf)
+        if signature == self._unavailable_component_signature:
+            return None
         current_version = await serial_device.read(fw_version_conf)
         available = get_released_fw(signature, self._release, self._downloader)
         model = await serial_device.read(model_conf)
@@ -291,7 +300,9 @@ class FirmwareInfoReader:
     async def read_components_info(self, serial_device: Device) -> dict[int, ComponentInfo]:
         res = {}
         for component_number in await self.read_components_presence(serial_device):
-            res[component_number] = await self.read_component_info(serial_device, component_number)
+            component_info = await self.read_component_info(serial_device, component_number)
+            if component_info is not None:
+                res[component_number] = component_info
         return res
 
     def read_released_fw(self, signature: str) -> ReleasedBinary:
@@ -600,20 +611,22 @@ async def read_sn(serial_device: Device, device_model: str) -> int:
 
 
 class PollingManager:
-    def __init__(self, serial_device: Device, first_update_notifier: UpdateStateNotifier) -> None:
+    def __init__(self, serial_device: Device) -> None:
         self._serial_device = serial_device
-        self._first_update_notifier = first_update_notifier
 
     async def __aenter__(self):
         try:
             await self._serial_device.set_poll(False)
-        except SerialExceptionBase as e:
-            self._first_update_notifier.set_error_from_exception(e)
-            self._first_update_notifier.delete()
-            raise e
+        except SerialExceptionBase:
+            # not a problem, update time can be longer
+            pass
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self._serial_device.set_poll(True)
+        try:
+            await self._serial_device.set_poll(True)
+        except SerialExceptionBase:
+            # not a problem too, wb-mqtt-serial has internal timeout to restart poll
+            pass
 
 
 def make_device_update_info(
@@ -684,7 +697,7 @@ class FirmwareUpdater:
                 bootloader (str): The current bootloader version.
                 available_bootloader (str): The available bootloader version.
                 bootloader_has_update (bool): Indicates if available bootloader is newer than current
-                components_info (dict[int, dict]): A dictionary containing the components info
+                components (dict[int, dict]): A dictionary containing the components info
                   firmware versions for the components.
                     number (int): The component order number.
                         model (str): The human-readable component model.
@@ -899,7 +912,7 @@ class FirmwareUpdater:
         first_update_notifier = UpdateStateNotifier(
             make_device_update_info(serial_device, fw_info), self._state
         )
-        async with PollingManager(serial_device, first_update_notifier):
+        async with PollingManager(serial_device):
             logger.debug(
                 "Start firmware update for %d %s", serial_device.slave_id, serial_device.get_port_config()
             )
@@ -937,7 +950,7 @@ class FirmwareUpdater:
         first_update_notifier = UpdateStateNotifier(
             make_device_update_info(serial_device, fw_info.bootloader), self._state
         )
-        async with PollingManager(serial_device, first_update_notifier):
+        async with PollingManager(serial_device):
             logger.debug(
                 "Start bootloader update for %d %s", serial_device.slave_id, serial_device.get_port_config()
             )
@@ -994,7 +1007,7 @@ class FirmwareUpdater:
         first_update_notifier = UpdateStateNotifier(
             make_device_update_info(serial_device, component, number), self._state
         )
-        async with PollingManager(serial_device, first_update_notifier):
+        async with PollingManager(serial_device):
             await update_components(
                 serial_device,
                 self._state,
@@ -1014,7 +1027,7 @@ class FirmwareUpdater:
         first_update_notifier = UpdateStateNotifier(
             make_device_update_info(serial_device, fw_info), self._state
         )
-        async with PollingManager(serial_device, first_update_notifier):
+        async with PollingManager(serial_device):
             await restore_firmware(
                 serial_device, first_update_notifier, fw_info.available, self._binary_downloader
             )
