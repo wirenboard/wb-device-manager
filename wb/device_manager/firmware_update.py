@@ -618,7 +618,7 @@ class PollingManager:
         try:
             await self._serial_device.set_poll(False)
         except SerialExceptionBase:
-            #Failing to disable polling is acceptable: the firmware update will still proceed,
+            # Failing to disable polling is acceptable: the firmware update will still proceed,
             # though it may take longer due to ongoing polling interference.
             pass
 
