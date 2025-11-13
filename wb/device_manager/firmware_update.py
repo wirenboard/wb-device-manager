@@ -1003,10 +1003,6 @@ class FirmwareUpdater:
         """
         if len(components_info.keys()) == 0:
             return
-        number, component = list(components_info.items())[0]
-        first_update_notifier = UpdateStateNotifier(
-            make_device_update_info(serial_device, component, number), self._state
-        )
         async with PollingManager(serial_device):
             await update_components(
                 serial_device,

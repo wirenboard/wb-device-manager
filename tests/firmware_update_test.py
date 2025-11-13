@@ -33,7 +33,6 @@ from wb.device_manager.serial_rpc import (
     ModbusProtocol,
     ParameterConfig,
     SerialConfig,
-    SerialExceptionBase,
     SerialTimeoutException,
     TcpConfig,
     WBModbusException,
