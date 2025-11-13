@@ -618,7 +618,8 @@ class PollingManager:
         try:
             await self._serial_device.set_poll(False)
         except SerialExceptionBase:
-            # not a problem, update time can be longer
+            #Failing to disable polling is acceptable: the firmware update will still proceed,
+            # though it may take longer due to ongoing polling interference.
             pass
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
