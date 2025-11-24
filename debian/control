@@ -29,7 +29,8 @@ Depends: ${python3:Depends},
          python3-wb-common (>= 2.1.0),
          python3-mqttrpc (>= 1.1.5),
          wb-mqtt-serial (>= 2.184.3~~),
-         python3-httplib2
+         python3-httplib2,
+         wb-release-info
 Recommends: wb-mqtt-homeui (>= 2.50.0)
 Description: Wiren Board modbus devices manager
  The daemon that manages firmware update and new devices searching.
