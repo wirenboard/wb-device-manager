@@ -248,7 +248,7 @@ MQTT RPC запрос `wb-device-manager/fw-update/GetFirmwareInfo/client_id` п
     "model": "WB-LED",
 
     // Информация о прошивке компонентов, установленных на устройстве
-    "components_info": {
+    "components": {
 
         // Номер компонента
         "0": {

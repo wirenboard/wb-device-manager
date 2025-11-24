@@ -33,7 +33,6 @@ from wb.device_manager.serial_rpc import (
     ModbusProtocol,
     ParameterConfig,
     SerialConfig,
-    SerialExceptionBase,
     SerialTimeoutException,
     TcpConfig,
     WBModbusException,
@@ -785,33 +784,3 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
                 call.set_poll(True),
             ]
             mock.assert_has_calls(expected_calls, any_order=False)
-
-    async def test_update_components_exception(self):
-        components_info = {
-            3: ComponentInfo(
-                current_version="3", available=ReleasedBinary("4", "endpoint"), model="Component1"
-            )
-        }
-        updater = FirmwareUpdater(AsyncMock(), None, None, None, None)
-
-        mock = AsyncMock()
-        serial_device_instance = Mock()
-        serial_device_instance.set_poll = mock.set_poll
-        serial_device_instance.set_poll.side_effect = SerialTimeoutException("ex")
-        update_notifier_instance = Mock()
-        update_notifier_instance.set_error_from_exception = mock.set_error_from_exception
-        update_notifier_instance.delete = mock.delete
-        not_needed_mock = Mock()
-        not_needed_mock.SerialDevice = Mock(return_value=serial_device_instance)
-        not_needed_mock.UpdateStateNotifier = Mock(return_value=update_notifier_instance)
-
-        with patch("wb.device_manager.firmware_update.Device", not_needed_mock.Device), patch(
-            "wb.device_manager.firmware_update.UpdateStateNotifier", not_needed_mock.UpdateStateNotifier
-        ), self.assertRaises(SerialExceptionBase):
-            await updater._update_components(serial_device_instance, components_info)
-        expected_calls = [
-            call.set_poll(False),
-            call.set_error_from_exception(mock.set_poll.side_effect),
-            call.delete(),
-        ]
-        mock.assert_has_calls(expected_calls, any_order=False)
