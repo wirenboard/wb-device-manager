@@ -1,0 +1,845 @@
+asyncapi: '3.0.0'
+info:
+  title: wb-device-manager MQTT-RPC API
+  version: '1.0.0'
+defaultContentType: application/json
+channels:
+  scanStart:
+    address: '/rpc/v1/wb-device-manager/bus-scan/Start/{clientId}'
+    messages:
+      scanStart:
+        $ref: '#/components/messages/scanStart'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  scanStartReply:
+    address: '/rpc/v1/wb-device-manager/bus-scan/Start/{clientId}/reply'
+    messages:
+      scanStartReply:
+        $ref: '#/components/messages/scanStartReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  scanStop:
+    address: '/rpc/v1/wb-device-manager/bus-scan/Stop/{clientId}'
+    messages:
+      scanStop:
+        $ref: '#/components/messages/scanStop'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  scanStopReply:
+    address: '/rpc/v1/wb-device-manager/bus-scan/Stop/{clientId}/reply'
+    messages:
+      scanStopReply:
+        $ref: '#/components/messages/scanStopReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  scanState:
+    address: '/wb-device-manager/state'
+    messages:
+      scanState:
+        $ref: '#/components/messages/scanState'
+  fwClearError:
+    address: '/rpc/v1/wb-device-manager/fw-update/ClearError/{clientId}'
+    messages:
+      fwClearError:
+        $ref: '#/components/messages/fwClearError'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  fwClearErrorReply:
+    address: '/rpc/v1/wb-device-manager/fw-update/ClearError/{clientId}/reply'
+    messages:
+      fwClearErrorReply:
+        $ref: '#/components/messages/fwClearErrorReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  fwGetFirmwareInfo:
+    address: '/rpc/v1/wb-device-manager/fw-update/GetFirmwareInfo/{clientId}'
+    messages:
+      fwGetFirmwareInfo:
+        $ref: '#/components/messages/fwGetFirmwareInfo'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  fwGetFirmwareInfoReply:
+    address: '/rpc/v1/wb-device-manager/fw-update/GetFirmwareInfo/{clientId}/reply'
+    messages:
+      fwGetFirmwareInfoReply:
+        $ref: '#/components/messages/fwGetFirmwareInfoReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  fwRestore:
+    address: '/rpc/v1/wb-device-manager/fw-update/Restore/{clientId}'
+    messages:
+      fwRestore:
+        $ref: '#/components/messages/fwRestore'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  fwRestoreReply:
+    address: '/rpc/v1/wb-device-manager/fw-update/Restore/{clientId}/reply'
+    messages:
+      fwRestoreReply:
+        $ref: '#/components/messages/fwRestoreReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  fwUpdate:
+    address: '/rpc/v1/wb-device-manager/fw-update/Update/{clientId}'
+    messages:
+      fwUpdate:
+        $ref: '#/components/messages/fwUpdate'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  fwUpdateReply:
+    address: '/rpc/v1/wb-device-manager/fw-update/Update/{clientId}/reply'
+    messages:
+      fwUpdateReply:
+        $ref: '#/components/messages/fwUpdateReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  fwUpdateState:
+    address: '/wb-device-manager/firmware_update/state'
+    messages:
+      fwUpdateState:
+        $ref: '#/components/messages/fwUpdateState'
+operations:
+  scanStart:
+    action: send
+    channel:
+      $ref: '#/channels/scanStart'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/scanStart/messages/scanStart'
+    reply:
+      channel:
+        $ref: '#/channels/scanStartReply'
+      messages:
+        - $ref: '#/channels/scanStartReply/messages/scanStartReply'
+  scanStop:
+    action: send
+    channel:
+      $ref: '#/channels/scanStop'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/scanStop/messages/scanStop'
+    reply:
+      channel:
+        $ref: '#/channels/scanStopReply'
+      messages:
+        - $ref: '#/channels/scanStopReply/messages/scanStopReply'
+  scanState:
+    action: receive
+    channel:
+      $ref: '#/channels/scanState'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/scanState/messages/scanState'
+  fwClearError:
+    action: send
+    channel:
+      $ref: '#/channels/fwClearError'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/fwClearError/messages/fwClearError'
+    reply:
+      channel:
+        $ref: '#/channels/fwClearErrorReply'
+      messages:
+        - $ref: '#/channels/fwClearErrorReply/messages/fwClearErrorReply'
+  fwGetFirmwareInfo:
+    action: send
+    channel:
+      $ref: '#/channels/fwGetFirmwareInfo'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/fwGetFirmwareInfo/messages/fwGetFirmwareInfo'
+    reply:
+      channel:
+        $ref: '#/channels/fwGetFirmwareInfoReply'
+      messages:
+        - $ref: '#/channels/fwGetFirmwareInfoReply/messages/fwGetFirmwareInfoReply'
+  fwRestore:
+    action: send
+    channel:
+      $ref: '#/channels/fwRestore'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/fwRestore/messages/fwRestore'
+    reply:
+      channel:
+        $ref: '#/channels/fwRestoreReply'
+      messages:
+        - $ref: '#/channels/fwRestoreReply/messages/fwRestoreReply'
+  fwUpdate:
+    action: send
+    channel:
+      $ref: '#/channels/fwUpdate'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/fwUpdate/messages/fwUpdate'
+    reply:
+      channel:
+        $ref: '#/channels/fwUpdateReply'
+      messages:
+        - $ref: '#/channels/fwUpdateReply/messages/fwUpdateReply'
+  fwUpdateState:
+    action: receive
+    channel:
+      $ref: '#/channels/fwUpdateState'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/fwUpdateState/messages/fwUpdateState'
+components:
+  messages:
+    scanStart:
+      name: scanStart
+      payload:
+        $ref: '#/components/schemas/scanStartPayload'
+    scanStartReply:
+      name: scanStartReply
+      payload:
+        $ref: '#/components/schemas/scanStartReplyPayload'
+    scanStop:
+      name: scanStop
+      payload:
+        $ref: '#/components/schemas/scanStopPayload'
+    scanStopReply:
+      name: scanStopReply
+      payload:
+        $ref: '#/components/schemas/scanStopReplyPayload'
+    scanState:
+      name: scanState
+      payload:
+        $ref: '#/components/schemas/scanStatePayload'
+    fwClearError:
+      name: fwClearError
+      payload:
+        $ref: '#/components/schemas/fwClearErrorPayload'
+    fwClearErrorReply:
+      name: fwClearErrorReply
+      payload:
+        $ref: '#/components/schemas/fwClearErrorReplyPayload'
+    fwGetFirmwareInfo:
+      name: fwGetFirmwareInfo
+      payload:
+        $ref: '#/components/schemas/fwGetFirmwareInfoPayload'
+    fwGetFirmwareInfoReply:
+      name: fwGetFirmwareInfoReply
+      payload:
+        $ref: '#/components/schemas/fwGetFirmwareInfoReplyPayload'
+    fwRestore:
+      name: fwRestore
+      payload:
+        $ref: '#/components/schemas/fwRestorePayload'
+    fwRestoreReply:
+      name: fwRestoreReply
+      payload:
+        $ref: '#/components/schemas/fwRestoreReplyPayload'
+    fwUpdate:
+      name: fwUpdate
+      payload:
+        $ref: '#/components/schemas/fwUpdatePayload'
+    fwUpdateReply:
+      name: fwUpdateReply
+      payload:
+        $ref: '#/components/schemas/fwUpdateReplyPayload'
+    fwUpdateState:
+      name: fwUpdateState
+      payload:
+        $ref: '#/components/schemas/fwUpdateStatePayload'
+  schemas:
+    baudRateItem:
+      description: Скорость шины
+      type: number
+      enum:
+        - 9600
+        - 115200
+        - 57600
+        - 1200
+        - 2400
+        - 4800
+        - 19200
+        - 38400
+    parityItem:
+      description: Четность
+      type: string
+      enum:
+        - N
+        - E
+        - O
+    dataBitsItem:
+      description: Число бит данных
+      type: number
+      enum:
+        - 5
+        - 6
+        - 7
+        - 8
+    stopBitsItem:
+      description: Число стоп-бит
+      type: number
+      enum:
+        - 1
+        - 2
+    protocolItem:
+      description: Протокол обмена с устройством
+      type: string
+      enum:
+        - modbus
+        - modbus-tcp
+      default: modbus
+    errorItem:
+      type: object
+      properties:
+        code:
+          type: number
+        message:
+          type: string
+        data:
+          type: string
+      required:
+        - code
+        - message
+    scanStartPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            scan_type:
+              description: Тип сканирования
+              type: string
+              enum:
+                - extended
+                - standard
+                - bootloader
+              default: extended
+            preserve_old_results:
+              description: Не удалять результаты прошлого сканирования
+              type: boolean
+              default: false
+            port:
+              description: Порт, на котором необходимо провести сканирование
+              type: object
+              properties:
+                path:
+                  description: Системный путь до устройства порта, либо путь для шлюза в формате IP_АДРЕС:ПОРТ
+                  type: string
+                protocol:
+                  $ref: '#/components/schemas/protocolItem'
+              required:
+                - path
+            out_of_order_slave_ids:
+              description: Адреса устройств, поиск которых будет производиться в первую очередь
+              type: array
+              items:
+                type: number
+          required:
+            - port
+      required:
+        - id
+        - params
+    scanStartReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: string
+          const: "Ok"
+        error:
+          oneOf:
+            - type: "null"
+            - $ref: '#/components/schemas/errorItem'
+      required:
+        - id
+        - error
+    scanStopPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+      required:
+        - id
+        - params
+    scanStopReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: string
+          const: "Ok"
+        error:
+          oneOf:
+            - type: "null"
+            - $ref: '#/components/schemas/errorItem'
+      required:
+        - id
+        - error
+    dmErrorItem:
+      type: object
+      properties:
+        id:
+          description: Принятый внутри команды идентификатор сообщения (формат строго определён!)
+          type: string
+          enum:
+            - "com.wb.device_manager.generic_error"
+            - "com.wb.device_manager.rpc_call_timeout_error"
+            - "com.wb.device_manager.failed_to_scan_error"
+            - "com.wb.device_manager.device.read_fw_version_error"
+            - "com.wb.device_manager.device.read_fw_signature_error"
+            - "com.wb.device_manager.device.read_device_signature_error"
+            - "com.wb.device_manager.device.read_serial_params_error"
+            - "com.wb.device_manager.device.read_sn_error"
+        message:
+          description: fallback человекочитаемое сообщение
+          type: string
+      required:
+        - id
+        - message
+    cfgItem:
+      description: Настройки устройства
+      type: object
+      properties:
+        slave_id:
+          description: Адрес
+          type: number
+        baud_rate:
+          $ref: '#/components/schemas/baudRateItem'
+        parity:
+          $ref: '#/components/schemas/parityItem'
+        data_bits:
+          $ref: '#/components/schemas/dataBitsItem'
+        stop_bits:
+          $ref: '#/components/schemas/stopBitsItem'
+      required:
+        - slave_id
+        - baud_rate
+        - parity
+        - data_bits
+        - stop_bits
+    deviceItem:
+      type: object
+      properties:
+        title:
+          description: Название устройства (для людей)
+          type: string
+        uuid:
+          description: Для обращения к устройству; формируется при первом сканировании устройства
+          type: string
+        sn:
+          description: Серийный номер устройства
+          type: string
+        device_signature:
+          description: Название устройства (для внутреннего использования)
+          type: string
+        fw_signature:
+          description: Сигнатура прошивки (для внутреннего использования)
+          type: string
+        configured_device_type:
+          description: Если устройство настроено для опроса в wb-mqtt-serial, то в этом параметре передаётся тип устройства из шаблона
+          oneOf:
+            - type: "null"
+            - type: string
+        last_seen:
+          description: unix ts последнего сканирования устройства
+          type: number
+        bootloader_mode:
+          description: Устройство в режиме загрузчика
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/dmErrorItem'
+        port:
+          description: Порт, к которому подключено устройство
+          type: object
+          properties:
+            path:
+              description: Системный путь до устройства порта, либо путь для шлюза в формате IP_АДРЕС:ПОРТ
+              type: string
+          required:
+            - path
+        cfg:
+          $ref: '#/components/schemas/cfgItem'
+        fw:
+          description: Прошивка устройства
+          type: object
+          properties:
+            version:
+              description: Версия
+              type: string
+            ext_support:
+              description: Поддерживает ли прошивка быстрое сканирование через extended modbus
+              type: boolean
+            fast_modbus_command:
+              description: Команда Быстрого Модбаса, поддерживаемая прошивкой
+              type: number
+              enum:
+                - 70
+                - 96
+          required:
+            - version
+            - ext_support
+            - fast_modbus_command
+      required:
+        - title
+        - uuid
+        - sn
+        - device_signature
+        - fw_signature
+        - configured_device_type
+        - last_seen
+        - bootloader_mode
+        - errors
+        - port
+        - cfg
+        - fw
+    scanStatePayload:
+      type: object
+      properties:
+        scanning:
+          description: Сервис выполняет сканирование портов
+          type: boolean
+        progress:
+          description: Прогресс завершения сканирования портов
+          type: number
+          minimum: 0
+          maximum: 100
+        scanning_ports:
+          description: Порты (с настройками связи), на которых в данный момент идёт сканирование
+          type: array
+          items:
+            type: string
+        is_ext_scan:
+          description: Сканирование производится через быстрый modbus или нет
+          type: boolean
+        error:
+          oneOf:
+            - type: "null"
+            - $ref: '#/components/schemas/dmErrorItem'
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/deviceItem'
+      required:
+        - scanning
+        - progress
+        - scanning_ports
+        - is_ext_scan
+        - error
+        - devices
+    fwClearErrorPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            type:
+              description: Тип ПО, в процессе обновления которого возникла ошибка
+              type: string
+              enum:
+                - firmware
+                - bootloader
+            slave_id:
+              description: Адрес устройства
+              type: number
+            port:
+              type: object
+              properties:
+                path:
+                  description: Системный путь до устройства порта, либо путь для шлюза в формате IP_АДРЕС:ПОРТ
+                  type: string
+              required:
+                - path
+          required:
+            - type
+            - slave_id
+            - port
+      required:
+        - id
+        - params
+    fwClearErrorReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: string
+          const: "Ok"
+        error:
+          oneOf:
+            - type: "null"
+            - $ref: '#/components/schemas/errorItem'
+      required:
+        - id
+        - error
+    rtuPortItem:
+      type: object
+      properties:
+        path:
+          description: Системный путь до устройства порта
+          type: string
+        baud_rate:
+          $ref: '#/components/schemas/baudRateItem'
+        parity:
+          $ref: '#/components/schemas/parityItem'
+        data_bits:
+          $ref: '#/components/schemas/dataBitsItem'
+        stop_bits:
+          $ref: '#/components/schemas/stopBitsItem'
+      required:
+        - path
+    tcpPortItem:
+      type: object
+      properties:
+        address:
+          description: IP адрес или доменное имя шлюза
+          type: string
+        port:
+          description: Порт шлюза
+          type: number
+      required:
+        - address
+        - port
+    fwGetFirmwareInfoPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            slave_id:
+              description: Адрес устройства
+              type: number
+            protocol:
+              $ref: '#/components/schemas/protocolItem'
+            port:
+              oneOf:
+                - $ref: '#/components/schemas/rtuPortItem'
+                - $ref: '#/components/schemas/tcpPortItem'
+          required:
+            - slave_id
+            - port
+      required:
+        - id
+        - params
+    fwGetFirmwareInfoReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: object
+          properties:
+            fw:
+              description: Установленная прошивка устройства
+              type: string
+            available_fw:
+              description: Прошивка, доступная для обновления
+              type: string
+            bootloader:
+              description: Установленный загрузчик
+              type: string
+            available_bootloader:
+              description: Загрузчик, доступный для обновления
+              type: string
+            can_update:
+              description: Признак того, что прошивка и загрузчик могут быть обновлены средствами wb-device-manager через RPC fw-update/Update
+              type: boolean
+            fw_has_update:
+              description: Признак того, что прошивка, доступная для обновления, более новая, чем установленная
+              type: boolean
+            bootloader_has_update:
+              description: Признак того, что загрузчик, доступный для обновления, более новый, чем установленный
+              type: boolean
+            model:
+              description: Модель устройства, получена, исходя из содержимого регистров 200-219
+              type: string
+            components:
+              description: Информация о прошивке компонентов, установленных на устройстве
+              type: object
+          required:
+            - fw
+            - available_fw
+            - bootloader
+            - available_bootloader
+            - can_update
+            - fw_has_update
+            - bootloader_has_update
+            - model
+            - components
+        error:
+          oneOf:
+            - type: "null"
+            - $ref: '#/components/schemas/errorItem'
+      required:
+        - id
+        - error
+    fwRestorePayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            slave_id:
+              description: Адрес устройства
+              type: number
+            protocol:
+              $ref: '#/components/schemas/protocolItem'
+            port:
+              oneOf:
+                - $ref: '#/components/schemas/rtuPortItem'
+                - $ref: '#/components/schemas/tcpPortItem'
+          required:
+            - slave_id
+            - port
+      required:
+        - id
+        - params
+    fwRestoreReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: string
+          const: "Ok"
+        error:
+          oneOf:
+            - type: "null"
+            - $ref: '#/components/schemas/errorItem'
+      required:
+        - id
+        - error
+    fwUpdatePayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            type:
+              description: Тип ПО для обновления
+              type: string
+              enum:
+                - firmware
+                - bootloader
+                - component
+              default: firmware
+            slave_id:
+              description: Адрес устройства
+              type: number
+            protocol:
+              $ref: '#/components/schemas/protocolItem'
+            port:
+              oneOf:
+                - $ref: '#/components/schemas/rtuPortItem'
+                - $ref: '#/components/schemas/tcpPortItem'
+          required:
+            - slave_id
+            - port
+      required:
+        - id
+        - params
+    fwUpdateReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: string
+      required:
+        - id
+        - result
+    fwUpdateStatePayload:
+      type: object
+      properties:
+        devices:
+          type: array
+          items:
+            type: object
+            properties:
+              port:
+                description: Порт, к которому подключено устройство
+                type: object
+                properties:
+                  path:
+                    description: Системный путь до устройства порта, либо путь для шлюза в формате IP_АДРЕС:ПОРТ
+                    type: string
+                required:
+                  - path
+              type:
+                description: Тип ПО, которое обновляется
+                type: string
+                enum:
+                  - firmware
+                  - bootloader
+                  - component
+              slave_id:
+                description: Адрес устройства
+                type: number
+              protocol:
+                $ref: '#/components/schemas/protocolItem'
+              progress:
+                description: Процент завершения процесса обновления
+                type: number
+                minimum: 0
+                maximum: 100
+              from_version:
+                description: Текущая версия ПО
+                type: string
+              to_version:
+                description: Версия ПО, на которое производится обновление
+                type: string
+              component_number:
+                description: Для компонентов - номер обновляемого компонента
+                type: number
+              component_model:
+                description: Для компонентов - модель обновляемого компонента
+                type: string
+              error:
+                $ref: '#/components/schemas/dmErrorItem'
+            required:
+              - port
+              - type
+              - slave_id
+              - protocol
+              - progress
+              - from_version
+              - to_version
+  parameters:
+    clientId:
+      description: UUID
+  operationTraits:
+    mqtt:
+      bindings:
+        mqtt:
+          qos: 1

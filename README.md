@@ -1,5 +1,7 @@
 # wb-device-manager
 
+[mqtt-rpc API spec](./asyncapi.mqtt-rpc.yml)
+
 ### Запуск сканирования
 Для запуска сканирования необходимо выполнить MQTT RPC запрос `wb-device-manager/bus-scan/Start/client_id`.
 
