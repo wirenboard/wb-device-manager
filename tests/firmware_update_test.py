@@ -421,8 +421,11 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
             patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw),
             patch("wb.device_manager.firmware_update.reboot_to_bootloader", mock.reboot_to_bootloader),
             patch("wb.device_manager.firmware_update.read_sn", new_callable=AsyncMock, return_value=12345),
-            patch("wb.device_manager.firmware_update.read_device_model",
-                  new_callable=AsyncMock, return_value="test_model"),
+            patch(
+                "wb.device_manager.firmware_update.read_device_model",
+                new_callable=AsyncMock,
+                return_value="test_model",
+            ),
             patch("wb.device_manager.firmware_update.download_wbfw", mock.download_wbfw),
         ):
             downloader_mock = AsyncMock()
@@ -462,8 +465,11 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
             patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw),
             patch("wb.device_manager.firmware_update.reboot_to_bootloader", mock.reboot_to_bootloader),
             patch("wb.device_manager.firmware_update.read_sn", new_callable=AsyncMock, return_value=12345),
-            patch("wb.device_manager.firmware_update.read_device_model",
-                  new_callable=AsyncMock, return_value="test_model"),
+            patch(
+                "wb.device_manager.firmware_update.read_device_model",
+                new_callable=AsyncMock,
+                return_value="test_model",
+            ),
             patch("wb.device_manager.firmware_update.download_wbfw", mock.download_wbfw),
         ):
             mock.flash_fw.side_effect = SerialTimeoutException("ex")
