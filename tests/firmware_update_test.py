@@ -417,12 +417,16 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         sw.available = fw
-        with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
-            "wb.device_manager.firmware_update.reboot_to_bootloader", mock.reboot_to_bootloader
-        ), patch("wb.device_manager.firmware_update.read_sn"), patch(
-            "wb.device_manager.firmware_update.read_device_model"
-        ), patch(
-            "wb.device_manager.firmware_update.download_wbfw", mock.download_wbfw
+        with (
+            patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw),
+            patch("wb.device_manager.firmware_update.reboot_to_bootloader", mock.reboot_to_bootloader),
+            patch("wb.device_manager.firmware_update.read_sn", new_callable=AsyncMock, return_value=12345),
+            patch(
+                "wb.device_manager.firmware_update.read_device_model",
+                new_callable=AsyncMock,
+                return_value="test_model",
+            ),
+            patch("wb.device_manager.firmware_update.download_wbfw", mock.download_wbfw),
         ):
             downloader_mock = AsyncMock()
             await update_software(mock, mock, sw, downloader_mock, True)
@@ -457,12 +461,16 @@ class TestUpdateSoftware(unittest.IsolatedAsyncioTestCase):
         mock.delete = Mock()
         fw = ReleasedBinary("1.1.1", "test")
         sw.available = fw
-        with patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw), patch(
-            "wb.device_manager.firmware_update.reboot_to_bootloader", mock.reboot_to_bootloader
-        ), patch("wb.device_manager.firmware_update.read_sn"), patch(
-            "wb.device_manager.firmware_update.read_device_model"
-        ), patch(
-            "wb.device_manager.firmware_update.download_wbfw", mock.download_wbfw
+        with (
+            patch("wb.device_manager.firmware_update.flash_fw", mock.flash_fw),
+            patch("wb.device_manager.firmware_update.reboot_to_bootloader", mock.reboot_to_bootloader),
+            patch("wb.device_manager.firmware_update.read_sn", new_callable=AsyncMock, return_value=12345),
+            patch(
+                "wb.device_manager.firmware_update.read_device_model",
+                new_callable=AsyncMock,
+                return_value="test_model",
+            ),
+            patch("wb.device_manager.firmware_update.download_wbfw", mock.download_wbfw),
         ):
             mock.flash_fw.side_effect = SerialTimeoutException("ex")
             downloader_mock = AsyncMock()
@@ -631,6 +639,7 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         def create_task(coro, name):
             nonlocal callable_function
             callable_function = coro.cr_frame.f_locals.get("task")
+            coro.close()
             return Mock()
 
         asyncio_loop = AsyncMock()
@@ -643,6 +652,7 @@ class TestUpdateSoftwareScenarios(unittest.IsolatedAsyncioTestCase):
         await updater.update_software(**kwargs)
         self.assertIsInstance(callable_function.cr_frame.f_locals.get("self"), FirmwareUpdater)
         self.assertEqual(callable_function.cr_code.co_name, expected_method_name)
+        callable_function.close()
 
     async def test_update_bootloader(self):
         bootloader = BootloaderInfo(current_version="1.1.10", available=ReleasedBinary("1.1.11", "test"))
