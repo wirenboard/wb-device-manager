@@ -93,6 +93,19 @@ class FastModbusScanner:
                     device_model = device.get("device_signature", "")
                     if not device_model:
                         device_model = fw_signature
+
+                    # cfg from wb-mqtt-serial can be incomplete due to bus errors
+                    # Use current port config if scanning through serial port
+                    if isinstance(port_config, SerialConfig):
+                        device_port_config = SerialParams(
+                            baud_rate=port_config.baud_rate,
+                            parity=port_config.parity,
+                            data_bits=port_config.data_bits,
+                            stop_bits=port_config.stop_bits,
+                            slave_id=device.get("cfg", {}).get("slave_id"),
+                        )
+                    else:
+                        device_port_config = SerialParams(**device.get("cfg", {}))
                     device_info = DeviceInfo(
                         uuid=make_uuid(sn),
                         port=Port(port_config),
@@ -102,7 +115,7 @@ class FastModbusScanner:
                         fw_signature=fw_signature,
                         configured_device_type=device.get("configured_device_type"),
                         last_seen=int(time.time()),
-                        cfg=SerialParams(**device.get("cfg", {})),
+                        cfg=device_port_config,
                         fw=fw,
                     )
                     errors = device.get("errors", [])
