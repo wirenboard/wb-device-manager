@@ -1,6 +1,6 @@
 wb-device-manager (1.25.4) stable; urgency=medium
 
-  * 
+  * Fix port configuration in scan results
 
  -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 05 Feb 2026 10:36:46 +0500
 
