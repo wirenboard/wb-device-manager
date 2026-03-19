@@ -10,10 +10,7 @@ Build-Depends: dh-python,
                python3-wb-common (>= 2.1.0),
                python3-mqttrpc (>= 1.1.5),
                python3-pytest,
-               python3-parameterized,
-               python3-pytest-asyncio,
-               python3-httplib2,
-               python3-yaml
+               python3-pytest-asyncio
 Standards-Version: 4.5.1
 X-Python3-Version: >= 3.9
 Homepage: https://github.com/wirenboard/wb-device-manager
@@ -25,14 +22,10 @@ Replaces: python3-wb-device-manager
 Provides: python3-wb-device-manager
 Depends: ${python3:Depends},
          ${misc:Depends},
-         python3-packaging,
          python3-paho-mqtt,
          python3-wb-common (>= 2.1.0),
          python3-mqttrpc (>= 1.1.5),
-         wb-mqtt-serial (>= 2.184.3~~),
-         python3-httplib2,
-         python3-yaml,
-         wb-release-info
+         wb-mqtt-serial (>= 2.229.0~~)
 Recommends: wb-mqtt-homeui (>= 2.50.0)
 Description: Wiren Board modbus devices manager
  The daemon that manages firmware update and new devices searching.
