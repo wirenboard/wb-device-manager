@@ -14,9 +14,7 @@ from mqttrpc import client as rpcclient
 from . import logger
 from .mqtt_rpc import SRPCClient
 
-DEPRECATION_WARNING = (
-    "wb-device-manager/fw-update is deprecated, use wb-mqtt-serial/fw-update directly"
-)
+DEPRECATION_WARNING = "wb-device-manager/fw-update is deprecated, use wb-mqtt-serial/fw-update directly"
 
 # Generous timeout for RPC proxy calls (seconds).
 # GetFirmwareInfo may take several seconds for serial reads;
@@ -44,9 +42,7 @@ class FirmwareUpdateProxy:
                 timeout=RPC_PROXY_TIMEOUT_S,
             )
         except rpcclient.MQTTRPCError as e:
-            raise JSONRPCDispatchException(
-                code=e.code, message=e.rpc_message, data=e.data
-            ) from e
+            raise JSONRPCDispatchException(code=e.code, message=e.rpc_message, data=e.data) from e
 
     async def get_firmware_info(self, **kwargs) -> dict:
         return await self._proxy_call("GetFirmwareInfo", kwargs)
@@ -68,7 +64,5 @@ class FirmwareUpdateProxy:
 
     def clear_state(self) -> None:
         """Clear the old retained state topic on shutdown."""
-        m_info = self._mqtt_connection.publish(
-            self.OLD_STATE_TOPIC, payload=None, retain=True, qos=1
-        )
+        m_info = self._mqtt_connection.publish(self.OLD_STATE_TOPIC, payload=None, retain=True, qos=1)
         m_info.wait_for_publish()

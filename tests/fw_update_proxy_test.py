@@ -50,9 +50,7 @@ class TestFirmwareUpdateProxy(unittest.IsolatedAsyncioTestCase):
     async def test_clear_error_forwards_call(self):
         self.rpc_client.make_rpc_call = AsyncMock(return_value="Ok")
 
-        result = await self.proxy.clear_error(
-            slave_id=1, port={"path": "/dev/ttyRS485-1"}, type="firmware"
-        )
+        result = await self.proxy.clear_error(slave_id=1, port={"path": "/dev/ttyRS485-1"}, type="firmware")
 
         self.assertEqual(result, "Ok")
         self.rpc_client.make_rpc_call.assert_called_once_with(
@@ -66,9 +64,7 @@ class TestFirmwareUpdateProxy(unittest.IsolatedAsyncioTestCase):
     async def test_restore_forwards_call(self):
         self.rpc_client.make_rpc_call = AsyncMock(return_value="Ok")
 
-        result = await self.proxy.restore_firmware(
-            slave_id=1, port={"path": "/dev/ttyRS485-1"}
-        )
+        result = await self.proxy.restore_firmware(slave_id=1, port={"path": "/dev/ttyRS485-1"})
 
         self.assertEqual(result, "Ok")
         self.rpc_client.make_rpc_call.assert_called_once_with(
