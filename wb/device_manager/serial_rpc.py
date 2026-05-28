@@ -301,7 +301,7 @@ class SerialRPCWrapper:
 
         return bytes.fromhex(str(response.get("response", "")))
 
-    async def _send_request_to_port(  # pylint: disable=too-many-arguments
+    async def _send_request_to_port(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,
@@ -345,7 +345,7 @@ class SerialRPCWrapper:
 
         await self._communicate("device", "SetPoll", rpc_request)
 
-    async def read(  # pylint: disable=too-many-arguments
+    async def read(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,
@@ -372,7 +372,7 @@ class SerialRPCWrapper:
             return int.from_bytes(response, byteorder="big")
         return response
 
-    async def write(  # pylint: disable=too-many-arguments
+    async def write(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         port_config: Union[SerialConfig, TcpConfig],
         slave_id: int,

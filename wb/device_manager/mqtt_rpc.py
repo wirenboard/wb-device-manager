@@ -62,7 +62,7 @@ class SRPCClient(rpcclient.TMQTTRPCClient):  # pylint:disable=too-few-public-met
         super().__init__(client)
         self._counter = 0
 
-    async def make_rpc_call(  # pylint: disable=too-many-arguments
+    async def make_rpc_call(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self, driver, service, method, params, timeout
     ):
         self._counter += 1
@@ -121,7 +121,7 @@ class AsyncMQTTServer:  # pylint:disable=too-many-instance-attributes
     _NOW_PROCESSING = []
     _EXITCODE = 0
 
-    def __init__(  # pylint:disable=too-many-arguments
+    def __init__(  # pylint:disable=too-many-arguments,too-many-positional-arguments
         self,
         methods_dispatcher,
         mqtt_connection,
