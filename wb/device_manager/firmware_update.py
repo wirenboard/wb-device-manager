@@ -650,7 +650,7 @@ def make_device_update_info(
 class FirmwareUpdater:
     STATE_PUBLISH_TOPIC = "/wb-device-manager/firmware_update/state"
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         mqtt_connection,
         serial_rpc: SerialRPCWrapper,
