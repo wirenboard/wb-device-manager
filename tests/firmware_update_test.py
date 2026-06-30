@@ -26,7 +26,11 @@ from wb.device_manager.firmware_update import (
     update_software,
     write_fw_data_block,
 )
-from wb.device_manager.fw_downloader import ReleasedBinary
+from wb.device_manager.fw_downloader import (
+    NoReleasedFwError,
+    ReleasedBinary,
+    get_released_bootloader,
+)
 from wb.device_manager.mqtt_rpc import MQTTRPCErrorCode
 from wb.device_manager.serial_rpc import (
     WB_DEVICE_PARAMETERS,
@@ -37,6 +41,45 @@ from wb.device_manager.serial_rpc import (
     TcpConfig,
     WBModbusException,
 )
+
+
+class TestGetReleasedBootloader(unittest.TestCase):
+    BOOT_RELEASES_URL = "https://fw-releases.wirenboard.com/boot/by-signature/release-versions.yaml"
+
+    @staticmethod
+    def _downloader(yaml_text):
+        downloader = Mock()
+        downloader.read_text_file = Mock(return_value=yaml_text)
+        return downloader
+
+    def test_returns_released_bootloader_for_suite(self):
+        downloader = self._downloader(
+            "releases:\n"
+            "  sig_a:\n"
+            "    stable: boot/by-signature/sig_a/main/1.2.0.wbfw\n"
+            "    testing: boot/by-signature/sig_a/main/1.2.3.wbfw\n"
+        )
+        res = get_released_bootloader("sig_a", "testing", downloader)
+        self.assertEqual(res.version, "1.2.3")
+        self.assertEqual(
+            res.endpoint,
+            "https://fw-releases.wirenboard.com/boot/by-signature/sig_a/main/1.2.3.wbfw",
+        )
+        downloader.read_text_file.assert_called_once_with(self.BOOT_RELEASES_URL)
+
+    def test_raises_when_signature_absent(self):
+        downloader = self._downloader(
+            "releases:\n  other:\n    testing: boot/by-signature/other/main/1.0.0.wbfw\n"
+        )
+        with self.assertRaises(NoReleasedFwError):
+            get_released_bootloader("sig_b", "testing", downloader)
+
+    def test_raises_when_suite_absent(self):
+        downloader = self._downloader(
+            "releases:\n  sig_c:\n    stable: boot/by-signature/sig_c/main/1.0.0.wbfw\n"
+        )
+        with self.assertRaises(NoReleasedFwError):
+            get_released_bootloader("sig_c", "testing", downloader)
 
 
 class PortTest(unittest.TestCase):
@@ -145,6 +188,29 @@ class TestGetFirmwareInfo(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(count_of_readings_func(count_of_readings))
         self.assertEqual(components, result)
+
+    async def test_read_bootloader_info_without_released_bootloader(self):
+        # No released bootloader for the signature/suite: read_bootloader_info must swallow
+        # NoReleasedFwError and return available=None instead of propagating it.
+        def read(param_config: ParameterConfig):
+            if param_config == WB_DEVICE_PARAMETERS["reboot_to_bootloader_preserve_port_settings"]:
+                return 0
+            return "1.2.3"
+
+        serial_device = AsyncMock()
+        serial_device.read = AsyncMock()
+        serial_device.read.side_effect = read
+
+        with patch("wb.device_manager.firmware_update.parse_releases", Mock()), patch(
+            "wb.device_manager.firmware_update.get_released_bootloader",
+            side_effect=NoReleasedFwError("no released bootloader"),
+        ):
+            reader = FirmwareInfoReader(None)
+            res = await reader.read_bootloader_info(serial_device, "sig")
+
+        self.assertIsInstance(res, BootloaderInfo)
+        self.assertEqual(res.current_version, "1.2.3")
+        self.assertIsNone(res.available)
 
     async def test_successful_read(self):
         reader_mock = AsyncMock()

@@ -1,3 +1,11 @@
+wb-device-manager (1.26.0) stable; urgency=medium
+
+  * Take the released bootloader version from boot/by-signature/release-versions.yaml
+    by the controller's release suite (testing/stable), mirroring firmwares; offer a
+    bootloader update when the released version is newer than the one on the device
+
+ -- Ilia Skochilov <ilia.skochilov@wirenboard.com>  Tue, 30 Jun 2026 16:00:00 +0300
+
 wb-device-manager (1.25.5) stable; urgency=medium
 
   * Fix pylint

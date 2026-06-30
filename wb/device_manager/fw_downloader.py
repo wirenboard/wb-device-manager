@@ -84,58 +84,64 @@ class BinaryDownloader:
             raise RemoteFileDownloadingError(f"Failed to download {url}: {err}") from err
 
 
+def _get_released_binary(
+    releases_url: str, fw_signature: str, release_suite: str, binary_downloader: BinaryDownloader
+) -> ReleasedBinary:
+    """
+    Looks up the released firmware/bootloader for a signature and suite in a
+    by-signature/release-versions.yaml index (keyed by signature, then suite).
+
+    Args:
+        releases_url (str): URL of the release-versions.yaml index.
+        fw_signature (str): The firmware signature.
+        release_suite (str): The release suite (e.g. "stable"/"testing").
+        binary_downloader (BinaryDownloader): The binary downloader object.
+
+    Returns:
+        ReleasedBinary: The released binary with its version and endpoint.
+
+    Raises:
+        NoReleasedFwError: If nothing is released for the signature/suite.
+    """
+    logger.debug("Looking to %s (suite: %s)", releases_url, release_suite)
+    try:
+        contents = binary_downloader.read_text_file(releases_url)
+        endpoint = yaml.safe_load(contents).get("releases", {}).get(fw_signature, {}).get(release_suite)
+        if endpoint:
+            endpoint = f"{FW_RELEASES_BASE_URL}/{endpoint}"
+            version = parse_fw_version(endpoint)
+            logger.debug(
+                "Released binary for %s on release %s: %s (endpoint: %s)",
+                fw_signature,
+                release_suite,
+                version,
+                endpoint,
+            )
+            return ReleasedBinary(version, endpoint)
+    except WBRemoteStorageError as e:
+        logger.warning('No released binary for "%s" in "%s": %s', fw_signature, releases_url, e)
+    except VersionParsingError as e:
+        logger.exception(e)
+    except yaml.YAMLError as e:
+        logger.warning("Failed to parse YAML from %s: %s", releases_url, e)
+    raise NoReleasedFwError(f"Released binary not found for {fw_signature}, release: {release_suite}")
+
+
 # Cache information about released firmware for 10 minutes
 @ttl_lru_cache(seconds_to_live=600, maxsize=100)
 def get_released_fw(
     fw_signature: str, release_suite: str, binary_downloader: BinaryDownloader
 ) -> ReleasedBinary:
-    """
-    Retrieves the released firmware for a given firmware signature and release suite.
-
-    Args:
-        fw_signature (str): The firmware signature.
-        release_suite (str): The release suite.
-        binary_downloader (BinaryDownloader): The binary downloader object.
-
-    Returns:
-        ReleasedBinary: The released binary object containing the firmware version and endpoint.
-
-    Raises:
-        NoReleasedFwError: If the firmware is not found.
-    """
-
+    """Released firmware for a signature and suite (fw/by-signature/release-versions.yaml)."""
     url = f"{FW_RELEASES_BASE_URL}/fw/by-signature/release-versions.yaml"
-    logger.debug("Looking to %s (suite: %s)", url, release_suite)
-    try:
-        contents = binary_downloader.read_text_file(url)
-        fw_endpoint = yaml.safe_load(contents).get("releases", {}).get(fw_signature, {}).get(release_suite)
-        if fw_endpoint:
-            fw_endpoint = f"{FW_RELEASES_BASE_URL}/{fw_endpoint}"
-            fw_version = parse_fw_version(fw_endpoint)
-            logger.debug(
-                "FW version for %s on release %s: %s (endpoint: %s)",
-                fw_signature,
-                release_suite,
-                fw_version,
-                fw_endpoint,
-            )
-            return ReleasedBinary(fw_version, fw_endpoint)
-    except WBRemoteStorageError as e:
-        logger.warning('No released fw for "%s" in "%s": %s', fw_signature, url, e)
-    except VersionParsingError as e:
-        logger.exception(e)
-    except yaml.YAMLError as e:
-        message = f"Failed to parse YAML from {url}: {e}"
-        logger.warning(message)
-    raise NoReleasedFwError(f"Released FW not found for {fw_signature}, release: {release_suite}")
+    return _get_released_binary(url, fw_signature, release_suite, binary_downloader)
 
 
 # Bootloader changes rarely, so we can cache it for a longer time
 @ttl_lru_cache(seconds_to_live=1800, maxsize=100)
-def get_latest_bootloader(fw_signature: str, binary_downloader: BinaryDownloader) -> ReleasedBinary:
-    bootloader_url_prefix = f"{FW_RELEASES_BASE_URL}/bootloader/by-signature/{fw_signature}/main"
-    bootloader_latest_txt_url = f"{bootloader_url_prefix}/latest.txt"
-    version = binary_downloader.read_text_file(bootloader_latest_txt_url)
-    endpoint = f"{bootloader_url_prefix}/{version}.wbfw"
-    logger.debug("Bootloader for %s: %s (endpoint: %s)", fw_signature, version, endpoint)
-    return ReleasedBinary(version, endpoint)
+def get_released_bootloader(
+    fw_signature: str, release_suite: str, binary_downloader: BinaryDownloader
+) -> ReleasedBinary:
+    """Released bootloader for a signature and suite (boot/by-signature/release-versions.yaml)."""
+    url = f"{FW_RELEASES_BASE_URL}/boot/by-signature/release-versions.yaml"
+    return _get_released_binary(url, fw_signature, release_suite, binary_downloader)

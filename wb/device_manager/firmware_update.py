@@ -20,7 +20,7 @@ from .fw_downloader import (
     ReleasedBinary,
     RemoteFileDownloadingError,
     WBRemoteStorageError,
-    get_latest_bootloader,
+    get_released_bootloader,
     get_released_fw,
 )
 from .mqtt_rpc import MQTTRPCAlreadyProcessingException, MQTTRPCErrorCode
@@ -244,8 +244,8 @@ class FirmwareInfoReader:
             res.current_version = cast(
                 str, await serial_device.read(WB_DEVICE_PARAMETERS["bootloader_version"])
             )
-            res.available = get_latest_bootloader(fw_signature, self._downloader)
-        except (SerialExceptionBase, WBRemoteStorageError) as err:
+            res.available = get_released_bootloader(fw_signature, self._release, self._downloader)
+        except (SerialExceptionBase, WBRemoteStorageError, NoReleasedFwError) as err:
             logger.debug("Can't get bootloader information for %s: %s", serial_device.description, err)
         return res
 
@@ -462,6 +462,17 @@ async def update_software(
     Returns:
         bool: True if the update was successful, False otherwise.
     """
+
+    if software.available is None:
+        # No released firmware/bootloader for this signature/suite. Normally the UI won't offer
+        # the update (has_update is False), but guard the direct-RPC path against an opaque crash.
+        logger.error(
+            "No released %s for %s, nothing to flash", software.type.value, serial_device.description
+        )
+        update_state_notifier.set_error_from_exception(
+            NoReleasedFwError(f"No released {software.type.value} for the device")
+        )
+        return False
 
     update_state_notifier.set_progress(0)
     device_model = ""
