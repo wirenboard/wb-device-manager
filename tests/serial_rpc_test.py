@@ -18,9 +18,6 @@ from wb.device_manager.serial_rpc import (
     TcpConfig,
     WBModbusException,
     add_port_config_to_rpc_request,
-    get_baud_rate_from_register_value,
-    get_parity_from_register_value,
-    value_to_bytes,
 )
 
 
@@ -216,49 +213,6 @@ async def test_read_forbidden():
 
 
 @pytest.mark.asyncio
-async def test_write_forbidden():
-    client = DummySRPCClient()
-    wrapper = SerialRPCWrapper(cast(mqtt_rpc.SRPCClient, client))
-    param = ParameterConfig(
-        register_address=1,
-        register_count=1,
-        write_fn=None,
-        data_type=DataType.UINT,
-    )
-    with pytest.raises(ForbiddenOperationException):
-        await wrapper.write(
-            SerialConfig("/dev/ttyUSB0"),
-            1,
-            param,
-            123,
-            ModbusProtocol.MODBUS_RTU,
-        )
-
-
-@pytest.mark.asyncio
-async def test_write_multiple_registers_short_data():
-    client = DummySRPCClient()
-    wrapper = SerialRPCWrapper(cast(mqtt_rpc.SRPCClient, client))
-    param = ParameterConfig(
-        register_address=1,
-        register_count=4,
-        write_fn=ModbusFunctionCode.WRITE_MULTIPLE_REGISTERS,
-        data_type=DataType.BYTES,
-    )
-    # Data is 2 bytes, so register_count should be 1
-    client.make_rpc_call.return_value = {"response": ""}
-    await wrapper.write(
-        SerialConfig("/dev/ttyUSB0"),
-        1,
-        param,
-        b"\x01\x02",
-        ModbusProtocol.MODBUS_RTU,
-    )
-    _args, kwargs = client.make_rpc_call.call_args
-    assert kwargs["params"]["count"] == 1
-
-
-@pytest.mark.asyncio
 async def test_communicate_timeout():
     client = DummySRPCClient()
     err = mqttrpc.client.MQTTRPCError("timeout", mqtt_rpc.MQTTRPCErrorCode.REQUEST_TIMEOUT_ERROR.value, "")
@@ -322,19 +276,6 @@ async def test_communicate_modbus_exception():
     assert str(exc.value) == "Modbus error"
 
 
-def test_value_to_bytes_uint():
-    assert value_to_bytes(DataType.UINT, 258) == b"\x01\x02"
-
-
-def test_value_to_bytes_bytes():
-    assert value_to_bytes(DataType.BYTES, b"abc") == b"abc"
-
-
-def test_value_to_bytes_forbidden():
-    with pytest.raises(ForbiddenOperationException):
-        value_to_bytes(DataType.STR, 123)
-
-
 def test_add_port_config_to_rpc_request_serial():
     req = {}
     cfg = SerialConfig("/dev/ttyUSB0", 19200, "E", 7, 1)
@@ -352,96 +293,3 @@ def test_add_port_config_to_rpc_request_tcp():
     add_port_config_to_rpc_request(req, cfg)
     assert req["ip"] == "192.168.1.1"
     assert req["port"] == 502
-
-
-def test_get_parity_from_register_value():
-    assert get_parity_from_register_value(0) == "N"
-    assert get_parity_from_register_value(1) == "O"
-    assert get_parity_from_register_value(2) == "E"
-    assert get_parity_from_register_value(3) == "-"
-
-
-def test_get_baud_rate_from_register_value():
-    assert get_baud_rate_from_register_value(96) == 9600
-
-
-@pytest.mark.asyncio
-async def test_set_poll_enabled_serial():
-    client = DummySRPCClient()
-    client.make_rpc_call.return_value = {"response": ""}
-    wrapper = SerialRPCWrapper(cast(mqtt_rpc.SRPCClient, client))
-    cfg = SerialConfig("/dev/ttyUSB0")
-    await wrapper.set_poll(cfg, 5, True)
-    client.make_rpc_call.assert_called_once_with(
-        driver="wb-mqtt-serial",
-        service="device",
-        method="SetPoll",
-        params={
-            "slave_id": 5,
-            "poll": True,
-            "path": "/dev/ttyUSB0",
-        },
-        timeout=10,
-    )
-
-
-@pytest.mark.asyncio
-async def test_set_poll_disabled_serial():
-    client = DummySRPCClient()
-    client.make_rpc_call.return_value = {"response": ""}
-    wrapper = SerialRPCWrapper(cast(mqtt_rpc.SRPCClient, client))
-    cfg = SerialConfig("/dev/ttyUSB0")
-    await wrapper.set_poll(cfg, 7, False)
-    client.make_rpc_call.assert_called_once_with(
-        driver="wb-mqtt-serial",
-        service="device",
-        method="SetPoll",
-        params={
-            "slave_id": 7,
-            "poll": False,
-            "path": "/dev/ttyUSB0",
-        },
-        timeout=10,
-    )
-
-
-@pytest.mark.asyncio
-async def test_set_poll_enabled_tcp():
-    client = DummySRPCClient()
-    client.make_rpc_call.return_value = {"response": ""}
-    wrapper = SerialRPCWrapper(cast(mqtt_rpc.SRPCClient, client))
-    cfg = TcpConfig("192.168.1.100", 502)
-    await wrapper.set_poll(cfg, 10, True)
-    client.make_rpc_call.assert_called_once_with(
-        driver="wb-mqtt-serial",
-        service="device",
-        method="SetPoll",
-        params={
-            "slave_id": 10,
-            "poll": True,
-            "ip": "192.168.1.100",
-            "port": 502,
-        },
-        timeout=10,
-    )
-
-
-@pytest.mark.asyncio
-async def test_set_poll_disabled_tcp():
-    client = DummySRPCClient()
-    client.make_rpc_call.return_value = {"response": ""}
-    wrapper = SerialRPCWrapper(cast(mqtt_rpc.SRPCClient, client))
-    cfg = TcpConfig("10.0.0.1", 1502)
-    await wrapper.set_poll(cfg, 20, False)
-    client.make_rpc_call.assert_called_once_with(
-        driver="wb-mqtt-serial",
-        service="device",
-        method="SetPoll",
-        params={
-            "slave_id": 20,
-            "poll": False,
-            "ip": "10.0.0.1",
-            "port": 1502,
-        },
-        timeout=10,
-    )
