@@ -2,8 +2,8 @@ Source: wb-device-manager
 Maintainer: Wiren Board team <info@wirenboard.com>
 Section: python
 Priority: optional
-Build-Depends: dh-python,
-               debhelper (>= 10),
+Build-Depends: debhelper-compat (= 13),
+               dh-python,
                python3-all,
                python3-setuptools,
                python3-paho-mqtt,
