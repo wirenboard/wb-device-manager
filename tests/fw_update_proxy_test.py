@@ -8,6 +8,7 @@ from jsonrpc.exceptions import JSONRPCDispatchException
 from mqttrpc import client as rpcclient
 
 from wb.device_manager.fw_update_proxy import FirmwareUpdateProxy
+from wb.device_manager.mqtt_rpc import MQTTRPCErrorCode
 
 
 class TestFirmwareUpdateProxy(unittest.IsolatedAsyncioTestCase):
@@ -85,6 +86,16 @@ class TestFirmwareUpdateProxy(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(cm.exception.error.code, -32600)
         self.assertEqual(cm.exception.error.message, "device timeout")
+
+    async def test_rpc_error_without_code_and_message_converted_to_jsonrpc_exception(self):
+        # A reply carrying neither code nor message must not break the translation itself
+        self.rpc_client.make_rpc_call = AsyncMock(side_effect=rpcclient.MQTTRPCError(None, None, "data"))
+
+        with self.assertRaises(JSONRPCDispatchException) as cm:
+            await self.proxy.get_firmware_info(slave_id=1, port={"path": "/dev/ttyRS485-1"})
+
+        self.assertEqual(cm.exception.error.code, MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value)
+        self.assertIn("invalid error reply from wb-mqtt-serial", cm.exception.error.message)
 
     async def test_deprecation_warning_logged(self):
         self.rpc_client.make_rpc_call = AsyncMock(return_value="Ok")

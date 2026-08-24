@@ -12,7 +12,7 @@ from jsonrpc.exceptions import JSONRPCDispatchException
 from mqttrpc import client as rpcclient
 
 from . import logger
-from .mqtt_rpc import SRPCClient
+from .mqtt_rpc import MQTTRPCErrorCode, SRPCClient
 
 DEPRECATION_WARNING = "wb-device-manager/fw-update is deprecated, use wb-mqtt-serial/fw-update directly"
 
@@ -42,7 +42,14 @@ class FirmwareUpdateProxy:
                 timeout=RPC_PROXY_TIMEOUT_S,
             )
         except rpcclient.MQTTRPCError as e:
-            raise JSONRPCDispatchException(code=e.code, message=e.rpc_message, data=e.data) from e
+            # JSONRPCError requires an int code and a str message: a reply without
+            # them would make the setters raise ValueError right here, so the client
+            # would get an opaque internal error instead of the proxied one
+            code = e.code if isinstance(e.code, int) else MQTTRPCErrorCode.REQUEST_HANDLING_ERROR.value
+            message = e.rpc_message
+            if not isinstance(message, str):
+                message = f"invalid error reply from wb-mqtt-serial: {e}"
+            raise JSONRPCDispatchException(code=code, message=message, data=e.data) from e
 
     async def get_firmware_info(self, **kwargs) -> dict:
         return await self._proxy_call("GetFirmwareInfo", kwargs)
