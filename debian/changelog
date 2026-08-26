@@ -1,3 +1,10 @@
+wb-device-manager (1.26.0) stable; urgency=medium
+
+  [ Evgeny Boger ]
+  * Proxy fw-update RPCs to wb-mqtt-serial with deprecation warning
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Mon, 24 Aug 2026 14:52:07 +0500
+
 wb-device-manager (1.25.5) stable; urgency=medium
 
   * Fix pylint

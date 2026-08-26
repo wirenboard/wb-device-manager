@@ -6,15 +6,12 @@ import logging
 from argparse import ArgumentParser
 from sys import argv, stderr, stdout
 
-import httplib2
 from mqttrpc import Dispatcher
 from wb_common.mqtt_client import DEFAULT_BROKER_URL, MQTTClient
 
 from . import logger, mqtt_rpc
 from .bus_scan import BusScanner
-from .firmware_update import FirmwareInfoReader, FirmwareUpdater
-from .fw_downloader import BinaryDownloader
-from .serial_rpc import SerialRPCWrapper
+from .fw_update_proxy import FirmwareUpdateProxy
 
 EXIT_INVALIDARGUMENT = 2
 EXIT_FAILURE = 1
@@ -66,13 +63,7 @@ def main(args=argv):  # pylint: disable=dangerous-default-value, too-many-locals
         event_loop.set_debug(True)
 
     bus_scanner = BusScanner(mqtt_connection, rpc_client, event_loop)
-    serial_rpc = SerialRPCWrapper(rpc_client)
-    httplib = httplib2.Http("/tmp/wb-device-manager/cache", timeout=10)
-    binary_downloader = BinaryDownloader(httplib)
-    firmware_info_reader = FirmwareInfoReader(binary_downloader)
-    fw_updater = FirmwareUpdater(
-        mqtt_connection, serial_rpc, event_loop, firmware_info_reader, binary_downloader
-    )
+    fw_updater = FirmwareUpdateProxy(rpc_client, mqtt_connection)
 
     async_callables_mapping = {
         ("bus-scan", "Start"): bus_scanner.launch_bus_scan,

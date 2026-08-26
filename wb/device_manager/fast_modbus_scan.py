@@ -17,7 +17,6 @@ from .bus_scan_state import (
     get_uart_params_count,
     make_uuid,
 )
-from .firmware_update import get_human_readable_device_model
 from .mqtt_rpc import SRPCClient
 from .serial_rpc import (
     DEFAULT_RPC_CALL_TIMEOUT_MS,
@@ -109,7 +108,7 @@ class FastModbusScanner:
                     device_info = DeviceInfo(
                         uuid=make_uuid(sn),
                         port=Port(port_config),
-                        title=get_human_readable_device_model(device_model),
+                        title=device_model.replace("\x02", ""),
                         sn=sn,
                         device_signature=device_model,
                         fw_signature=fw_signature,
