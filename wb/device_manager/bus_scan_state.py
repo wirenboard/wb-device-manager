@@ -8,6 +8,7 @@ import uuid
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Optional, Union
 
+from .mqtt_rpc import wait_for_publish
 from .serial_rpc import SerialConfig, TcpConfig
 from .state_error import FailedScanStateError, GenericStateError, StateError
 
@@ -257,7 +258,7 @@ class BusScanStateManager:  # pylint: disable=too-many-instance-attributes
 
     def clear_state(self):
         m_info = self._mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, payload=None, retain=True, qos=1)
-        m_info.wait_for_publish()
+        wait_for_publish(m_info, self.STATE_PUBLISH_TOPIC)
 
     @staticmethod
     def state_json(state_obj):

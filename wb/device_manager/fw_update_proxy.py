@@ -12,7 +12,7 @@ from jsonrpc.exceptions import JSONRPCDispatchException
 from mqttrpc import client as rpcclient
 
 from . import logger
-from .mqtt_rpc import MQTTRPCErrorCode, SRPCClient
+from .mqtt_rpc import MQTTRPCErrorCode, SRPCClient, wait_for_publish
 
 DEPRECATION_WARNING = "wb-device-manager/fw-update is deprecated, use wb-mqtt-serial/fw-update directly"
 
@@ -72,4 +72,4 @@ class FirmwareUpdateProxy:
     def clear_state(self) -> None:
         """Clear the old retained state topic on shutdown."""
         m_info = self._mqtt_connection.publish(self.OLD_STATE_TOPIC, payload=None, retain=True, qos=1)
-        m_info.wait_for_publish()
+        wait_for_publish(m_info, self.OLD_STATE_TOPIC)

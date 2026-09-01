@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
-import atexit
 import signal
 from enum import Enum
 from functools import partial
@@ -15,6 +14,17 @@ from mqttrpc.manager import AMQTTRPCResponseManager
 from mqttrpc.protocol import MQTTRPC10Response
 
 from . import TOPIC_HEADER, logger
+
+EXIT_FAILURE = 1
+EXIT_INVALIDARGUMENT = 2
+EXIT_NOTRUNNING = 7
+MQTT_PUBLISH_TIMEOUT_S = 1
+
+
+def wait_for_publish(message_info, topic):
+    message_info.wait_for_publish(timeout=MQTT_PUBLISH_TIMEOUT_S)
+    if not message_info.is_published():
+        raise TimeoutError(f"Timed out while publishing '{topic}'")
 
 
 def get_topic_path(*args):
@@ -119,7 +129,6 @@ class MQTTRPCAlreadyProcessingException(JSONRPCDispatchException):
 
 class AsyncMQTTServer:  # pylint:disable=too-many-instance-attributes
     _NOW_PROCESSING = []
-    _EXITCODE = 0
 
     def __init__(  # pylint:disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -138,6 +147,9 @@ class AsyncMQTTServer:  # pylint:disable=too-many-instance-attributes
         self.mqtt_url_str = mqtt_url_str
         self.bus_scanner = bus_scanner
         self.fw_updater = fw_updater
+        self._exit_code = EXIT_NOTRUNNING
+        self._mqtt_started = False
+        self._closed = False
 
     @property
     def now_processing(self):
@@ -148,19 +160,57 @@ class AsyncMQTTServer:  # pylint:disable=too-many-instance-attributes
         for topic in to_clear:
             logger.debug("Delete retained from: %s", topic)
             m_info = self.mqtt_connection.publish(topic, payload=None, retain=True, qos=1)
-            m_info.wait_for_publish()
+            wait_for_publish(m_info, topic)
+
+    def _clear_retained(self):
+        errors = []
+        for cleanup in (self.bus_scanner.clear_state, self.fw_updater.clear_state, self._delete_retained):
+            try:
+                cleanup()
+            except Exception as error:  # pylint: disable=broad-exception-caught
+                errors.append(str(error))
+        if errors:
+            logger.error("Unable to clear all retained MQTT topics: %s", "; ".join(errors))
 
     def _close_mqtt_connection(self):
-        self.bus_scanner.clear_state()
-        self.fw_updater.clear_state()
-        self._delete_retained()
-        self.mqtt_connection.stop()
-        logger.info("Mqtt: close %s", self.mqtt_url_str)
+        if not self._mqtt_started:
+            return
+        try:
+            if self.mqtt_connection.is_connected():
+                self._clear_retained()
+            elif self._exit_code == EXIT_NOTRUNNING:
+                logger.error("Unable to clear retained MQTT topics: broker is unavailable")
+        finally:
+            try:
+                self.mqtt_connection.stop()
+                logger.info("Mqtt: close %s", self.mqtt_url_str)
+            except Exception as error:  # pylint: disable=broad-exception-caught
+                logger.error("Unable to close MQTT connection: %s", error)
+
+    def _cancel_asyncio_tasks(self):
+        tasks = asyncio.all_tasks(self.asyncio_loop)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            self.asyncio_loop.run_until_complete(asyncio.gather(*tasks, return_exceptions=True))
+
+    def close(self):
+        if self._closed:
+            return
+        try:
+            self._cancel_asyncio_tasks()
+        finally:
+            self._close_mqtt_connection()
+            self._closed = True
+
+    def _on_termination_signal(self):
+        self._exit_code = EXIT_NOTRUNNING
+        self.asyncio_loop.stop()
 
     def _setup_event_loop(self):
         signals = [signal.SIGINT, signal.SIGTERM]
         for sig in signals:
-            self.asyncio_loop.add_signal_handler(sig, self.asyncio_loop.stop)
+            self.asyncio_loop.add_signal_handler(sig, self._on_termination_signal)
         logger.debug("Add handler for: %s; event loop: %s", str(signals), str(self.asyncio_loop))
 
     def _setup_mqtt_connection(self):
@@ -168,11 +218,8 @@ class AsyncMQTTServer:  # pylint:disable=too-many-instance-attributes
         self.mqtt_connection.on_disconnect = self._on_mqtt_disconnect
         self.mqtt_connection.on_message = self._on_mqtt_message
 
-        try:
-            self.mqtt_connection.start()
-        finally:
-            logger.info("Registered to atexit hook: close %s", self.mqtt_url_str)
-            atexit.register(self._close_mqtt_connection)
+        self.mqtt_connection.start()
+        self._mqtt_started = True
 
     def add_to_processing(self, mqtt_message):
         self.now_processing.append((mqtt_message.topic, mqtt_message.payload))
@@ -199,12 +246,13 @@ class AsyncMQTTServer:  # pylint:disable=too-many-instance-attributes
             self.fw_updater.publish_state()
             self._subscribe()
         else:
-            logger.warning("Got rc %d; shutting down...", rc)
-            self._EXITCODE = rc  # pylint: disable=invalid-name
-            self.asyncio_loop.stop()
+            logger.error("MQTT connection refused with rc %d; shutting down", rc)
+            self._exit_code = EXIT_INVALIDARGUMENT if rc in (4, 5) else EXIT_FAILURE
+            self.asyncio_loop.call_soon_threadsafe(self.asyncio_loop.stop)
 
     def _on_mqtt_disconnect(self, client, userdata, rc):  # pylint:disable=unused-argument
-        logger.warning("Mqtt: disconnect from %s -> %d", self.mqtt_url_str, rc)
+        log = logger.info if rc == 0 else logger.warning
+        log("Mqtt: disconnect from %s -> %d", self.mqtt_url_str, rc)
         self.rpc_client.subscribes = set()  # rpc_client re-subscribes if not subscribed
         logger.debug("Clear rpc_client subscribes")
 
@@ -246,4 +294,4 @@ class AsyncMQTTServer:  # pylint:disable=too-many-instance-attributes
 
     def run(self):
         self.asyncio_loop.run_forever()
-        return self._EXITCODE
+        return self._exit_code

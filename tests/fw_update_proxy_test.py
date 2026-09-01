@@ -117,7 +117,7 @@ class TestFirmwareUpdateProxy(unittest.IsolatedAsyncioTestCase):
         self.mqtt_connection.publish.assert_called_once_with(
             "/wb-device-manager/firmware_update/state", payload=None, retain=True, qos=1
         )
-        mock_msg_info.wait_for_publish.assert_called_once()
+        mock_msg_info.wait_for_publish.assert_called_once_with(timeout=1)
 
     def test_start_is_noop(self):
         self.proxy.start()  # Should not raise

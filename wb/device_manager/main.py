@@ -13,8 +13,8 @@ from . import logger, mqtt_rpc
 from .bus_scan import BusScanner
 from .fw_update_proxy import FirmwareUpdateProxy
 
-EXIT_INVALIDARGUMENT = 2
-EXIT_FAILURE = 1
+EXIT_INVALIDARGUMENT = mqtt_rpc.EXIT_INVALIDARGUMENT
+EXIT_FAILURE = mqtt_rpc.EXIT_FAILURE
 
 MQTT_CLIENT_NAME = "wb-device-manager"
 
@@ -54,6 +54,10 @@ def main(args=argv):  # pylint: disable=dangerous-default-value, too-many-locals
     handler.setFormatter(formatter)
     handler.setLevel(args.log_level)
     logger.addHandler(handler)
+    mqtt_client_logger = logging.getLogger("wb_common.mqtt_client")
+    mqtt_client_logger.addHandler(handler)
+    mqtt_client_logger.setLevel(args.log_level)
+    mqtt_client_logger.propagate = False
 
     mqtt_connection = MQTTClient(MQTT_CLIENT_NAME, args.broker_url)
     rpc_client = mqtt_rpc.SRPCClient(mqtt_connection)
@@ -87,8 +91,9 @@ def main(args=argv):  # pylint: disable=dangerous-default-value, too-many-locals
     try:
         server.setup()
         fw_updater.start()
-    except Exception:  # pylint: disable=broad-exception-caught
-        ec = EXIT_FAILURE
-        logger.exception("Exiting with %d", ec)
-        return ec
-    return server.run()
+        return server.run()
+    except Exception as error:  # pylint: disable=broad-exception-caught
+        logger.error("Unable to start service: %s", error)
+        return EXIT_FAILURE
+    finally:
+        server.close()

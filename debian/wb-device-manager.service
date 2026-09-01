@@ -8,7 +8,8 @@ User=root
 ExecStart=/usr/bin/wb-device-manager
 Restart=on-failure
 RestartSec=2
-RestartPreventExitStatus=2 3 4 5 6 7
+RestartPreventExitStatus=2 6
+SuccessExitStatus=7
 
 [Install]
 WantedBy=multi-user.target

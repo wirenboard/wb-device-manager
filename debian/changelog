@@ -1,3 +1,9 @@
+wb-device-manager (1.26.1) stable; urgency=medium
+
+  * Align MQTT and systemd lifecycle with the controller service requirements
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Tue, 01 Sep 2026 13:54:27 +0000
+
 wb-device-manager (1.26.0) stable; urgency=medium
 
   [ Evgeny Boger ]
