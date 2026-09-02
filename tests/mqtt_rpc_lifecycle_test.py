@@ -49,13 +49,14 @@ class TestAsyncMQTTServerLifecycle(unittest.TestCase):
         self.assertEqual(server.run(), mqtt_rpc.EXIT_INVALIDARGUMENT)
         event_loop.call_soon_threadsafe.assert_called_once_with(event_loop.stop)
 
-    def test_other_connection_error_uses_failure_code(self):
+    def test_other_connection_error_keeps_service_running(self):
         event_loop = MagicMock()
         server, _, _, _ = make_server(event_loop)
 
         server._on_mqtt_connect(None, None, None, 3)  # pylint: disable=protected-access
 
-        self.assertEqual(server.run(), mqtt_rpc.EXIT_FAILURE)
+        self.assertEqual(server.run(), mqtt_rpc.EXIT_NOTRUNNING)
+        event_loop.call_soon_threadsafe.assert_not_called()
 
     def test_disconnected_shutdown_skips_retained_cleanup(self):
         server, mqtt_connection, bus_scanner, fw_updater = make_server()

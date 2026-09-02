@@ -245,10 +245,12 @@ class AsyncMQTTServer:  # pylint:disable=too-many-instance-attributes
             self.bus_scanner.publish_state()
             self.fw_updater.publish_state()
             self._subscribe()
-        else:
-            logger.error("MQTT connection refused with rc %d; shutting down", rc)
-            self._exit_code = EXIT_INVALIDARGUMENT if rc in (4, 5) else EXIT_FAILURE
+        elif rc in (4, 5):
+            logger.error("MQTT authentication failed with rc %d; shutting down", rc)
+            self._exit_code = EXIT_INVALIDARGUMENT
             self.asyncio_loop.call_soon_threadsafe(self.asyncio_loop.stop)
+        else:
+            logger.warning("MQTT connection refused with rc %d; retrying", rc)
 
     def _on_mqtt_disconnect(self, client, userdata, rc):  # pylint:disable=unused-argument
         log = logger.info if rc == 0 else logger.warning
