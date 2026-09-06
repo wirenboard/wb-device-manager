@@ -57,7 +57,8 @@ def main(args=argv):  # pylint: disable=dangerous-default-value, too-many-locals
 
     mqtt_connection = MQTTClient(MQTT_CLIENT_NAME, args.broker_url)
     rpc_client = mqtt_rpc.SRPCClient(mqtt_connection)
-    event_loop = asyncio.get_event_loop()
+    event_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(event_loop)
 
     if args.log_level == logging.DEBUG:
         event_loop.set_debug(True)
