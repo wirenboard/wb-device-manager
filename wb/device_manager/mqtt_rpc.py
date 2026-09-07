@@ -129,14 +129,11 @@ class AsyncMQTTServer:  # pylint:disable=too-many-instance-attributes
         rpc_client,
         bus_scanner,
         fw_updater,
-        asyncio_loop=None,
+        asyncio_loop,
     ):
         self.methods_dispatcher = methods_dispatcher
         self.mqtt_connection = mqtt_connection
         self.rpc_client = rpc_client
-        if asyncio_loop is None:
-            asyncio_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(asyncio_loop)
         self.asyncio_loop = asyncio_loop
         self.mqtt_url_str = mqtt_url_str
         self.bus_scanner = bus_scanner
