@@ -21,5 +21,8 @@ setup(
     packages=[
         "wb.device_manager",
     ],
+    scripts=[
+        "wb-device-manager",
+    ],
     test_suite="tests",
 )
