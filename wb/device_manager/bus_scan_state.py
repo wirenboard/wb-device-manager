@@ -256,7 +256,7 @@ class BusScanStateManager:  # pylint: disable=too-many-instance-attributes
         self._mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, self.state_json(self._state), retain=True)
 
     def clear_state(self):
-        self._mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, payload=None, retain=True, qos=1)
+        return self._mqtt_connection.publish(self.STATE_PUBLISH_TOPIC, payload=None, retain=True, qos=1)
 
     @staticmethod
     def state_json(state_obj):

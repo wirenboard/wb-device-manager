@@ -3,6 +3,7 @@
 
 import asyncio
 import signal
+import time
 from enum import Enum
 from functools import partial
 from pathlib import PurePosixPath
@@ -17,6 +18,8 @@ from . import TOPIC_HEADER, logger
 
 EXIT_SUCCESS = 0
 EXIT_INVALIDARGUMENT = 2
+# one deadline for confirming all the retained clears at stop; well below systemd's TimeoutStopSec
+CLEAR_RETAINED_TIMEOUT_S = 5.0
 # CONNACK codes for a rejected login: bad user name or password, not authorized
 MQTT_AUTH_ERRORS = (4, 5)
 
@@ -148,21 +151,38 @@ class AsyncMQTTServer:  # pylint:disable=too-many-instance-attributes
         return type(self)._NOW_PROCESSING
 
     def _delete_retained(self):
-        to_clear = [get_topic_path(service, method) for service, method in self.methods_dispatcher.keys()]
-        for topic in to_clear:
+        infos = []
+        for service, method in self.methods_dispatcher.keys():
+            topic = get_topic_path(service, method)
             logger.debug("Delete retained from: %s", topic)
-            self.mqtt_connection.publish(topic, payload=None, retain=True, qos=1)
+            infos.append(self.mqtt_connection.publish(topic, payload=None, retain=True, qos=1))
+        return infos
 
     def _close_mqtt_connection(self):
         if self.mqtt_connection.is_connected():
-            self.bus_scanner.clear_state()
-            self.fw_updater.clear_state()
-            self._delete_retained()
+            infos = [self.bus_scanner.clear_state(), self.fw_updater.clear_state(), *self._delete_retained()]
+            self._wait_published(infos)
         else:
             logger.error("MQTT broker is not connected, retained topics cannot be removed")
-        # stop() waits for the publishes above to be acknowledged before disconnecting
         self.mqtt_connection.stop()
         logger.info("Mqtt: close %s", self.mqtt_url_str)
+
+    @staticmethod
+    def _wait_published(infos):
+        """
+        Wait for the retained clears within one shared deadline; a failure is logged, never raised.
+        """
+        deadline = time.monotonic() + CLEAR_RETAINED_TIMEOUT_S
+        try:
+            for info in infos:
+                info.wait_for_publish(max(0.0, deadline - time.monotonic()))
+        except (RuntimeError, ValueError) as exc:  # paho: the client is not connected / queue full
+            logger.error("Removal of the retained topics is not confirmed: %s", exc)
+            return
+        if not all(info.is_published() for info in infos):
+            logger.error(
+                "Removal of the retained topics is not confirmed within %.0f s", CLEAR_RETAINED_TIMEOUT_S
+            )
 
     def _cancel_pending_tasks(self):
         pending = [task for task in asyncio.all_tasks(self.asyncio_loop) if not task.done()]

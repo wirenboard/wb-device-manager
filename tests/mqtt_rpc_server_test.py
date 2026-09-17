@@ -89,4 +89,32 @@ class TestAsyncMQTTServerLifecycle(unittest.TestCase):
         self.mqtt_connection.publish.assert_any_call(
             "/rpc/v1/wb-device-manager/fw-update/Update", payload=None, retain=True, qos=1
         )
+        # the states' and the RPC topics' clears are confirmed within the shared deadline
+        waits = self.mqtt_connection.publish.return_value.wait_for_publish.call_args_list
+        self.assertEqual(len(waits), 2)
+        for receipt in (self.bus_scanner.clear_state.return_value, self.fw_updater.clear_state.return_value):
+            receipt.wait_for_publish.assert_called_once()
+        self.assertTrue(all(0 < wait.args[0] <= mqtt_rpc.CLEAR_RETAINED_TIMEOUT_S for wait in waits))
         self.mqtt_connection.stop.assert_called_once_with()
+
+    def test_unconfirmed_removal_is_logged_not_raised(self):
+        """
+        paho raises when the client lost the broker meanwhile; a receipt that never confirms
+        runs into the deadline. Both end with one error line and a stopped client.
+        """
+        self.mqtt_connection.is_connected.return_value = True
+        self.bus_scanner.clear_state.return_value.wait_for_publish.side_effect = RuntimeError("not connected")
+        self.server.asyncio_loop.call_soon(self.server.asyncio_loop.stop)
+
+        with self.assertLogs(mqtt_rpc.logger, level=logging.ERROR) as logs:
+            self.assertEqual(self.server.run(), mqtt_rpc.EXIT_SUCCESS)
+        self.assertIn("not confirmed: not connected", "".join(logs.output))
+        self.mqtt_connection.stop.assert_called_once_with()
+
+        self.bus_scanner.clear_state.return_value.wait_for_publish.side_effect = None
+        self.fw_updater.clear_state.return_value.is_published.return_value = False
+        with self.assertLogs(mqtt_rpc.logger, level=logging.ERROR) as logs:
+            mqtt_rpc.AsyncMQTTServer._wait_published(  # pylint: disable=protected-access
+                [self.bus_scanner.clear_state(), self.fw_updater.clear_state()]
+            )
+        self.assertIn("not confirmed within 5 s", "".join(logs.output))

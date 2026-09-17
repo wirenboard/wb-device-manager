@@ -3,8 +3,9 @@ wb-device-manager (1.27.0) stable; urgency=medium
   * Wait for an unavailable MQTT broker instead of exiting; exit with 2 when the
     broker rejects the login, retry other connection failures
   * On SIGINT/SIGTERM cancel and await the background tasks, remove the retained
-    topics before the MQTT client stops (an error is logged when the broker is not
-    connected) and exit 0; no more atexit traceback
+    topics before the MQTT client stops and wait for the confirmation up to 5 seconds
+    (an error is logged when the broker is not connected or does not confirm) and exit 0;
+    no more atexit traceback
 
  -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 17 Sep 2026 16:32:46 +0000
 

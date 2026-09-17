@@ -70,5 +70,5 @@ class FirmwareUpdateProxy:
         """No-op. State is managed by wb-mqtt-serial now."""
 
     def clear_state(self) -> None:
-        """Clear the old retained state topic on shutdown; the client stop waits for the delivery."""
-        self._mqtt_connection.publish(self.OLD_STATE_TOPIC, payload=None, retain=True, qos=1)
+        """Clear the old retained state topic on shutdown; returns the publish info the caller waits for."""
+        return self._mqtt_connection.publish(self.OLD_STATE_TOPIC, payload=None, retain=True, qos=1)
