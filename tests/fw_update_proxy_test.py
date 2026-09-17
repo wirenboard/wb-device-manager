@@ -109,15 +109,17 @@ class TestFirmwareUpdateProxy(unittest.IsolatedAsyncioTestCase):
             self.assertIn("deprecated", formatted.lower())
 
     def test_clear_state_removes_old_topic(self):
-        mock_msg_info = Mock()
-        self.mqtt_connection.publish = Mock(return_value=mock_msg_info)
+        """
+        The clear is only published: waiting for the acknowledgement here would hang a stop
+        without the broker, the client stop drains the queue instead.
+        """
+        self.mqtt_connection.publish = Mock()
 
         self.proxy.clear_state()
 
         self.mqtt_connection.publish.assert_called_once_with(
             "/wb-device-manager/firmware_update/state", payload=None, retain=True, qos=1
         )
-        mock_msg_info.wait_for_publish.assert_called_once()
 
     def test_start_is_noop(self):
         self.proxy.start()  # Should not raise
