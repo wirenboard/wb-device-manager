@@ -1,3 +1,17 @@
+wb-device-manager (1.27.0) stable; urgency=medium
+
+  * Wait for an unavailable MQTT broker instead of exiting; exit with 2 when the
+    broker rejects the login, retry other connection failures
+  * On SIGINT/SIGTERM cancel and await the background tasks, remove the retained
+    topics before the MQTT client stops and wait for the confirmation up to 5 seconds
+    (an error is logged when the broker is not connected or does not confirm) and exit 0;
+    no more atexit traceback
+  * Require python3-wb-common >= 2.4.0 (MQTT client retry/wait API)
+  * systemd: RestartPreventExitStatus narrowed from "2 3 4 5 6 7" to "2 6": exit codes 3, 4, 5
+    and 7 now restart the service
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 17 Sep 2026 16:32:46 +0000
+
 wb-device-manager (1.26.1) stable; urgency=medium
 
   * Fix get_event_loop deprecation warning

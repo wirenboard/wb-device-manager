@@ -109,15 +109,19 @@ class TestFirmwareUpdateProxy(unittest.IsolatedAsyncioTestCase):
             self.assertIn("deprecated", formatted.lower())
 
     def test_clear_state_removes_old_topic(self):
+        """
+        The clear is published and its receipt handed back: the server waits for all the clears
+        at once, within a shared deadline, instead of blocking here without a timeout.
+        """
         mock_msg_info = Mock()
         self.mqtt_connection.publish = Mock(return_value=mock_msg_info)
 
-        self.proxy.clear_state()
+        self.assertIs(self.proxy.clear_state(), mock_msg_info)
 
         self.mqtt_connection.publish.assert_called_once_with(
             "/wb-device-manager/firmware_update/state", payload=None, retain=True, qos=1
         )
-        mock_msg_info.wait_for_publish.assert_called_once()
+        mock_msg_info.wait_for_publish.assert_not_called()
 
     def test_start_is_noop(self):
         self.proxy.start()  # Should not raise
