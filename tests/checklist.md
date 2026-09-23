@@ -5,9 +5,11 @@
 * systemd-сервис wb-device-manager запущен после установки пакета; запущен после перезагрузки WB
 * journalctl -u wb-device-manager -f не выдаёт debug-сообщения
 * systemd-сервис wb-device-manager не пытается перезапускаться при отсутствии соединения с mosquitto
-* при остановке mosquitto, сервис wb-device-manager остаётся running; перезапуск сервиса приводит к failed
+* при остановке mosquitto, сервис wb-device-manager остаётся running; перезапуск сервиса при остановленном mosquitto тоже оставляет его running (сервис ждёт брокер), после запуска mosquitto сервис отдаёт rpc-ручки без перезапуска
 * корректный exit-code (остановить systemd-сервис; запускать утилиту вручную):
     * 2 - на запуск с недопустимыми ключами
+    * 2 - когда mosquitto отвергает логин (неверные логин/пароль в URL брокера); systemd-сервис при этом не перезапускается (`RestartPreventExitStatus=2 6`)
+    * 0 - на SIGTERM/SIGINT (`systemctl stop`, Ctrl+C); retained-топики при этом удалены (`/rpc/v1/wb-device-manager/#`, `/wb-device-manager/state`, `/wb-device-manager/firmware_update/state`)
 * при запуске вручную, нормально останавливается по Ctrl+C; без зависаний и ругательств
 * на пропажу связи с mosquitto - ругается ворнингами
 * после пропажи и последующего восстановления соединения с mosquitto - работает **без необходимости перезапуска**
