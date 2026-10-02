@@ -10,6 +10,7 @@ Clients should call wb-mqtt-serial/fw-update directly.
 
 from jsonrpc.exceptions import JSONRPCDispatchException
 from mqttrpc import client as rpcclient
+from paho.mqtt.client import MQTTMessageInfo
 
 from . import logger
 from .mqtt_rpc import MQTTRPCErrorCode, SRPCClient
@@ -69,7 +70,8 @@ class FirmwareUpdateProxy:
     def publish_state(self) -> None:
         """No-op. State is managed by wb-mqtt-serial now."""
 
-    def clear_state(self) -> None:
-        """Clear the old retained state topic on shutdown."""
-        m_info = self._mqtt_connection.publish(self.OLD_STATE_TOPIC, payload=None, retain=True, qos=1)
-        m_info.wait_for_publish()
+    def clear_state(self) -> MQTTMessageInfo:
+        """
+        Clear the old retained state topic on shutdown; returns the publish info the caller waits for.
+        """
+        return self._mqtt_connection.publish(self.OLD_STATE_TOPIC, payload=None, retain=True, qos=1)

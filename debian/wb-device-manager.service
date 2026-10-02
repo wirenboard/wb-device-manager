@@ -8,7 +8,8 @@ User=root
 ExecStart=/usr/bin/wb-device-manager
 Restart=on-failure
 RestartSec=2
-RestartPreventExitStatus=2 3 4 5 6 7
+# 2: bad arguments or a rejected MQTT login
+RestartPreventExitStatus=2 6
 
 [Install]
 WantedBy=multi-user.target
