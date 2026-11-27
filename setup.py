@@ -17,7 +17,7 @@ setup(
     maintainer="Wiren Board Team",
     maintainer_email="info@wirenboard.com",
     description="Wiren Board modbus devices manager",
-    license="MIT",
+    license="MIT-WB",
     url="https://github.com/wirenboard/wb-device-manager",
     packages=[
         "wb.device_manager",
